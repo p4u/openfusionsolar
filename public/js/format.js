@@ -30,7 +30,8 @@ export const nf = (digits) => intl(Intl.NumberFormat, { minimumFractionDigits: d
 // axis ticks: up to `digits` decimals, no trailing zeros ("2", "2,5", never "2,00")
 export const nfAxis = (digits) => intl(Intl.NumberFormat, { maximumFractionDigits: digits });
 export const kw = (v) => (unknown(v) ? t('core.unknown') : `${nf(2).format(v)}${NB}kW`);
-export const kwh = (v, digits = 1) => (unknown(v) ? t('core.unknown') : `${nf(digits).format(v)}${NB}kWh`);
+// one rounding rule for energy: no decimals from 100 kWh up, one below (pass digits to override)
+export const kwh = (v, digits) => (unknown(v) ? t('core.unknown') : `${nf(digits ?? (Math.abs(v) >= 100 ? 0 : 1)).format(v)}${NB}kWh`);
 export const eur = (v) => (unknown(v) ? t('core.unknown') : intl(Intl.NumberFormat, { style: 'currency', currency: 'EUR' }).format(v));
 export const pct = (v) => (unknown(v) ? t('core.unknown') : `${Math.round(v)}${NB}%`);
 

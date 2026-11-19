@@ -84,6 +84,10 @@ test('i18n and format import under node, setLang switches language, t falls back
   i18n.setLang('xx');
   assert.equal(i18n.getLang(), 'ca', 'unknown languages are ignored');
 
-  assert.equal(format.kwh(1234.56), '1.234,6\u00a0kWh');
+  assert.equal(format.kwh(1234.56, 1), '1.234,6\u00a0kWh');
+  // one rounding rule for energy totals: no decimals from 100 kWh up, one decimal below
+  assert.equal(format.kwh(5325.9), '5.326\u00a0kWh');
+  assert.equal(format.kwh(99.94), '99,9\u00a0kWh');
+  assert.equal(format.kwh(1.48), '1,5\u00a0kWh');
   assert.equal(format.kw(null), '–');
 });
