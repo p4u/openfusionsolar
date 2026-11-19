@@ -1,1 +1,60 @@
-/* Charts, figures and the range bar (task 4). */
+/* Charts, figures and the range bar (task 4). Chart colours come from the --chart-* and --band-* tokens. */
+
+/* figure */
+.chart-figure { margin: 0; }
+.chart-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-xxs) var(--sp-base); margin-bottom: var(--sp-xs); }
+.chart-title { color: var(--ink); font-size: var(--fs-title-sm); font-weight: 500; }
+.chart-caption { color: var(--muted); font-size: var(--fs-caption); }
+.chart-caption:empty { display: none; }
+.chart-host { min-height: 120px; }
+.chart-host .apexcharts-canvas { max-width: 100%; }
+.chart-host .apexcharts-text, .chart-host .apexcharts-legend-text { font-family: var(--font-sans); }
+.chart-extra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-xs) var(--sp-base); margin-top: var(--sp-xs); }
+.chart-extra[hidden] { display: none; }
+.chart-table { flex: 1 1 100%; order: 2; }
+.chart-table > summary { display: inline-flex; min-height: 44px; }
+.chart-csv { margin-left: auto; }
+
+/* coverage and band legend */
+.chart-key { display: flex; flex-wrap: wrap; gap: var(--sp-xxs) var(--sp-base); margin: var(--sp-xs) 0 0; padding: 0; list-style: none; color: var(--muted); font-size: var(--fs-caption); }
+.chart-key li { display: inline-flex; align-items: center; gap: var(--sp-xs); }
+.chart-swatch { width: 16px; height: 12px; border-radius: var(--r-xs); border: 1px solid var(--hairline-strong); }
+.chart-swatch-gap { background: var(--band-gap); }
+.chart-swatch-cut { background: var(--band-cut); }
+.chart-swatch-stopped { background: var(--band-stopped); }
+.chart-swatch-partial { background: var(--chart-home); opacity: 0.45; border-color: transparent; }
+
+/* tooltip: a floating layer */
+.chart-host .apexcharts-tooltip {
+  border: 1px solid var(--hairline-strong) !important;
+  border-radius: var(--r-md) !important;
+  background: var(--surface-card) !important;
+  box-shadow: var(--shadow-float) !important;
+  color: var(--body) !important;
+}
+.chart-tip { min-width: 180px; max-width: 280px; padding: var(--sp-sm); font-family: var(--font-sans); font-size: var(--fs-caption); line-height: 1.4; }
+.chart-tip-head { margin-bottom: var(--sp-xxs); color: var(--ink); font-weight: 500; }
+.chart-tip-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: var(--sp-xs); padding-block: 2px; }
+.chart-tip-dot { width: 10px; height: 10px; border-radius: 50%; }
+.chart-tip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-tip-value { color: var(--ink); font-weight: 500; text-align: right; }
+.chart-tip-note { margin-top: var(--sp-xxs); color: var(--muted); }
+
+/* range bar */
+.range-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-sm) var(--sp-base); margin-bottom: var(--sp-base); }
+.range-presets { max-width: 100%; }
+.range-step { display: inline-flex; align-items: center; gap: var(--sp-xs); }
+.range-label { min-width: 8ch; color: var(--ink); font-size: var(--fs-caption); font-weight: 500; text-align: center; }
+.pill-icon { width: 44px; padding: 0; }
+.range-field { flex-direction: row; align-items: center; gap: var(--sp-xs); }
+.range-field > select { width: auto; }
+.range-advanced { flex: 1 1 100%; }
+.range-dialog { width: min(92vw, 360px); padding: var(--sp-lg); border: 1px solid var(--hairline-strong); border-radius: var(--r-xl); background: var(--surface-card); color: var(--body); box-shadow: var(--shadow-float); }
+.range-dialog::backdrop { background: rgba(12, 10, 9, 0.5); }
+.range-dialog form { display: flex; flex-direction: column; gap: var(--sp-base); }
+.range-dialog-actions { display: flex; justify-content: flex-end; gap: var(--sp-xs); }
+@media (max-width: 639px) {
+  .range-presets { flex: 1 1 100%; }
+  .range-field { flex: 1 1 100%; flex-direction: column; align-items: stretch; }
+  .range-field > select { width: 100%; }
+}
