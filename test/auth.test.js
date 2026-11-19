@@ -71,7 +71,12 @@ test('public paths answer without a session', () =>
       assert.match(res.headers.get('cache-control'), /max-age=86400/);
     }
     assert.equal((await fetch(`${base}/fonts/inter-cyrillic-wght-normal.woff2`)).status, 404);
-    assert.equal((await fetch(`${base}/js/login.js`)).status, 200);
+    for (const f of ['/js/login.js', '/css/base.css']) {
+      const res = await fetch(base + f);
+      assert.equal(res.status, 200, f);
+      assert.equal(res.headers.get('cache-control'), 'no-store', f);
+    }
+    assert.equal((await fetch(`${base}/login`)).headers.get('cache-control'), 'no-cache');
   }));
 
 test('healthz exposes only ok and turns false after 20 minutes without a tick', async () => {

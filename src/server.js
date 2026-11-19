@@ -249,7 +249,8 @@ export function startServer({
       res.writeHead(status, { ...(status !== 204 && { 'content-type': 'application/json' }), 'cache-control': 'no-store', ...headers });
       res.end(status === 204 ? undefined : JSON.stringify(body));
     };
-    const sendFile = (abs, cacheControl = 'no-cache') => {
+    // scripts and styles are never stored: after an update the browser must not run a stale module
+    const sendFile = (abs, cacheControl = /^\/(js|css)\//.test(url?.pathname) ? 'no-store' : 'no-cache') => {
       if (!abs) return json(404, { error: 'not found' });
       res.writeHead(200, { 'content-type': MIME[path.extname(abs)], 'cache-control': cacheControl });
       fs.createReadStream(abs).on('error', () => res.end()).pipe(res);
