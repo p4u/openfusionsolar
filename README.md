@@ -19,8 +19,8 @@ It is generic: plant name, capacity, battery size and limits come from FusionSol
   otherwise.
 - **Incidents**: power cuts, internet losses, stopped panels and device alarms, grouped and explained.
 - **Technical data**: any stored device signal over any range.
-- **Settings**: alert rules, recipients, quiet hours, test email, alert history, plant facts, collector state,
-  appearance and a glossary.
+- **Settings**: alert recipients and what each one gets, alert rules, quiet hours, test email, alert history, plant
+  facts, collector state, appearance and a glossary.
 
 ## Quick start (Docker)
 
@@ -58,24 +58,46 @@ or disabled.
 | `BATTERY_KWH`, `BATTERY_MIN_PCT` | no | Battery capacity and minimum charge, if FusionSolar's are wrong or missing. |
 | `BATTERY_RESERVE_PCT`, `BATTERY_RESERVE_SINCE` | no | Power-cut reserve ("Backup power SOC" in the FusionSolar app). The API does not expose it, so it is only shown when set. |
 | `PRICE_*`, `POWER_P*_KW`, `TAX_*` | no | Tariff (2.0TD, Península). Without `PRICE_P1..P3` the app shows kWh only. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | no | Outgoing mail for alerts. Never shown in the app. |
-| `ALERT_TO` | no | Default alert recipients, comma separated. Editable later in Settings. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` (or `SMTP_PASSWORD`), `SMTP_FROM` | no | Outgoing mail for alerts. `SMTP_SECURE` defaults to on for port 465, off otherwise. Credentials are never shown in the app or logged. |
+| `ALERT_TO` | no | First alert recipients, comma separated, until Settings is saved once. Each gets the "Everything important" alerts in the app language. |
 
 ## Alerts
 
-The alert engine runs every minute and after every collection. Rules (each can be switched off or tuned in
-Settings): no data arriving, power cut and its end, low battery during a cut, FusionSolar's low-battery alarm,
-battery below the reserve without charging, panels stopped at midday, device alarms by severity, a daily summary
-and a monthly report.
+The alert engine runs every minute and after every collection. In Settings, Alerts you add one or more email
+addresses (paste several at once, separated by commas or spaces) and choose, per address, its language and which
+alerts it gets: a preset (Everything important, Urgent only, Reports only) or any mix. Thresholds, quiet hours and
+the on/off switch of each rule are shared by everyone.
+
+| Group | Alert | When | New address |
+|---|---|---|---|
+| Urgent, sent at once also at night | Power cut | A cut lasting 2 minutes or more, and when power is back (duration, whether the battery covered the house). Says when the power limiter probably tripped | yes |
+| | House dark: overload | The battery could not carry the load during a cut | yes |
+| | Battery low during a cut | Charge below 20 % during a cut or just after it | yes |
+| Problems, held at night until the end of quiet hours | Plant offline | No data for 12 hours while the app reads FusionSolar fine (router, dongle, inverter) | yes |
+| | App cannot read FusionSolar | Login paused, or 60 minutes of failed reads | yes |
+| | Backup reserve not restored | 5 points below `BATTERY_RESERVE_PCT` for 3 hours, outside cuts | yes |
+| | Panels not producing | 0 kW for an hour between 10:00 and 15:00 | yes |
+| | Equipment alarm | FusionSolar alarms of severity 1-2 | yes |
+| | Contracted power exceeded | A 5-minute reading above `POWER_P1_KW` / `POWER_P2_KW`, once a day; hidden without them | no |
+| Reports | Weekly summary | Monday 08:00 | yes |
+| | Monthly report | Day 1, 08:00 | yes |
+| | Daily summary | 21:00 (rule off by default) | no |
 
 - **Without SMTP** nothing is lost: every alert is still evaluated and listed in Settings, Alert history, as
   "Not sent: email is not set up". Add the `SMTP_*` keys later and restart.
-- **With SMTP**: set the `SMTP_*` keys and `ALERT_TO`, restart, then use "Send test email" in Settings. The result,
-  or the SMTP error, appears next to the button.
-- Quiet hours (default 22:00 to 08:00) hold normal alerts and send them as one digest when they end; power cuts and
-  low battery during a cut go out at once. At most 10 emails per hour; anything above is logged as skipped.
+- **With SMTP**: set the `SMTP_*` keys, restart, then use "Send test email" next to each address. The result, or the
+  SMTP error, appears next to the button.
+- Each alert goes only to the addresses that chose it, as a separate email to each address in its own language
+  (addresses never see each other). With nobody subscribed it is logged as "Not sent: nobody subscribed to it". The
+  history shows who each email went to, and a failed email is retried only to the addresses it failed for.
+- Quiet hours (default 22:00 to 08:00) hold the problem alerts and send each address one digest of its own alerts
+  when they end. A safety cap allows at most 10 alert events per hour, however many addresses each one reaches (an
+  alert to 3 addresses counts once); anything above is logged as skipped.
 - Nothing is sent for history: alerts only cover incidents that start, or are still ongoing, after the first start.
 - FusionSolar reports alarms with a delay, and a power cut that also takes your router down is only seen afterwards.
+- If the machine running the app or its internet is down, no email goes out: the weekly summary is the sign of life.
+- Upgrading keeps a saved configuration: older plain address lists become addresses with the "Everything important"
+  alerts, and the retired FusionSolar low-battery alert is dropped.
 
 ## Data
 

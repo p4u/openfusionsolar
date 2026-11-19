@@ -4,42 +4,60 @@
 const T = {
   en: {
     noData: {
-      fired: (f, x) => `no data since ${x.time(f.since)}${f.authBlocked ? ': the FusionSolar login is failing' : ''}`,
+      fired: (f, x) => `no data from the plant since ${x.time(f.since)}`,
       resolved: () => 'data is arriving again',
-      todo: (f) => (f.authBlocked
-        ? 'Check the FusionSolar user and password in the .env file and restart the app.'
-        : 'Check that the router and the inverter dongle are on and online. During a power cut data arrives once it ends.'),
+      detail: (f, x, ev) => (ev === 'resolved' ? [] : [
+        'Meanwhile the other alerts cannot see the plant.',
+        f.network != null ? `FusionSolar reports a network connection error since ${x.time(f.network)}.` : '',
+      ]),
+      todo: () => 'Check the router and that the inverter dongle light is on. During a power cut data arrives once it ends.',
     },
     gridCut: {
-      fired: (f, x) => `power cut since ${x.time(f.start)}`,
+      fired: (f, x) => `power cut since ${x.time(f.start)}${f.soc != null ? `, battery at ${x.pct(f.soc)}` : ''}`,
       past: (f, x) => `there was a power cut from ${x.time(f.start)} to ${x.time(f.end)}`,
       resolved: (f, x) => `power is back after ${x.dur(f.end - f.start)}`,
-      detail: (f, x) => [
+      detail: (f, x, ev) => [
         f.past ? `It lasted ${x.dur(f.end - f.start)}.` : f.end ? `The cut went from ${x.time(f.start)} to ${x.time(f.end)}.` : '',
         f.end ? x.covered(f.batteryCovered) : '',
+        ev === 'resolved' && f.soc != null ? `Battery now at ${x.pct(f.soc)}.` : '',
       ],
-      todo: () => 'Keep consumption low so the battery lasts. FusionSolar reports cuts with some delay.',
+      todo: (f) => [
+        f.past ? (f.batteryCovered === false ? 'Check the reserve for power cuts in FusionSolar.' : '') : 'Keep consumption low so the battery lasts.',
+        f.limiter ? 'Probably the power limiter tripped: reset it at the meter.' : '',
+      ].filter(Boolean).join(' ') || null,
+    },
+    backupOverload: {
+      fired: () => 'house without power: the battery cannot carry the load',
+      past: (f, x) => `the house was without power from ${x.time(f.start)} to ${x.time(f.end)}: the battery could not carry the load`,
+      resolved: () => 'the battery carries the house again',
+      todo: () => 'Switch off large appliances (oven, heater, hob); the inverter retries by itself.',
     },
     batteryLowInCut: {
       fired: (f, x) => `battery at ${x.pct(f.soc)} during a power cut`,
       resolved: () => 'the battery is no longer low or the cut is over',
-      todo: () => 'Switch off large loads: the battery will run out soon.',
+      detail: (f, x, ev) => [ev !== 'resolved' && f.leftMin ? `At the current load the battery lasts about ${x.dur(f.leftMin * 60e3)}.` : ''],
+      todo: () => 'Switch off everything that is not essential now.',
     },
-    batteryLow: {
-      fired: (f, x) => `FusionSolar reports a low battery since ${x.time(f.start)}`,
-      past: (f, x) => `FusionSolar reported a low battery from ${x.time(f.start)} to ${x.time(f.end)}`,
-      resolved: () => 'the low battery alarm has cleared',
-      todo: () => 'Check the battery settings in FusionSolar and keep consumption low.',
+    collectorDown: {
+      fired: (f, x) => (f.authBlocked || f.since == null ? 'the app cannot sign in to FusionSolar' : `the app cannot reach FusionSolar since ${x.time(f.since)}`),
+      resolved: () => 'the app reads FusionSolar again',
+      detail: (f, x, ev) => [ev !== 'resolved' && f.error ? `Last error: ${f.error}` : ''],
+      todo: () => 'Tell whoever manages the app: check the FusionSolar user and password in the .env file.',
     },
     belowReserve: {
-      fired: (f, x) => `battery at ${x.pct(f.soc)}, below the ${x.pct(f.reservePct)} reserve`,
+      fired: (f, x) => `battery at ${x.pct(f.soc)}, below the ${x.pct(f.reservePct)} reserve${f.since != null ? ` for ${x.dur(x.now - f.since)}` : ''}`,
       resolved: () => 'the battery is back above the reserve',
-      todo: () => 'Check that the battery can charge (grid charging and its limit in FusionSolar).',
+      detail: (f, x, ev) => (ev === 'resolved' ? [] : [
+        'A power cut now would have less backup.',
+        f.gridChargeOff ? 'Grid charging is off in FusionSolar.'
+          : f.cutoffPct != null ? `The grid charging cutoff in FusionSolar is ${x.pct(f.cutoffPct)}, below the reserve.` : '',
+      ]),
+      todo: () => 'In FusionSolar, check that grid charging is on and its cutoff is at or above the reserve.',
     },
     panelsStopped: {
       fired: (f, x) => `the panels produced nothing from ${x.time(f.start)} to ${x.time(f.end)}`,
       resolved: () => 'the panels are producing again',
-      todo: () => 'Check the inverter and its breaker. Snow or a fault can stop production.',
+      todo: () => 'Look at the inverter and its breaker (snow also does this).',
     },
     deviceAlarm: {
       fired: (f) => `alarm: ${f.name} (${f.device})`,
@@ -47,12 +65,21 @@ const T = {
       resolved: (f) => `alarm cleared: ${f.name}`,
       todo: () => 'Open FusionSolar for the alarm details and the suggested fix.',
     },
-    dailySummary: { fact: (f, x) => `summary for ${x.day(f.day)}` },
-    monthlyReport: { fact: (f, x) => `${x.month(f.month)} summary` },
+    powerLimit: {
+      fired: (f, x) => `${x.kw(f.kw)} from the grid at ${x.time(f.ts)}, above the ${x.kw(f.limit)} contracted`,
+      resolved: () => 'the power drawn is back under the contracted power',
+      detail: () => ['The power limiter cuts the supply when this lasts.'],
+      todo: () => 'Avoid running those appliances at the same time.',
+    },
+    weeklySummary: { fact: (f, x) => `week of ${x.week(f.from, f.to)}: ${x.kwh(f.pv ?? 0)} produced${f.cost == null ? '' : `, ${x.eur(f.cost)}`}` },
+    dailySummary: { fact: (f, x) => `summary for ${x.day(f.day)}${f.pv == null ? '' : `: ${x.kwh(f.pv)} produced`}` },
+    monthlyReport: { fact: (f, x) => `${x.month(f.month)} summary${f.bill == null ? '' : `: bill estimate ${x.eur(f.bill)}`}` },
     lines: {
       pv: 'Produced', load: 'Consumed', imp: 'Bought', exp: 'Sold', cost: 'Energy cost', bill: 'Bill estimate',
       savings: 'Savings thanks to solar', incidents: 'Incidents', yoy: 'Same month last year',
     },
+    kinds: { gridCut: 'Power cut', overload: 'House without power (overload)', noProduction: 'Panels not producing' },
+    peak: (f, x) => `Peak draw from the grid: ${x.kw(f.peakKw)} (${x.time(f.peakTs)})${f.contractedKw == null ? '' : `, contracted ${x.kw(f.contractedKw)}`}`,
     yoy: (y, x) => `produced ${x.kwh(y.pv)}, consumed ${x.kwh(y.load)}${y.bill == null ? '' : `, bill ${x.eur(y.bill)}`}`,
     covered: (v) => ({
       true: 'The battery kept the house powered.',
@@ -69,42 +96,60 @@ const T = {
   },
   ca: {
     noData: {
-      fired: (f, x) => `sense dades des de les ${x.time(f.since)}${f.authBlocked ? ": l'inici de sessió a FusionSolar falla" : ''}`,
+      fired: (f, x) => `sense dades de la instal·lació des de les ${x.time(f.since)}`,
       resolved: () => 'tornen a arribar dades',
-      todo: (f) => (f.authBlocked
-        ? "Comprova l'usuari i la contrasenya de FusionSolar al fitxer .env i reinicia l'aplicació."
-        : "Comprova que el router i el dongle de l'inversor estiguin engegats i connectats. Durant un tall, les dades arriben quan s'acaba."),
+      detail: (f, x, ev) => (ev === 'resolved' ? [] : [
+        'Mentrestant, els altres avisos no poden veure la instal·lació.',
+        f.network != null ? `FusionSolar indica un error de connexió a la xarxa des de les ${x.time(f.network)}.` : '',
+      ]),
+      todo: () => "Comprova el router i que el llum del dongle de l'inversor estigui encès. Durant un tall, les dades arriben quan s'acaba.",
     },
     gridCut: {
-      fired: (f, x) => `tall de corrent des de les ${x.time(f.start)}`,
+      fired: (f, x) => `tall de corrent des de les ${x.time(f.start)}${f.soc != null ? `, bateria al ${x.pct(f.soc)}` : ''}`,
       past: (f, x) => `hi ha hagut un tall de corrent de ${x.time(f.start)} a ${x.time(f.end)}`,
       resolved: (f, x) => `torna a haver-hi corrent després de ${x.dur(f.end - f.start)}`,
-      detail: (f, x) => [
+      detail: (f, x, ev) => [
         f.past ? `Ha durat ${x.dur(f.end - f.start)}.` : f.end ? `El tall ha anat de ${x.time(f.start)} a ${x.time(f.end)}.` : '',
         f.end ? x.covered(f.batteryCovered) : '',
+        ev === 'resolved' && f.soc != null ? `Ara la bateria és al ${x.pct(f.soc)}.` : '',
       ],
-      todo: () => 'Redueix el consum perquè la bateria duri. FusionSolar informa dels talls amb cert retard.',
+      todo: (f) => [
+        f.past ? (f.batteryCovered === false ? 'Revisa la reserva per a talls a FusionSolar.' : '') : 'Redueix el consum perquè la bateria duri.',
+        f.limiter ? "Probablement ha saltat el limitador de potència (ICP): rearma'l al comptador." : '',
+      ].filter(Boolean).join(' ') || null,
+    },
+    backupOverload: {
+      fired: () => 'casa sense corrent: la bateria no pot amb la càrrega',
+      past: (f, x) => `la casa ha estat sense corrent de ${x.time(f.start)} a ${x.time(f.end)}: la bateria no podia amb la càrrega`,
+      resolved: () => 'la bateria torna a alimentar la casa',
+      todo: () => "Apaga els aparells grans (forn, estufa, placa); l'inversor ho torna a provar sol.",
     },
     batteryLowInCut: {
       fired: (f, x) => `bateria al ${x.pct(f.soc)} durant un tall de corrent`,
       resolved: () => "la bateria ja no està baixa o el tall s'ha acabat",
-      todo: () => "Apaga els aparells grans: la bateria s'acabarà aviat.",
+      detail: (f, x, ev) => [ev !== 'resolved' && f.leftMin ? `Amb el consum actual, la bateria dura uns ${x.dur(f.leftMin * 60e3)}.` : ''],
+      todo: () => 'Apaga ara tot el que no sigui imprescindible.',
     },
-    batteryLow: {
-      fired: (f, x) => `FusionSolar avisa de bateria baixa des de les ${x.time(f.start)}`,
-      past: (f, x) => `FusionSolar ha avisat de bateria baixa de ${x.time(f.start)} a ${x.time(f.end)}`,
-      resolved: () => "l'avís de bateria baixa s'ha esborrat",
-      todo: () => 'Revisa la configuració de la bateria a FusionSolar i redueix el consum.',
+    collectorDown: {
+      fired: (f, x) => (f.authBlocked || f.since == null ? "l'aplicació no pot iniciar sessió a FusionSolar" : `l'aplicació no pot llegir FusionSolar des de les ${x.time(f.since)}`),
+      resolved: () => "l'aplicació torna a llegir FusionSolar",
+      detail: (f, x, ev) => [ev !== 'resolved' && f.error ? `Últim error: ${f.error}` : ''],
+      todo: () => "Avisa qui gestiona l'aplicació: cal revisar l'usuari i la contrasenya de FusionSolar al fitxer .env.",
     },
     belowReserve: {
-      fired: (f, x) => `bateria al ${x.pct(f.soc)}, per sota de la reserva del ${x.pct(f.reservePct)}`,
+      fired: (f, x) => `bateria al ${x.pct(f.soc)}, per sota de la reserva del ${x.pct(f.reservePct)}${f.since != null ? ` des de fa ${x.dur(x.now - f.since)}` : ''}`,
       resolved: () => 'la bateria torna a estar per sobre de la reserva',
-      todo: () => 'Comprova que la bateria pot carregar (càrrega des de la xarxa i el seu límit a FusionSolar).',
+      detail: (f, x, ev) => (ev === 'resolved' ? [] : [
+        'Si ara hi hagués un tall, hi hauria menys reserva.',
+        f.gridChargeOff ? 'La càrrega des de la xarxa està desactivada a FusionSolar.'
+          : f.cutoffPct != null ? `El límit de càrrega des de la xarxa a FusionSolar és del ${x.pct(f.cutoffPct)}, per sota de la reserva.` : '',
+      ]),
+      todo: () => 'A FusionSolar, comprova que la càrrega des de la xarxa està activada i que el seu límit és igual o superior a la reserva.',
     },
     panelsStopped: {
       fired: (f, x) => `les plaques no han produït res de ${x.time(f.start)} a ${x.time(f.end)}`,
       resolved: () => 'les plaques tornen a produir',
-      todo: () => "Revisa l'inversor i el seu magnetotèrmic. La neu o una avaria poden aturar la producció.",
+      todo: () => "Mira l'inversor i el seu magnetotèrmic (la neu també ho fa).",
     },
     deviceAlarm: {
       fired: (f) => `alarma: ${f.name} (${f.device})`,
@@ -112,12 +157,21 @@ const T = {
       resolved: (f) => `alarma resolta: ${f.name}`,
       todo: () => "Obre FusionSolar per veure el detall de l'alarma i la solució proposada.",
     },
-    dailySummary: { fact: (f, x) => `resum del ${x.day(f.day)}` },
-    monthlyReport: { fact: (f, x) => `resum de ${x.month(f.month)}` },
+    powerLimit: {
+      fired: (f, x) => `${x.kw(f.kw)} de la xarxa a les ${x.time(f.ts)}, per sobre dels ${x.kw(f.limit)} contractats`,
+      resolved: () => 'la potència consumida torna a ser per sota de la contractada',
+      detail: () => ['El limitador talla el subministrament quan això dura.'],
+      todo: () => 'Evita fer servir aquests aparells alhora.',
+    },
+    weeklySummary: { fact: (f, x) => `setmana ${x.week(f.from, f.to)}: ${x.kwh(f.pv ?? 0)} produïts${f.cost == null ? '' : `, ${x.eur(f.cost)}`}` },
+    dailySummary: { fact: (f, x) => `resum del ${x.day(f.day)}${f.pv == null ? '' : `: ${x.kwh(f.pv)} produïts`}` },
+    monthlyReport: { fact: (f, x) => `resum de ${x.month(f.month)}${f.bill == null ? '' : `: factura estimada ${x.eur(f.bill)}`}` },
     lines: {
       pv: 'Produït', load: 'Consumit', imp: 'Comprat', exp: 'Venut', cost: "Cost de l'energia", bill: 'Factura estimada',
       savings: 'Estalvi gràcies al sol', incidents: 'Incidències', yoy: "Mateix mes de l'any passat",
     },
+    kinds: { gridCut: 'Tall de corrent', overload: 'Casa sense corrent (sobrecàrrega)', noProduction: 'Plaques sense producció' },
+    peak: (f, x) => `Màxim consumit de la xarxa: ${x.kw(f.peakKw)} (${x.time(f.peakTs)})${f.contractedKw == null ? '' : `, contractats ${x.kw(f.contractedKw)}`}`,
     yoy: (y, x) => `produït ${x.kwh(y.pv)}, consumit ${x.kwh(y.load)}${y.bill == null ? '' : `, factura ${x.eur(y.bill)}`}`,
     covered: (v) => ({
       true: 'La bateria ha mantingut la casa amb corrent.',
@@ -142,10 +196,12 @@ const p2 = (n) => String(n).padStart(2, '0');
 
 function formatters(lang, ref) {
   const locale = LOCALE[lang];
+  const now = ref;
   const n1 = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' });
   const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
   return {
+    now,
     // plant-local HH:MM, with the date when it is not the day of the email
     time: (ts) => {
       const d = new Date(ts);
@@ -156,6 +212,16 @@ function formatters(lang, ref) {
       return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
     },
     kwh: (v) => `${n1.format(v)} kWh`,
+    kw: (v) => `${n1.format(v)} kW`,
+    // 'YYYY-MM-DD' to 'YYYY-MM-DD': "9 to 15 November" / "del 9 al 15 de novembre" (de l'1, a l'11)
+    week: (from, to) => {
+      const [a, b] = [from, to].map((d) => new Date(`${d}T12:00`));
+      const dm = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long' });
+      const first = a.getMonth() === b.getMonth() ? String(a.getDate()) : dm.format(a);
+      if (lang === 'en') return `${first} to ${dm.format(b)}`;
+      const el = (pre, s) => (/^1?1\b/.test(s) ? `${pre === 'del' ? 'de' : 'a'} l'${s}` : `${pre} ${s}`);
+      return `${el('del', first)} ${el('al', dm.format(b))}`;
+    },
     eur: (v) => money.format(v),
     pct: (v) => `${n1.format(v)} %`,
     day: (day) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${day}T12:00`)),
@@ -175,11 +241,14 @@ function fact(t, x, d) {
 
 function reportLines(t, x, f) {
   const L = t.lines;
+  const list = Array.isArray(f.incidents) ? f.incidents : null; // the weekly summary lists them
   const rows = [
     ['pv', f.pv, x.kwh], ['load', f.load, x.kwh], ['imp', f.imp, x.kwh], ['exp', f.exp, x.kwh],
-    ['cost', f.cost, x.eur], ['bill', f.bill, x.eur], ['savings', f.savings, x.eur], ['incidents', f.incidents, String],
+    ['cost', f.cost, x.eur], ['bill', f.bill, x.eur], ['savings', f.savings, x.eur], ['incidents', list ? list.length : f.incidents, String],
   ];
   const out = rows.filter(([, v]) => v != null).map(([k, v, fmt]) => `${L[k]}: ${fmt(v)}`);
+  for (const i of list ?? []) out.push(`- ${t.kinds[i.kind] ?? i.kind}, ${x.time(i.start)}, ${x.dur(i.end - i.start)}`);
+  if (f.peakKw != null) out.push(t.peak(f, x));
   if (f.yoy) out.push(`${L.yoy}: ${t.yoy(f.yoy, x)}`);
   return out;
 }
@@ -203,7 +272,7 @@ export function render(lang, delivery, { plantName, appUrl } = {}) {
     const r = t[delivery.rule];
     const f = delivery.facts ?? {};
     head = fact(t, x, delivery);
-    const extra = delivery.event === 'report' ? reportLines(t, x, f) : (r.detail?.(f, x) ?? []);
+    const extra = delivery.event === 'report' ? reportLines(t, x, f) : (r.detail?.(f, x, delivery.event) ?? []);
     body = [`${cap(head)}.`, ...extra.filter(Boolean)];
     todo = delivery.event === 'report' ? null : delivery.event === 'resolved' ? t.resolvedTodo : r.todo(f, x);
   }

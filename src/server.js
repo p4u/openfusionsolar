@@ -248,7 +248,7 @@ export function startServer({
     'POST /api/alerts/test': needAlerts(async ({ body }) => {
       const to = body?.to;
       if (to != null && !isEmail(to)) return [400, { error: 'invalid', fields: { to: 'invalid email address' } }];
-      return [200, await alerts.sendTest(to ?? undefined)];
+      return [200, await alerts.sendTest(to ?? undefined, body?.lang)];
     }),
     'GET /api/alerts/history': needAlerts(({ query }) => {
       const limit = Math.min(Math.max(Number.parseInt(query.get('limit') ?? '50', 10) || 50, 1), 200);

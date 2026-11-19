@@ -1,7 +1,8 @@
 // Pure helpers of the Settings view.
 import { t } from '../i18n.js';
 
-const LIMITS = { minutes: [5, 1440], soc: [1, 100], maxSeverity: [1, 4] };
+const LIMITS = { minutes: [5, 1440], soc: [1, 100], maxSeverity: [1, 4], margin: [0, 50], overPct: [0, 100] };
+export const MAX_RECIPIENTS = 20;
 
 // The inputs inside a rule's sentence, one per param, in the order the sentence template uses them.
 export const ruleSentenceParts = (rule) =>
@@ -18,10 +19,30 @@ export function splitSentence(template) {
   return String(template).split(/\{(\w+)\}/).map((s, i) => (i % 2 ? { input: s } : { text: s })).filter((p) => p.input || p.text);
 }
 
-// The server's own checks (alerts.js validateConfig), run before saving so a wrong value never leaves the page.
-// Returns { path: message } in the server's words (errorText translates them); empty when everything is valid.
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const EMAIL = /^[^\s@<>()[\],;:"\\]+@[^\s@<>()[\],;:"\\]+\.[^\s@<>()[\],;:"\\]+$/;
+const isEmail = (s) => typeof s === 'string' && s.length <= 254 && EMAIL.test(s);
+
+// Text typed or pasted into "Add": addresses split by commas, semicolons or spaces (<a@b.c> unwrapped).
+// Returns { add, invalid, already, full }: what to add (at most up to `max` in total) and what was refused.
+export function parseAddresses(text, existing = [], max = MAX_RECIPIENTS) {
+  const out = { add: [], invalid: [], already: [], full: [] };
+  const seen = new Set(existing.map((e) => e.toLowerCase()));
+  for (const raw of String(text).split(/[\s,;]+/).filter(Boolean)) {
+    const s = raw.replace(/^<(.*)>$/, '$1');
+    if (!isEmail(s)) out.invalid.push(raw);
+    else if (seen.has(s.toLowerCase())) out.already.push(s);
+    else if (existing.length + out.add.length >= max) out.full.push(s);
+    else {
+      seen.add(s.toLowerCase());
+      out.add.push(s);
+    }
+  }
+  return out;
+}
+
+// The server's own checks (alerts.js validateConfig), run before saving so a wrong value never leaves the page.
+// Returns { path: message } in the server's words (errorText translates them); empty when everything is valid.
 export function validateAlerts(cfg) {
   const fields = {};
   const int = (path, v, [min, max]) => {
@@ -30,9 +51,14 @@ export function validateAlerts(cfg) {
   const time = (path, v) => {
     if (!(typeof v === 'string' && HHMM.test(v))) fields[path] = 'HH:MM';
   };
-  if ((cfg.recipients ?? []).length > 10) fields.recipients = 'up to 10 email addresses';
+  if ((cfg.recipients ?? []).length > MAX_RECIPIENTS) fields.recipients = `up to ${MAX_RECIPIENTS} email addresses`;
+  const seen = new Set();
   (cfg.recipients ?? []).forEach((r, i) => {
-    if (!(typeof r === 'string' && r.length <= 254 && EMAIL.test(r))) fields[`recipients.${i}`] = 'invalid email address';
+    const email = typeof r === 'string' ? r : r?.email;
+    if (!isEmail(email)) fields[`recipients.${i}`] = 'invalid email address';
+    else if (seen.has(email.toLowerCase())) fields[`recipients.${i}`] = 'duplicate email address';
+    seen.add(String(email).toLowerCase());
+    if (typeof r === 'object' && r?.lang != null && !['ca', 'en'].includes(r.lang)) fields[`recipients.${i}.lang`] = 'ca or en';
   });
   for (const k of ['from', 'to']) time(`quiet.${k}`, cfg.quiet?.[k]);
   for (const rule of cfg.rules ?? []) {
@@ -52,7 +78,9 @@ export function validateAlerts(cfg) {
 export function errorText(message) {
   const m = /^integer from (\d+) to (\d+)$/.exec(message ?? '');
   if (m) return t('settings.err.range', { min: m[1], max: m[2] });
-  const key = { 'invalid email address': 'email', 'up to 10 email addresses': 'recipients', 'HH:MM': 'time' }[message];
+  const key = {
+    'invalid email address': 'email', 'duplicate email address': 'duplicate', [`up to ${MAX_RECIPIENTS} email addresses`]: 'recipients', 'HH:MM': 'time',
+  }[message];
   return t(`settings.err.${key ?? 'invalid'}`);
 }
 
@@ -82,7 +110,11 @@ export function deliveryWords(row) {
 // Writes one form value into a config by field path (the paths validateConfig reports). Unknown paths are ignored.
 export function setField(cfg, path, value) {
   const [head, a, b, c] = path.split('.');
-  if (head === 'recipients') cfg.recipients[Number(a)] = value;
+  if (head === 'recipients') {
+    const r = cfg.recipients[Number(a)];
+    if (r && typeof r === 'object') r[b ?? 'email'] = value;
+    else cfg.recipients[Number(a)] = value;
+  }
   else if (head === 'quiet') cfg.quiet[a] = value;
   else if (head === 'lang') cfg.lang = value;
   else if (head === 'rules') {

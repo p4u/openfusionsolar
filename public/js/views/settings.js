@@ -1,10 +1,11 @@
-// Settings view: alerts (rules, recipients, quiet hours, test email, history), plant, appearance, glossary, about.
+// Settings view: alerts (recipients and their alerts, rules, quiet hours, test email, history), plant, appearance, glossary, about.
 import { register, t, getLang, setLang, LANGS } from '../i18n.js';
 import dict from '../i18n/settings.js';
 import { esc, icon, loadBlock, emptyState, getTheme, setTheme } from '../ui.js';
 import { getAlertsConfig, putAlertsConfig, sendTestEmail, getAlertsHistory, ApiError } from '../api.js';
 import { kw, nf, pct, fmtDateTime, fmtTime } from '../format.js';
-import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, errorText, authKey, lastFired, deliveryWords, setField, validateAlerts } from './settings-model.js';
+import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, errorText, authKey, lastFired, deliveryWords, setField, validateAlerts, parseAddresses } from './settings-model.js';
+import { GROUPS, DEFAULT_ON, PRESETS, presetOf } from '../alert-catalogue.js';
 
 register(dict);
 
@@ -127,42 +128,91 @@ function ruleHtml(rule, fired) {
     <div class="settings-rule-body">
       <p class="settings-sentence">${sentence}</p>
       <p class="hint">${esc(fired ? t('settings.rule.lastFired', { when: fmtDateTime(fired) }) : t('settings.rule.never'))}</p>
-      <details class="disclosure"><summary><span>${esc(t('settings.rule.more'))}</span>${icon('chevron-down', { size: 16 })}</summary>
+      <details class="disclosure" data-key="more-${rule.id}"><summary><span>${esc(t('settings.rule.more'))}</span>${icon('chevron-down', { size: 16 })}</summary>
         <div class="settings-more">${box('bypassQuiet', t('settings.rule.bypassQuiet'))}${box('notifyResolved', t('settings.rule.notifyResolved'))}
           <div class="field"><label for="rep-${rule.id}">${esc(t('settings.rule.repeatHours'))}</label>
             <input id="rep-${rule.id}" class="settings-inline" type="number" min="0" max="720" data-field="${f('repeatHours')}" value="${esc(rule.repeatHours)}"></div></div></details>
     </div></div>`;
 }
 
+const ORDER = Object.values(GROUPS).flat();
+const PRESET_NAMES = [...Object.keys(PRESETS), 'custom'];
+
 function drawAlerts(el, config, rows, signal) {
   let cfg = structuredClone(config);
-  let saved = config.recipients.length;
   const smtp = config.smtp;
+  const hidden = new Set(config.unavailable ?? []);
+  const shown = (id) => !hidden.has(id);
+  const ruleOf = (id) => cfg.rules.find((r) => r.id === id);
   const fired = lastFired(rows);
+  const total = ORDER.filter(shown).length;
+  const count = (alerts) => alerts.filter(shown).length;
 
+  // the form holds the state: read it back into cfg before every redraw and before saving
   const read = () => {
     el.querySelectorAll('[data-field]').forEach((i) => {
       const v = i.type === 'checkbox' ? i.checked : i.type === 'number' ? (i.value === '' ? null : Number(i.value)) : i.value.trim();
       setField(cfg, i.dataset.field, v);
     });
-    cfg.recipients = cfg.recipients.filter((r) => r);
+    el.querySelectorAll('[data-recipient]').forEach((box) => {
+      const r = cfg.recipients[Number(box.dataset.recipient)];
+      r.lang = box.querySelector('[data-rlang]').value;
+      const ticked = new Set([...box.querySelectorAll('[data-alert]:checked')].map((c) => c.dataset.alert));
+      // a hidden alert keeps its subscription for when it can be shown again
+      r.alerts = [...ORDER.filter((id) => shown(id) && ticked.has(id)), ...r.alerts.filter((id) => !shown(id))];
+    });
+  };
+
+  const alertBox = (r, i, id) => {
+    const rule = ruleOf(id);
+    const urgent = rule?.bypassQuiet ? `<span class="settings-urgent">${icon('zap', { size: 16 })}${esc(t('settings.urgent'))}</span>` : '';
+    const off = rule && !rule.enabled ? `<span class="settings-off">${esc(t('settings.alert.offForAll'))}</span>` : '';
+    return `<label class="settings-alert${off ? ' is-off' : ''}"><input type="checkbox" data-alert="${id}"${r.alerts.includes(id) ? ' checked' : ''}>
+      <span class="settings-alert-text"><span class="settings-alert-name">${esc(t(`settings.alert.${id}`))}${urgent}${off}</span>
+        <span class="hint">${esc(t(`settings.alert.${id}.desc`))}</span></span></label>`;
+  };
+
+  const recipientHtml = (r, i) => {
+    const preset = presetOf(r.alerts);
+    const testOff = smtp.configured ? '' : ' disabled aria-describedby="settings-test-why"';
+    return `<li class="settings-recipient" data-recipient="${i}">
+      <div class="settings-recipient-head">
+        <h4 class="settings-recipient-email" tabindex="-1" data-err="recipients.${i}">${esc(r.email)}</h4>
+        <div class="field settings-recipient-lang"><label for="rcp-${i}-lang">${esc(t('settings.recipients.lang'))}</label>
+          <select id="rcp-${i}-lang" data-rlang data-err="recipients.${i}.lang">${Object.entries(LANGS).map(([c, l]) => `<option value="${c}"${c === r.lang ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div>
+        <button type="button" class="pill pill-outline pill-icon" data-remove="${i}" aria-label="${esc(t('settings.recipients.remove', { email: r.email }))}">${icon('x')}</button>
+      </div>
+      <fieldset class="settings-presets"><legend class="field-label">${esc(t('settings.preset.label'))}</legend>
+        <div class="segmented">${PRESET_NAMES.map((p) => `<label><input type="radio" name="preset-${i}" value="${p}"${p === preset ? ' checked' : ''}>${esc(t(`settings.preset.${p}`))}</label>`).join('')}</div>
+      </fieldset>
+      <details class="disclosure settings-choose" data-key="choose-${esc(r.email.toLowerCase())}"><summary><span data-count>${esc(t('settings.preset.choose', { n: count(r.alerts), total }))}</span>${icon('chevron-down', { size: 16 })}</summary>
+        ${Object.entries(GROUPS).map(([g, ids]) => `<fieldset class="settings-group"><legend>${esc(t(`settings.group.${g}`))}</legend>
+          <p class="hint">${esc(t(`settings.group.${g}Hint`))}</p>${ids.filter(shown).map((id) => alertBox(r, i, id)).join('')}</fieldset>`).join('')}
+      </details>
+      <div class="settings-actions"><button type="button" class="pill pill-outline" data-test="${i}" aria-label="${esc(t('settings.test.buttonFor', { email: r.email }))}"${testOff}>${icon('mail', { size: 16 })}${esc(t('settings.test.button'))}</button>
+        <span class="hint" role="status" data-test-out="${i}"></span></div>
+    </li>`;
   };
 
   const draw = () => {
-    const mails = cfg.recipients.length ? cfg.recipients : [];
-    const why = !smtp.configured ? t('settings.test.noSmtp') : !saved ? t('settings.test.noAddress') : '';
+    const open = new Set([...el.querySelectorAll('details[open][data-key]')].map((d) => d.dataset.key));
     el.innerHTML = `<form class="settings-form" novalidate>
       <p class="hint">${esc(t('settings.alerts.lead'))}</p>
-      <div class="settings-rules">${cfg.rules.map((r) => ruleHtml(r, fired[r.id])).join('')}</div>
       <p class="hint settings-limit">${icon('info', { size: 16 })}<span>${esc(t('settings.alerts.limit'))}</span></p>
       <h3 class="card-title">${esc(t('settings.recipients.title'))}</h3>
-      ${mails.length ? '' : `<p class="hint">${esc(t('settings.recipients.none'))}</p>`}
-      <div class="settings-mails">${mails.map((m, i) => `<div class="settings-mail">
-        <input class="input" type="email" autocomplete="email" data-field="recipients.${i}" value="${esc(m)}" aria-label="${esc(t('settings.recipients.email', { n: i + 1 }))}">
-        <button type="button" class="pill pill-outline pill-icon" data-remove="${i}" aria-label="${esc(t('settings.recipients.remove', { n: i + 1 }))}">${icon('x')}</button></div>`).join('')}</div>
-      <button type="button" class="pill pill-outline" data-add>${esc(t('settings.recipients.add'))}</button>
+      ${smtp.configured ? '' : `<p class="hint settings-limit" id="settings-test-why">${icon('info', { size: 16 })}<span>${esc(t('settings.test.noSmtp'))}</span></p>`}
+      <div class="field settings-add"><label for="settings-add">${esc(t('settings.recipients.addLabel'))}</label>
+        <div class="settings-add-row"><input id="settings-add" class="input" type="text" inputmode="email" autocomplete="email" spellcheck="false" aria-describedby="settings-add-hint settings-add-msg">
+          <button type="button" class="pill pill-outline" data-add>${esc(t('settings.recipients.add'))}</button></div>
+        <p class="field-hint" id="settings-add-hint">${esc(t('settings.recipients.addHint'))}</p>
+        <div id="settings-add-msg" aria-live="polite"></div></div>
+      ${cfg.recipients.length ? `<ul class="settings-recipients">${cfg.recipients.map(recipientHtml).join('')}</ul>` : `<p class="hint">${esc(t('settings.recipients.none'))}</p>`}
       <div class="field settings-narrow"><label for="settings-mail-lang">${esc(t('settings.lang.label'))}</label>
         <select id="settings-mail-lang" data-field="lang">${Object.entries(LANGS).map(([c, l]) => `<option value="${c}"${c === cfg.lang ? ' selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div>
+      <h3 class="card-title">${esc(t('settings.rules.title'))}</h3>
+      <p class="hint">${esc(t('settings.rules.hint'))}</p>
+      ${Object.entries(GROUPS).map(([g, ids]) => `<h4 class="settings-group-title">${esc(t(`settings.group.${g}`))}</h4>
+        <div class="settings-rules">${ids.filter(shown).map((id) => ruleHtml(ruleOf(id), fired[id])).join('')}</div>`).join('')}
       <h3 class="card-title">${esc(t('settings.quiet.title'))}</h3>
       <p class="hint">${esc(t('settings.quiet.hint'))}</p>
       <div class="settings-quiet">${['from', 'to'].map((k) => `<div class="field"><label for="settings-q-${k}">${esc(t(`settings.quiet.${k}`))}</label>
@@ -170,9 +220,33 @@ function drawAlerts(el, config, rows, signal) {
       <div class="settings-errors" role="alert" hidden></div>
       <div class="settings-actions"><button type="submit" class="pill pill-primary">${esc(t('settings.save'))}</button>
         <span class="hint" role="status" data-save></span></div>
-      <div class="settings-actions"><button type="button" class="pill pill-outline" data-test${why ? ' disabled aria-describedby="settings-test-out"' : ''}>${icon('mail', { size: 16 })}${esc(t('settings.test.button'))}</button>
-        <span class="hint" id="settings-test-out" role="status" data-test-out>${esc(why)}</span></div>
     </form>`;
+    el.querySelectorAll('details[data-key]').forEach((d) => { if (open.has(d.dataset.key)) d.open = true; });
+  };
+
+  const say = (lines) => {
+    el.querySelector('#settings-add-msg').innerHTML = lines.map(([ok, text]) => (ok ? `<p class="hint">${esc(text)}</p>` : errorLine(text))).join('');
+  };
+
+  const addMails = () => {
+    read();
+    const typed = el.querySelector('#settings-add').value;
+    const p = parseAddresses(typed, cfg.recipients.map((r) => r.email));
+    cfg.recipients.push(...p.add.map((email) => ({ email, lang: cfg.lang, alerts: [...DEFAULT_ON] })));
+    if (p.add.length) draw();
+    const input = el.querySelector('#settings-add');
+    const refused = [...p.invalid, ...p.full];
+    input.value = refused.join(', '); // what was not added stays in the box to be fixed
+    if (p.invalid.length) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+    say([
+      !typed.trim() && [false, t('settings.recipients.empty')],
+      p.add.length && [true, t('settings.recipients.added', { n: p.add.length })],
+      p.invalid.length && [false, t('settings.recipients.invalid', { list: p.invalid.join(', ') })],
+      p.already.length && [false, t('settings.recipients.already', { list: p.already.join(', ') })],
+      p.full.length && [false, t('settings.recipients.full', { list: p.full.join(', ') })],
+    ].filter(Boolean));
+    input.focus();
   };
 
   const showErrors = (fields) => {
@@ -180,7 +254,7 @@ function drawAlerts(el, config, rows, signal) {
     const loose = [];
     let first = null;
     fieldErrorsByInput(fields).forEach((e, n) => {
-      const input = el.querySelector(`[data-field="${e.path}"]`);
+      const input = el.querySelector(`[data-field="${e.path}"], [data-err="${e.path}"]`);
       if (!input) {
         loose.push(e.message);
         return;
@@ -189,7 +263,7 @@ function drawAlerts(el, config, rows, signal) {
       const id = `settings-err-${n}`;
       input.setAttribute('aria-invalid', 'true');
       input.setAttribute('aria-describedby', id);
-      (input.closest('.settings-rule-body, .settings-mail, .field, .settings-quiet') ?? input.parentElement).insertAdjacentHTML('beforeend', errorLine(e.message, id));
+      (input.closest('.settings-rule-body, .settings-recipient-head, .field, .settings-quiet') ?? input.parentElement).insertAdjacentHTML('beforeend', errorLine(e.message, id));
       first ??= input;
     });
     el.querySelector('[data-save]').textContent = t('settings.saveFailed');
@@ -199,29 +273,61 @@ function drawAlerts(el, config, rows, signal) {
     }
     if (loose.length) {
       form.hidden = false;
-      form.innerHTML = `<p>${esc(t('settings.formErrors'))}</p>${loose.map(errorLine).join('')}`;
+      form.innerHTML = `<p>${esc(t('settings.formErrors'))}</p>${loose.map((m) => errorLine(m)).join('')}`;
     }
   };
 
-  el.addEventListener('click', async (e) => {
-    const add = e.target.closest('[data-add]');
-    const rm = e.target.closest('[data-remove]');
-    if (add || rm) {
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.id === 'settings-add') {
+      e.preventDefault(); // Enter adds the address instead of saving the form
+      addMails();
+    }
+  });
+
+  el.addEventListener('change', (e) => {
+    // switching a rule off or making it urgent shows in every address's list
+    const sw = /^rules\.\w+\.(enabled|bypassQuiet)$/.test(e.target.dataset.field ?? '') && e.target.dataset.field;
+    if (sw) {
       read();
-      if (add) cfg.recipients.push('');
-      else cfg.recipients.splice(Number(rm.dataset.remove), 1);
       draw();
-      if (add) el.querySelector(`[data-field="recipients.${cfg.recipients.length - 1}"]`).focus();
+      el.querySelector(`[data-field="${sw}"]`).focus();
+      return;
+    }
+    const box = e.target.closest('[data-recipient]');
+    if (!box) return;
+    const checks = [...box.querySelectorAll('[data-alert]')];
+    if (e.target.type === 'radio') {
+      if (e.target.value === 'custom') box.querySelector('.settings-choose').open = true;
+      else checks.forEach((c) => { c.checked = PRESETS[e.target.value].includes(c.dataset.alert); });
+    }
+    const r = cfg.recipients[Number(box.dataset.recipient)];
+    const ids = [...checks.filter((c) => c.checked).map((c) => c.dataset.alert), ...r.alerts.filter((id) => !shown(id))];
+    if (e.target.type === 'checkbox') box.querySelector(`input[type="radio"][value="${presetOf(ids)}"]`).checked = true;
+    box.querySelector('[data-count]').textContent = t('settings.preset.choose', { n: count(ids), total });
+  });
+
+  el.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-add]')) return addMails();
+    const rm = e.target.closest('[data-remove]');
+    if (rm) {
+      read();
+      const i = Number(rm.dataset.remove);
+      const [gone] = cfg.recipients.splice(i, 1);
+      draw();
+      say([[true, t('settings.recipients.removed', { email: gone.email })]]);
+      (el.querySelector(`[data-recipient="${Math.min(i, cfg.recipients.length - 1)}"] h4`) ?? el.querySelector('#settings-add')).focus();
       return;
     }
     const test = e.target.closest('[data-test]');
     if (!test) return;
-    const out = el.querySelector('[data-test-out]');
+    read();
+    const r = cfg.recipients[Number(test.dataset.test)];
+    const out = el.querySelector(`[data-test-out="${test.dataset.test}"]`);
     test.disabled = true;
     out.textContent = t('settings.test.sending');
     try {
-      const r = await sendTestEmail(undefined, { signal });
-      out.textContent = r.ok ? t('settings.test.sent') : t('settings.test.failed', { error: r.error });
+      const res = await sendTestEmail(r.email, { signal }, r.lang);
+      out.textContent = res.ok ? t('settings.test.sent') : t('settings.test.failed', { error: res.error });
     } catch (err) {
       if (err?.name === 'AbortError') return;
       out.textContent = t('settings.test.failed', { error: err.body?.fields?.to ? errorText(err.body.fields.to) : err.message });
@@ -232,17 +338,16 @@ function drawAlerts(el, config, rows, signal) {
   el.addEventListener('submit', async (e) => {
     e.preventDefault();
     read();
-    draw(); // blank addresses are gone, so error indexes match the rows
+    draw(); // clears the marks of a previous attempt
     const invalid = validateAlerts(cfg);
     if (Object.keys(invalid).length) return showErrors(invalid); // nothing is sent until every field is valid
     const status = el.querySelector('[data-save]');
     const btn = el.querySelector('[type="submit"]');
     btn.disabled = true;
     status.textContent = t('settings.saving');
-    const { smtp: _smtp, ...body } = cfg;
+    const { smtp: _smtp, unavailable: _u, ...body } = cfg;
     try {
       cfg = structuredClone(await putAlertsConfig(body, { signal }));
-      saved = cfg.recipients.length;
       draw();
       el.querySelector('[data-save]').textContent = t('settings.saved');
       el.querySelector('[type="submit"]').focus(); // the redraw replaced the button: keep the keyboard where it was
@@ -262,7 +367,7 @@ function drawHistory(el, rows, hasMore, loadMore) {
     const w = deliveryWords(r);
     const text = t(w.key) === w.key ? t(w.fallback) : t(w.key);
     return `<li class="settings-history-row"><div><p class="settings-history-title">${esc(r.title ?? r.rule)}</p>
-      <p class="hint">${esc(fmtDateTime(r.ts))}, ${esc(text)}${w.detail ? `: ${esc(w.detail)}` : ''}</p></div></li>`;
+      <p class="hint">${esc(fmtDateTime(r.ts))}, ${esc(text)}${w.detail ? `: ${esc(w.detail)}` : ''}${r.recipients?.length ? `, ${esc(t('settings.history.to', { list: r.recipients.join(', ') }))}` : ''}</p></div></li>`;
   };
   const draw = () => {
     el.innerHTML = `<h3 class="card-title">${esc(t('settings.history.title'))}</h3>

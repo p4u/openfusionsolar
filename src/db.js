@@ -67,10 +67,16 @@ const DAILY_COLS = ['pv_kwh', 'load_kwh', 'import_kwh', 'export_kwh', 'self_use_
   'import_p1', 'import_p2', 'import_p3', 'load_p1', 'load_p2', 'load_p3'];
 const SAMPLE_COLS = ['pv_kw', 'inverter_kw', 'yield_kwh', 'load_kw', 'self_use_kw', 'grid_kw', 'battery_kw', 'soc'];
 
+const logRow = (r) => ({ ...r, recipients: r.recipients ? JSON.parse(r.recipients) : null });
+
 export class Store {
   constructor(path) {
     this.db = new DatabaseSync(path);
     this.db.exec(SCHEMA);
+    // added columns (older databases get them here): who an alert email went to, in which language, and grp, shared by
+    // the rows (one per address) of one alert event
+    const logCols = new Set(this.db.prepare('pragma table_info(alert_log)').all().map((c) => c.name));
+    for (const c of ['recipients', 'lang', 'grp']) if (!logCols.has(c)) this.db.exec(`alter table alert_log add column ${c} text`);
     const q = (sql) => this.db.prepare(sql);
     this.st = {
       lastSha: q('select sha from raw where endpoint = ? and params = ? order by id desc limit 1'),
@@ -109,8 +115,8 @@ export class Store {
       alertState: q('select key, value from alert_state'),
       clearAlertState: q('delete from alert_state'),
       putAlertState: q('insert into alert_state (key, value) values (?, ?)'),
-      logAlert: q(`insert into alert_log (ts, rule, event, title, body, delivery, reason, error)
-                   values (?, ?, ?, ?, ?, ?, ?, ?)`),
+      logAlert: q(`insert into alert_log (ts, rule, event, title, body, delivery, reason, error, recipients, lang, grp)
+                   values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
       updateAlertLog: q('update alert_log set delivery = ?, error = ? where id = ?'),
       alertLog: q('select * from alert_log where id < ? order by id desc limit ?'),
       failedAlerts: q("select * from alert_log where delivery = 'failed' and ts >= ? order by id"),
@@ -263,7 +269,8 @@ export class Store {
   }
 
   logAlert(r) {
-    const res = this.st.logAlert.run(r.ts, r.rule, r.event, r.title ?? null, r.body ?? null, r.delivery, r.reason ?? null, r.error ?? null);
+    const res = this.st.logAlert.run(r.ts, r.rule, r.event, r.title ?? null, r.body ?? null, r.delivery, r.reason ?? null, r.error ?? null,
+      r.recipients ? JSON.stringify(r.recipients) : null, r.lang ?? null, r.grp ?? null);
     return Number(res.lastInsertRowid);
   }
 
@@ -272,10 +279,10 @@ export class Store {
   }
 
   alertLog({ limit = 50, before } = {}) {
-    return this.st.alertLog.all(before ?? Number.MAX_SAFE_INTEGER, limit);
+    return this.st.alertLog.all(before ?? Number.MAX_SAFE_INTEGER, limit).map(logRow);
   }
 
   failedAlerts(since) {
-    return this.st.failedAlerts.all(since);
+    return this.st.failedAlerts.all(since).map(logRow);
   }
 }

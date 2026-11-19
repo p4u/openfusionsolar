@@ -140,3 +140,55 @@ test('the page checks alert settings like the server does, before sending anythi
   setLang('ca');
   assert.match(fieldErrorsByInput(fields).find((e) => e.path === 'rules.noData.params.minutes').message, /5.*1440/);
 });
+
+test('pasting several addresses adds the valid new ones and reports the rest', async () => {
+  const { parseAddresses } = await import('../public/js/views/settings-model.js');
+  assert.deepEqual(parseAddresses('a@b.cat, nope; <c@d.cat>\n A@B.cat e@f.cat', ['x@y.cat']), {
+    add: ['a@b.cat', 'c@d.cat', 'e@f.cat'], invalid: ['nope'], already: ['A@B.cat'], full: [],
+  });
+  assert.deepEqual(parseAddresses('X@Y.cat', ['x@y.cat']).already, ['X@Y.cat']);
+  assert.deepEqual(parseAddresses('a@b.cat c@d.cat', Array.from({ length: 19 }, (_, i) => `p${i}@b.cat`)), {
+    add: ['a@b.cat'], invalid: [], already: [], full: ['c@d.cat'],
+  });
+  assert.deepEqual(parseAddresses('  ').add, []);
+});
+
+test('the page checks recipients like the server: valid, not repeated, at most 20', async () => {
+  const { validateAlerts } = await import('../public/js/views/settings-model.js');
+  const cfg = structuredClone(DEFAULT_CONFIG);
+  cfg.recipients = [
+    { email: 'a@b.cat', lang: 'ca', alerts: ['gridCut'] }, { email: 'A@b.cat', lang: 'en', alerts: [] },
+    { email: 'nope', lang: 'en', alerts: [] }, { email: 'c@b.cat', lang: 'fr', alerts: [] },
+  ];
+  assert.deepEqual(validateAlerts(cfg), validateConfig(cfg).fields);
+  assert.deepEqual(Object.keys(validateAlerts(cfg)).sort(), ['recipients.1', 'recipients.2', 'recipients.3.lang']);
+  cfg.recipients = Array.from({ length: 21 }, (_, i) => ({ email: `p${i}@b.cat`, lang: 'ca', alerts: [] }));
+  assert.deepEqual(validateAlerts(cfg), validateConfig(cfg).fields);
+  setLang('ca');
+  assert.equal(fieldErrorsByInput({ 'recipients.1': 'duplicate email address' })[0].message, 'Aquesta adreça ja és a la llista.');
+  assert.equal(fieldErrorsByInput({ recipients: 'up to 20 email addresses' })[0].message, 'Com a màxim 20 adreces electròniques.');
+});
+
+test('every alert of the catalogue has a name and a one-line description, every group and preset a label', async () => {
+  const { GROUPS, PRESETS } = await import('../public/js/alert-catalogue.js');
+  for (const lang of ['en', 'ca']) {
+    for (const id of RULES) {
+      assert.equal(typeof dict[lang][`settings.alert.${id}`], 'string', `${lang} ${id}`);
+      assert.doesNotMatch(dict[lang][`settings.alert.${id}.desc`], /\n/, `${lang} ${id}`);
+    }
+    for (const g of Object.keys(GROUPS)) assert.ok(dict[lang][`settings.group.${g}`] && dict[lang][`settings.group.${g}Hint`], `${lang} ${g}`);
+    for (const p of [...Object.keys(PRESETS), 'custom']) assert.ok(dict[lang][`settings.preset.${p}`], `${lang} ${p}`);
+  }
+  assert.equal(dict.ca['settings.preset.important'], 'Tot el que és important');
+  assert.equal(dict.ca['settings.preset.urgent'], 'Només urgències');
+  assert.equal(dict.ca['settings.preset.reports'], 'Només informes');
+  assert.equal(dict.ca['settings.preset.custom'], 'Personalitzat');
+});
+
+test('setField writes into a recipient object', () => {
+  const cfg = structuredClone(DEFAULT_CONFIG);
+  cfg.recipients = [{ email: 'a@b.cc', lang: 'ca', alerts: [] }];
+  setField(cfg, 'recipients.0', 'z@b.cc');
+  setField(cfg, 'recipients.0.lang', 'en');
+  assert.deepEqual(cfg.recipients[0], { email: 'z@b.cc', lang: 'en', alerts: [] });
+});

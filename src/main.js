@@ -75,6 +75,7 @@ engine = createAlertEngine({
   appConfig: {
     plantName: config.plantName, prices: config.prices, battery: config.battery,
     alertTo: env.ALERT_TO, appUrl: env.APP_URL, smtp: smtpInfo(env),
+    power: { p1: optNum(env.POWER_P1_KW), p2: optNum(env.POWER_P2_KW) },
   },
 });
 engine.start();

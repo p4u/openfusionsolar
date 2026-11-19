@@ -9,14 +9,22 @@ export async function createTransport(env) {
   const transporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: Number(env.SMTP_PORT) || undefined,
-    secure: env.SMTP_SECURE === '1',
-    auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
+    ...smtpSecurity(env),
     connectionTimeout: TIMEOUT_MS,
     greetingTimeout: TIMEOUT_MS,
     socketTimeout: TIMEOUT_MS,
   });
   const from = env.SMTP_FROM || env.SMTP_USER;
   return { send: ({ to, subject, text, html }) => transporter.sendMail({ from, to, subject, text, html }) };
+}
+
+// TLS and login from the environment: SMTP_PASS or SMTP_PASSWORD; without SMTP_SECURE, TLS from the start on port 465.
+export function smtpSecurity(env) {
+  const pass = env.SMTP_PASS || env.SMTP_PASSWORD;
+  return {
+    secure: env.SMTP_SECURE == null || env.SMTP_SECURE === '' ? Number(env.SMTP_PORT) === 465 : ['1', 'true'].includes(env.SMTP_SECURE),
+    auth: env.SMTP_USER ? { user: env.SMTP_USER, pass } : undefined,
+  };
 }
 
 // What the settings page may show about the transport (no user, no password).
