@@ -99,6 +99,19 @@ the on/off switch of each rule are shared by everyone.
 - Upgrading keeps a saved configuration: older plain address lists become addresses with the "Everything important"
   alerts, and the retired FusionSolar low-battery alert is dropped.
 
+## Install on a phone
+
+Behind the HTTPS proxy the app installs like a native one: in Chrome on Android use "Install app" (or "Add to
+Home screen"), in Safari on iOS use Share, then "Add to Home Screen". The icon is labelled "Solar": the manifest is a
+static file, so it cannot carry the plant name. Service workers need a secure context, so this only works over HTTPS
+(or on `localhost`).
+
+Offline, the app opens from its cache and the Now view shows the last status it received, marked "Offline, data from
+HH:MM"; the other views need the server. Nothing else from `/api` is kept on the device, and logging out deletes that
+copy. When a new version is deployed, a "New version available" message offers to reload. If you change the list of
+files in `public/js` or `public/css`, update the lists in `public/sw.js` and bump its `VERSION` (`test/pwa.test.js`
+checks the lists).
+
 ## Data
 
 Everything lives in `./data` (mounted into the container): `openfusionsolar.db` (readings, incidents, alert

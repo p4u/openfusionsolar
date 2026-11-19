@@ -88,4 +88,6 @@ if (typeof document !== 'undefined') {
   });
 
   paint();
+  // the same worker as the app (sw.js), so the app can be installed from this page too
+  if (window.isSecureContext && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
 }

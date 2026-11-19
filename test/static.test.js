@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveStatic, buildSprite, ICONS, FONTS } from '../src/static.js';
+import { resolveStatic, buildSprite, ICONS, FONTS, MIME } from '../src/static.js';
 
 const PUBLIC = fileURLToPath(new URL('../public', import.meta.url));
 const LUCIDE = fileURLToPath(new URL('../node_modules/lucide-static/icons', import.meta.url));
@@ -13,6 +13,16 @@ test('traversal and hidden paths resolve to null', () => {
     '/../package.json', '/%2e%2e/package.json', '/js/..%2f..%2fsrc%2fmain.js', '/%00.js', '/.env', '/js/.x.js',
     '/x.exe', '/%E0%A4%A', '/', '/js', '/..%5c..%5cpackage.json', '/nope.js',
   ]) {
+    assert.equal(resolveStatic(PUBLIC, p), null, p);
+  }
+});
+
+test('manifest and png icons resolve with their types; traversal through them does not', () => {
+  assert.equal(resolveStatic(PUBLIC, '/manifest.webmanifest'), path.join(PUBLIC, 'manifest.webmanifest'));
+  assert.equal(resolveStatic(PUBLIC, '/icons/icon-192.png'), path.join(PUBLIC, 'icons', 'icon-192.png'));
+  assert.equal(MIME['.webmanifest'], 'application/manifest+json');
+  assert.equal(MIME['.png'], 'image/png');
+  for (const p of ['/icons/../../package.json', '/icons/%2e%2e/%2e%2e/package.json', '/icons/nope.png', '/x.webmanifest', '/icons/.x.png', '/icons/icon-192.png%00.js']) {
     assert.equal(resolveStatic(PUBLIC, p), null, p);
   }
 });

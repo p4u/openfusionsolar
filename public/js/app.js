@@ -4,7 +4,7 @@ import { LANGS, register, t, translate, getLang, setLang } from './i18n.js';
 import core from './i18n/core.js';
 import { getStatus, logout } from './api.js';
 import { setTimeZone } from './format.js';
-import { errorState, getTheme, setTheme, skeleton } from './ui.js';
+import { esc, errorState, getTheme, setTheme, skeleton } from './ui.js';
 import { resetLegends } from './charts.js';
 
 register(core);
@@ -179,6 +179,7 @@ function wireShell() {
       el.disabled = true;
       try {
         await logout();
+        await globalThis.caches?.delete('ofs-data'); // the last status copy (sw.js) leaves with the session
       } finally {
         location.assign('/login');
       }
@@ -225,7 +226,40 @@ async function boot() {
   setInterval(() => refreshStatus().catch((err) => console.error(err)), STATUS_MS);
 }
 
+// Installable app: the worker keeps the shell and the last status offline (sw.js). A new version waits until the
+// user accepts it in a toast, so a reload never happens in the middle of reading a page.
+function registerWorker() {
+  if (!window.isSecureContext || !('serviceWorker' in navigator)) return;
+  let accepted = false;
+  const offer = (worker) => {
+    if (!worker || !navigator.serviceWorker.controller || $('.toast')) return; // first install: nothing to update
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.setAttribute('role', 'status');
+    toast.innerHTML = `<span>${esc(t('core.update.available'))}</span>
+      <button type="button" class="pill pill-primary">${esc(t('core.update.action'))}</button>`;
+    toast.querySelector('button').addEventListener('click', () => {
+      accepted = true;
+      worker.postMessage('skipWaiting');
+    }, { once: true });
+    document.body.append(toast);
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (accepted) location.reload();
+  });
+  navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((reg) => {
+    offer(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const worker = reg.installing;
+      worker?.addEventListener('statechange', () => worker.state === 'installed' && offer(worker));
+    });
+    // an installed app can stay open for days: look for a new version when it comes back to the foreground
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && reg.update().catch(() => {}));
+  }).catch((err) => console.error(err));
+}
+
 translate();
 updateActions();
 wireShell();
 boot();
+registerWorker();

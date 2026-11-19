@@ -23,6 +23,8 @@ export default {
     'core.lang.label': 'Language',
     'core.lang.switchTo': 'Switch to {name}',
     'core.logout': 'Log out',
+    'core.update.available': 'New version available',
+    'core.update.action': 'Update',
 
     'core.login.title': 'Log in',
     'core.login.heading': 'See how your solar installation is doing',
@@ -133,6 +135,8 @@ export default {
     'core.lang.label': 'Idioma',
     'core.lang.switchTo': 'Canvia a {name}',
     'core.logout': 'Surt',
+    'core.update.available': 'Nova versió disponible',
+    'core.update.action': 'Actualitza',
 
     'core.login.title': 'Entra',
     'core.login.heading': 'Mira com va la teva instal·lació solar',

@@ -11,8 +11,10 @@ export const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
+  '.webmanifest': 'application/manifest+json',
+  '.png': 'image/png',
 };
-const SERVED = new Set(['.html', '.js', '.css', '.svg']);
+const SERVED = new Set(['.html', '.js', '.css', '.svg', '.webmanifest', '.png']);
 
 export function resolveStatic(root, urlPath) {
   let p;

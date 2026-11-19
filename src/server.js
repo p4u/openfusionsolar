@@ -21,13 +21,15 @@ import { isEmail } from './alerts.js';
 
 const PUBLIC = fileURLToPath(new URL('../public', import.meta.url));
 const APEXCHARTS = fileURLToPath(new URL('../node_modules/apexcharts/dist/apexcharts.min.js', import.meta.url));
-// Served without a session (the login page and what it loads). Missing ones just 404.
-const PUBLIC_PATHS = new Set([
+// Served without a session (the login page, what it loads, and the PWA files: manifest, icons, worker, offline page).
+// Missing ones just 404.
+export const PUBLIC_PATHS = new Set([
   '/js/login.js', '/js/i18n.js', '/js/i18n/core.js', '/js/theme.js', '/css/tokens.css', '/css/base.css', '/css/login.css',
-  '/favicon.svg',
+  '/favicon.svg', '/manifest.webmanifest', '/sw.js', '/offline.html', '/icons/icon.svg',
+  '/icons/icon-180.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png',
 ]);
 const SECURITY_HEADERS = {
-  'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:",
+  'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; manifest-src 'self'",
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
   'referrer-policy': 'same-origin',
@@ -312,6 +314,8 @@ export function startServer({
           return res.end(sprite);
         }
         if (pathname.startsWith('/fonts/')) return sendFile(FONTS[pathname], 'max-age=86400');
+        // the browser checks the worker for updates on every visit: revalidate, never store it stale
+        if (pathname === '/sw.js') res.setHeader('service-worker-allowed', '/');
         if (PUBLIC_PATHS.has(pathname)) return sendFile(resolveStatic(PUBLIC, pathname));
       }
 

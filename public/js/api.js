@@ -20,6 +20,8 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
   if (res.status === 204) return null;
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data?.error ?? `HTTP ${res.status}`, data);
+  // the service worker answered from its copy: the server cannot be reached (sw.js)
+  if (res.headers.get('x-ofs-offline') && data && typeof data === 'object') data.offline = true;
   return data;
 }
 
