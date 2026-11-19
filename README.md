@@ -35,7 +35,9 @@ Open <http://127.0.0.1:8080> and log in with `APP_PASSWORD`. The first start dow
 
 The container listens on `127.0.0.1:8080` only. To reach it from other devices, put a TLS reverse proxy in front
 (Caddy, nginx, Traefik) and set `TRUST_PROXY=1` and `APP_URL` (see below). Do not publish port 8080 directly on the
-internet: the login is a single shared password.
+internet: the login is a single shared password. The proxy must pass the original host (`Host` or
+`X-Forwarded-Host`) and `X-Forwarded-Proto`; otherwise the login answers 403. All clients behind the proxy or the
+Docker bridge share one address unless `TRUST_PROXY=1`, so five wrong passwords lock everyone out for 15 minutes.
 
 Docker checks `/healthz` every minute (see `Dockerfile`); it turns unhealthy when the collector has not run for
 20 minutes. `docker compose ps` shows the state.
