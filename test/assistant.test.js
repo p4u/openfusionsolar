@@ -34,6 +34,13 @@ function seed(store, { notes = null, concept = null } = {}) {
   return id;
 }
 
+// A recorded tool-call answer, calling `name` with `args` instead.
+function toolStep(name, args) {
+  const step = structuredClone(fixture('chat-get-invoice'));
+  step.response.choices[0].message.tool_calls[0].function = { name, arguments: JSON.stringify(args) };
+  return step;
+}
+
 const tableCounts = (store) => Object.fromEntries(store.db.prepare("select name from sqlite_master where type = 'table'").all()
   .map(({ name }) => [name, store.db.prepare(`select count(*) as n from "${name}"`).get().n]));
 
@@ -420,4 +427,14 @@ test('everything is 401 without a session', async (t) => {
     });
     assert.equal(r.status, 401, p);
   }
+});
+
+test('compare_invoice on a draft without a period answers nodata and the turn ends', async (t) => {
+  const { store, chat, fake } = await setup(t, { steps: [toolStep('compare_invoice', { id: 1 }), fixture('chat-final-ca')] });
+  assert.equal(store.insertInvoice({ status: 'draft' }), 1);
+  const r = await chat({ text: 'Compara la factura' });
+  assert.equal(r.events.at(-1).type, 'done');
+  const result = JSON.parse(fake.calls[1].messages.at(-1).content);
+  assert.equal(result.verdict, 'nodata');
+  assert.equal(result.id, 1);
 });

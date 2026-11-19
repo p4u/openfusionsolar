@@ -83,6 +83,16 @@ test('the gap splits into price change and kwh difference, and the donation is o
   assert.ok(Math.abs(same.estimateBill - 57.56) < 1, `${same.estimateBill}`); // the bill without the donation
 });
 
+test('a bill without a period or with 0 days cannot compare and does not throw', () => {
+  const store = setup();
+  for (const inv of [{ ...bill, period_from: null, period_to: null, days: null }, { ...bill, days: 0 }, { ...bill, period_from: '2026-10-31', period_to: '2026-10-01' }]) {
+    const c = compareInvoice(store, inv, { prices: ENV });
+    assert.equal(c.verdict, 'nodata');
+    assert.equal(c.coverage, 0);
+    assert.equal(c.savings, null);
+  }
+});
+
 test('without configured prices the comparison still returns kwh and the bill-price estimate', () => {
   const c = compareInvoice(setup(), bill, { prices: null });
   assert.equal(c.estimateEnv, null);

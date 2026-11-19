@@ -1,4 +1,3 @@
-process.env.TZ = 'Europe/Madrid';
 // Bill uploads (bytes on disk named by sha, rows in bill_files), the extraction queue and the review routes.
 // The model sees the files only through llm.complete (no tools, strict schema); what it answers goes through
 // normalise (unknown keys such as holder data are dropped) before anything is stored.
@@ -123,7 +122,7 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
       for (const inv of store.listInvoices()) store.deleteInvoice(inv.id);
     });
     // also any bytes left by a crash between rename and insert
-    for (const name of fs.readdirSync(dir)) fs.rmSync(path.join(dir, name), { force: true });
+    for (const name of fs.readdirSync(dir)) fs.rmSync(path.join(dir, name), { force: true, recursive: true });
   }
 
   // ---- extraction queue ----------------------------------------------------------------------------
@@ -236,11 +235,11 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
     while (running.size) await Promise.allSettled([...running.values()]);
   }
 
-  async function waitFor(groupId, ms = 120e3) {
+  async function waitFor(groupId, ms = 120e3, signal) {
     const end = Date.now() + ms;
     for (;;) {
       const ex = store.latestExtraction(groupId);
-      if (!ex || FINISHED.has(ex.status) || Date.now() >= end) return ex ?? null;
+      if (!ex || FINISHED.has(ex.status) || Date.now() >= end || signal?.aborted) return ex ?? null;
       await sleep(100);
     }
   }
@@ -251,7 +250,7 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
     const retryAfter = limiter.retryAfter('extract');
     if (!llm.enabled) refusal = [409, { error: 'ai_disabled' }];
     else if (retryAfter > 0) refusal = [429, { error: 'rate_limited', retryAfter }, { 'retry-after': String(retryAfter) }];
-    else if (llm.monthSpend() >= llm.budgetUsd) refusal = [429, { error: 'budget' }];
+    else if (!(llm.monthSpend() < llm.budgetUsd)) refusal = [429, { error: 'budget' }];
     const id = store.addExtraction({ group_id: groupId, status: refusal ? 'failed' : 'queued', created_at: now() });
     if (refusal) {
       store.updateExtraction(id, { error: refusal[1].error, finished_at: now() });
@@ -277,8 +276,9 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
     const ex = inv.group_id ? store.latestExtraction(inv.group_id) : null;
     const edits = inv.edits ? JSON.parse(inv.edits) : {};
     const unreadable = ex?.result_json ? JSON.parse(ex.result_json).unreadable ?? [] : [];
+    const { cups, contract_number: _contract, ...shown } = inv;
     return {
-      invoice: { ...inv, edits, cups_masked: maskCups(inv.cups), badge: badge(inv) },
+      invoice: { ...shown, edits, cups_masked: maskCups(cups), badge: badge(inv) },
       lines,
       readings,
       checks: list,
@@ -452,6 +452,7 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
       }
       const row = { ...inv, ...patch };
       const confirm = body.confirm === true || inv.status === 'confirmed';
+      if (body.confirm === true && inv.status === 'draft' && inv.duplicate_of) return [409, { error: 'duplicate_unresolved' }];
       if (confirm) {
         const list = checks(row, { readings: store.invoiceReadings(inv.id), today: today(), previous: previousOf(row, inv.id) });
         const refused = confirmError(row, list, body.force === true);

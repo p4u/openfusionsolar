@@ -1,4 +1,3 @@
-process.env.TZ = 'Europe/Madrid';
 // The assistant's tools: read-only views over the store, each validating its arguments like the HTTP routes and
 // returning compact JSON with the numbers already computed (the model narrates, it does not calculate).
 // Nothing here writes: no store method that saves or deletes, no files, no network.

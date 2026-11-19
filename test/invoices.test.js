@@ -114,7 +114,9 @@ test('the sample pdf is stored, extracted and auto-confirmed', async (t) => {
   const d = await s.get(`/api/invoices/get?id=${inv.id}`);
   assert.equal(d.invoice.contracted_p1_kw, 4.4);
   assert.equal(d.invoice.status, 'confirmed');
-  assert.equal(d.invoice.cups, 'ES0031000000000001BJ0F');
+  assert.equal(d.invoice.cups, undefined, 'the full CUPS stays on the server');
+  assert.equal(d.invoice.contract_number, undefined);
+  assert.equal(s.store.invoice(inv.id).cups, 'ES0031000000000001BJ0F');
   assert.equal(d.invoice.cups_masked, 'ES00...BJ0F');
   assert.equal(d.checks.filter((c) => c.hard && c.outcome !== 'pass').length, 0);
   assert.equal(d.lines.length, 12);
@@ -216,6 +218,25 @@ test('the same invoice number becomes a draft marked duplicate', async (t) => {
   assert.equal(newer.badge, 'duplicate');
   const up = (await s.get('/api/invoices/uploads')).find((u) => u.groupId === group);
   assert.equal(up.duplicateOf, older.id);
+
+  // gate F3: confirming from the form is refused until the duplicate is resolved; saving edits stays allowed
+  const confirm = await s.post('/api/invoices/save', { id: newer.id, fields: {}, confirm: true });
+  assert.equal(confirm.status, 409);
+  assert.deepEqual(await confirm.json(), { error: 'duplicate_unresolved' });
+  assert.equal(s.store.invoice(newer.id).status, 'draft');
+  assert.equal((await s.post('/api/invoices/save', { id: newer.id, fields: { notes: 'same bill' } })).status, 200);
+  assert.equal(s.store.invoice(newer.id).status, 'draft');
+});
+
+test('waitFor returns at once when its signal is aborted', async (t) => {
+  const s = await setup(t, { start: false });
+  const group = randomUUID();
+  await s.upload(pdf(), { group });
+  await s.post('/api/invoices/process', { group });
+  const t0 = Date.now();
+  const ex = await s.invoices.waitFor(group, 60e3, AbortSignal.abort());
+  assert.equal(ex.status, 'queued');
+  assert.ok(Date.now() - t0 < 1000);
 });
 
 test('resolve keep marks the older superseded; replace deletes it; discard deletes the draft', async (t) => {
@@ -430,6 +451,7 @@ test('delete removes rows and bytes; delete-all empties the folder', async (t) =
   await s.upload(jpeg(), { type: 'image/jpeg' });
   await s.post('/api/invoices/create', {});
   fs.writeFileSync(path.join(s.dir, 'stray.pdf.tmp-1'), 'x');
+  fs.mkdirSync(path.join(s.dir, 'lost+found', 'inner'), { recursive: true }); // gate F9
   assert.equal((await s.post('/api/invoices/delete-all')).status, 204);
   assert.deepEqual(fs.readdirSync(s.dir), []);
   assert.deepEqual(s.store.allBillGroups(), []);

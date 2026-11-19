@@ -1,4 +1,3 @@
-process.env.TZ = 'Europe/Madrid';
 // The assistant: a tool-calling loop on the server, streamed to the browser as NDJSON steps (not tokens).
 // Every model call goes through llm.complete (budget checked first, usage recorded after). The model can only read
 // through the tools of assistant-tools.js; bill contents reach it as JSON values marked as data.
@@ -88,7 +87,7 @@ export function createAssistant({ store, llm, invoices = null, config = {}, mode
     const extra = [];
     for (const group of groups) {
       emit({ type: 'status', tool: 'reading_bill' });
-      const ex = invoices ? await invoices.waitFor(group, WAIT_BILL_MS) : null;
+      const ex = invoices ? await invoices.waitFor(group, WAIT_BILL_MS, signal) : null;
       if (signal.aborted) break;
       const inv = ex?.status === 'done' && ex.invoice_id ? store.invoice(ex.invoice_id) : null;
       if (inv) {
@@ -179,7 +178,7 @@ export function createAssistant({ store, llm, invoices = null, config = {}, mode
         if (inFlight) return [429, { error: 'rate_limited', retryAfter: 2 }, { 'retry-after': '2' }];
         const retryAfter = Math.max(short.retryAfter('chat'), daily.retryAfter('chat'));
         if (retryAfter > 0) return [429, { error: 'rate_limited', retryAfter }, { 'retry-after': String(retryAfter) }];
-        if (llm.monthSpend() >= llm.budgetUsd) return [429, { error: 'budget' }];
+        if (!(llm.monthSpend() < llm.budgetUsd)) return [429, { error: 'budget' }];
         short.fail('chat');
         daily.fail('chat');
         inFlight = true;

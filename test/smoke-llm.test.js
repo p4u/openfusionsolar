@@ -13,7 +13,7 @@ import { validCups, normalise, toRow } from '../src/invoice-schema.js';
 import { createAssistant } from '../src/assistant.js';
 import { startTestServer } from './helpers.js';
 
-const REPO = '/volumes/repos/fusionsolar/openfusionsolar';
+const REPO = path.resolve(import.meta.dirname, '..');
 const skip = process.env.AI_SMOKE !== '1';
 
 test('the sample bill is extracted live and auto-confirmed', { skip, timeout: 240e3 }, async (t) => {
@@ -56,7 +56,9 @@ test('the sample bill is extracted live and auto-confirmed', { skip, timeout: 24
   assert.equal(inv.adjust_eur, 4.62);
   assert.deepEqual([inv.surplus_p1_kwh, inv.surplus_p2_kwh, inv.surplus_p3_kwh, inv.surplus_price, inv.surplus_eur], [0, 11.47, 12.53, 0.03, 0.72]);
   assert.equal(inv.total_eur, 59.15);
-  assert.ok(validCups(inv.cups), 'the CUPS has valid control letters');
+  assert.equal(inv.cups, undefined, 'the detail answer carries no CUPS');
+  assert.equal(inv.contract_number, undefined);
+  assert.ok(validCups(store.invoice(ex.invoice_id).cups), 'the CUPS has valid control letters');
 });
 
 // Chat turns: NDJSON events of one question. AI_SMOKE_OUT (a scratch file) receives the answers for a human read;

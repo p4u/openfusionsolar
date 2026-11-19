@@ -89,7 +89,9 @@ engine.start();
 // Bill files live next to the DB; the key stays inside the llm closure.
 const billsDir = path.join(path.dirname(DB_PATH), 'bills');
 fs.mkdirSync(billsDir, { recursive: true });
-const llm = createLlm({ apiKey: env.AI_API_KEY, store, budgetUsd: Number(env.AI_MONTHLY_BUDGET_USD || 5), log });
+const budgetUsd = Number(env.AI_MONTHLY_BUDGET_USD || 5);
+if (!Number.isFinite(budgetUsd) || budgetUsd < 0) throw new Error('AI_MONTHLY_BUDGET_USD must be a number of dollars, for example 5');
+const llm = createLlm({ apiKey: env.AI_API_KEY, store, budgetUsd, log });
 const invoices = createInvoices({ store, llm, dir: billsDir, log, model: env.AI_MODEL_EXTRACT || DEFAULT_MODEL });
 invoices.start();
 const assistant = createAssistant({ store, llm, invoices, config, model: env.AI_MODEL_CHAT || DEFAULT_MODEL, log });

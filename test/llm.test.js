@@ -6,6 +6,8 @@ import path from 'node:path';
 import { createLlm, LlmError, DEFAULT_MODEL, PRICES } from '../src/llm.js';
 import { fakeFetch, fixture } from './fixtures/llm/fake.js';
 
+const REPO = path.resolve(import.meta.dirname, '..');
+
 const KEY = 'sk-test-SECRET';
 const NOW = Date.parse('2026-11-19T12:00:00+01:00');
 const ok = fixture('chat-final');
@@ -74,6 +76,12 @@ test('the budget guard refuses before calling once the month reaches the budget'
   assert.equal(e.code, 'budget');
   assert.equal(t.calls.length, 1);
   assert.equal(t.llm.budgetUsd, 5);
+});
+
+test('a budget that is not a number refuses every call', async () => {
+  const t = setup([ok], { budgetUsd: NaN });
+  assert.equal((await code(call(t.llm))).code, 'budget');
+  assert.equal(t.calls.length, 0);
 });
 
 test('without a key the client is disabled and calls nothing', async () => {
@@ -172,7 +180,7 @@ test('fixtures hold no personal data', () => {
     }
   })(root);
   assert.ok(files.some((f) => f.endsWith('extract-pdf-ok.json')));
-  const mainRepoPatterns = '/volumes/repos/fusionsolar/openfusionsolar/.delivery/2026-11-19-billing-assistant/pii-patterns.txt';
+  const mainRepoPatterns = path.join(REPO, '.delivery/2026-11-19-billing-assistant/pii-patterns.txt');
   const extra = fs.existsSync(mainRepoPatterns)
     ? fs.readFileSync(mainRepoPatterns, 'utf8').split('\n').filter(Boolean).map((l) => new RegExp(l)) : [];
   for (const f of files) {

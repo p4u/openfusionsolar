@@ -1,4 +1,3 @@
-process.env.TZ = 'Europe/Madrid';
 // OpenRouter client. Every model call goes through complete(): budget check first, usage recorded after.
 // The key lives only in the createLlm closure and is never logged or put in an error.
 import { dayBounds } from './collector.js';
@@ -53,7 +52,7 @@ export function createLlm({
       throw new LlmError(code, message, status);
     };
     if (!enabled) fail('disabled', 'ai is not configured');
-    if (monthSpend() >= budgetUsd) fail('budget', 'monthly ai budget reached');
+    if (!(monthSpend() < budgetUsd)) fail('budget', 'monthly ai budget reached');
 
     const body = { model, messages, temperature, max_tokens: maxTokens, provider: { data_collection: 'deny' } };
     if (schema) body.response_format = { type: 'json_schema', json_schema: { name: 'bill', strict: true, schema } };

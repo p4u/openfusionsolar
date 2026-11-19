@@ -3,7 +3,7 @@
 import { periodMoney } from './tariff.js';
 import { localDay } from './collector.js';
 import * as aggregate from './aggregate.js';
-import { missingMonths } from './invoice-schema.js';
+import { missingMonths, isDate } from './invoice-schema.js';
 import { addDays, addMonths, spanDays, billMonth } from '../public/js/buckets.js';
 
 const P = ['p1', 'p2', 'p3'];
@@ -48,10 +48,11 @@ const kwhVerdict = (billed, measured) => {
 };
 
 export function compareInvoice(store, inv, { prices = null } = {}) {
-  const days = billDays(inv);
-  const rows = store.days(inv.period_from, inv.period_to);
+  const dated = isDate(inv.period_from) && isDate(inv.period_to) && inv.period_from <= inv.period_to;
+  const days = dated ? billDays(inv) : null;
+  const rows = dated ? store.days(inv.period_from, inv.period_to) : [];
   const daysWithData = rows.filter((r) => r.import_kwh != null).length;
-  const coverage = daysWithData / days;
+  const coverage = days > 0 ? daysWithData / days : 0;
   const real = inv.total_eur ?? null;
   const billedP = P.map((p) => inv[`kwh_${p}`]);
   const billed = { p1: billedP[0], p2: billedP[1], p3: billedP[2], total: billedP.some((v) => v != null) ? sum(billedP.map(num)) : null };
