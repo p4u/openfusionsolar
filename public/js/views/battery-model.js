@@ -1,4 +1,5 @@
 // Pure helpers of the Battery view (also used by Panels for the range clamp and bucket choice).
+import { STALE_MS } from './now-model.js';
 import { addDays, legalSeriesBuckets, legalEnergyBuckets, autoSeriesBucket, autoEnergyBucket } from '../buckets.js';
 
 export const BUCKET_MS = { '5m': 300e3, '15m': 900e3, '1h': 3600e3, '1d': 86400e3 };
@@ -19,12 +20,13 @@ export const energyBucket = (range) => (legalEnergyBuckets(range.days).includes(
 // Where the present flow takes the battery, and how long it would take at this rate. Giving power: down to the
 // minimum charge. Charging from the grid (buying while the sun covers less than the charge): up to the grid-charge
 // cutoff, where the grid stops. Charging from the sun: up to the end-of-charge level (100 % when unknown).
-// { kind: 'min' | 'grid' | 'sun', target, hours } or null (idle, unknown, already there, or over 48 hours).
+// { kind: 'min' | 'grid' | 'sun', target, hours } or null (idle, unknown, already there, over 48 hours, or the
+// latest reading is older than STALE_MS: a forecast from old data would be wrong). ageMs: age of that reading.
 const ACTIVE_KW = 0.05;
-export function chargeEta(rt, b = {}) {
+export function chargeEta(rt, b = {}, ageMs = 0) {
   const soc = rt?.soc;
   const bat = rt?.battery_kw;
-  if (soc == null || bat == null || !(b.capacityKwh > 0) || Math.abs(bat) <= ACTIVE_KW) return null;
+  if (ageMs > STALE_MS || soc == null || bat == null || !(b.capacityKwh > 0) || Math.abs(bat) <= ACTIVE_KW) return null;
   const fromGrid = bat > 0 && (rt.grid_kw ?? 0) > ACTIVE_KW && (rt.pv_kw ?? 0) < bat;
   const kind = bat < 0 ? 'min' : fromGrid && b.gridChargeCutoffPct != null ? 'grid' : 'sun';
   const target = kind === 'min' ? b.minPct ?? 0 : kind === 'grid' ? b.gridChargeCutoffPct : b.endOfChargePct ?? 100;

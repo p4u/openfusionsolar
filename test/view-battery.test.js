@@ -77,6 +77,10 @@ test('the time estimate aims at the grid cutoff when the grid charges, at the en
   assert.equal(chargeEta({ soc: 43, battery_kw: 0.01 }, b), null);
   assert.equal(chargeEta({ soc: 43, battery_kw: 1 }, { gridChargeCutoffPct: 50 }), null);
   assert.equal(chargeEta({ soc: 11, battery_kw: -0.06, grid_kw: 0, pv_kw: 0 }, { capacityKwh: 1000, minPct: 10 }), null);
+  // a reading older than 20 minutes gives no forecast, a fresh one still does
+  const old = { soc: 43, battery_kw: 1, grid_kw: 1.4, pv_kw: 0 };
+  assert.equal(chargeEta(old, b, 21 * 60e3), null);
+  assert.equal(chargeEta(old, b, 5 * 60e3).kind, 'grid');
   // grid charging with an unknown cutoff falls back to the end of charge
   assert.equal(chargeEta({ soc: 43, battery_kw: 1, grid_kw: 1.4, pv_kw: 0 }, { capacityKwh: 10 }).kind, 'sun');
 });

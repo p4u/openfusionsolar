@@ -3,12 +3,13 @@ import { register, t } from '../i18n.js';
 import dict from '../i18n/battery.js';
 import { esc, icon, ledger, loadBlock, emptyState } from '../ui.js';
 import { getSeries, getEnergy, getSignals, getSignalHistory } from '../api.js';
-import { kw, kwh, pct, nf, duration, fmtDate, fmtDateTime, fmtMonthShort, isoLocal, dayStart } from '../format.js';
+import { kw, kwh, pct, nf, duration, fmtTime, fmtDate, fmtDateTime, fmtMonthShort, isoLocal, dayStart } from '../format.js';
 import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { defaultMode } from '../buckets.js';
 import { figure, chart } from '../charts.js';
 import { gapBands, bucketAxis } from '../chart-data.js';
+import { STALE_MS } from './now-model.js';
 import { BUCKET_MS, chargeEta, clampFrom, seriesBucket, energyBucket, cycles, roundTrip, daysAtMin, hoursBelow, reserveMarks } from './battery-model.js';
 
 register(dict);
@@ -47,9 +48,11 @@ function nowCard(status) {
   const close = marks.length === 2 && marks[1][0] - marks[0][0] < 30;
   const names = marks.map(([v, text], i) => `<span class="battery-mark-name${v < 15 ? ' at-start' : v > 85 ? ' at-end' : ''}${i === 1 ? ' second' : ''}" style="left:${at(v)}%">${esc(text)}</span>`).join('');
   // how long the current flow would take to reach its next limit (never "full" when the grid stops before)
-  const e = chargeEta(rt, b);
+  const stale = status.lastSampleTs && Date.now() - status.lastSampleTs > STALE_MS;
+  const e = chargeEta(rt, b, stale ? Date.now() - status.lastSampleTs : 0);
   const eta = !e ? '' : t(e.kind === 'min' ? 'battery.now.toMin' : e.kind === 'grid' ? 'battery.now.toCutoff' : e.target >= 100 ? 'battery.now.toFull' : 'battery.now.toEnd',
-    { d: duration(e.hours * 3600e3), pct: e.target });
+    { d: duration(e.hours * 3600e3), pct: e.target, kw: kw(bat) });
+  const sentence = e?.kind === 'grid' ? eta : `${soc == null ? t('battery.now.unknown') : state}${eta ? ` ${eta}` : ''}`; // one sentence when the grid charges
   return `<div class="battery-now">
     <div class="battery-now-main">
       <span class="tile-label">${icon('battery-medium', { size: 16 })}<span>${esc(t('battery.now.charge'))}</span></span>
@@ -58,7 +61,8 @@ function nowCard(status) {
       ${names ? `<div class="battery-mark-names${close ? ' two-rows' : ''}" aria-hidden="true">${names}</div>` : ''}
     </div>
     <div class="battery-now-text">
-      <p>${esc(soc == null ? t('battery.now.unknown') : state)}${eta ? ` ${esc(eta)}` : ''}</p>
+      ${stale ? `<p class="hint">${esc(t('battery.now.dataFrom', { time: fmtTime(status.lastSampleTs) }))}</p>` : ''}
+      <p>${esc(sentence)}</p>
       ${usable == null ? '' : `<p class="hint">${esc(t('battery.now.usable', { kwh: kwh(usable) }))}</p>`}
       ${below ? `<p class="hint">${esc(below)}</p>` : ''}
     </div>
