@@ -3,7 +3,7 @@
 import { periodMoney } from './tariff.js';
 import { localDay } from './collector.js';
 import * as aggregate from './aggregate.js';
-import { missingMonths, isDate } from './invoice-schema.js';
+import { missingMonths, measuredMonths, isDate } from './invoice-schema.js';
 import { addDays, addMonths, spanDays, billMonth } from '../public/js/buckets.js';
 
 const P = ['p1', 'p2', 'p3'];
@@ -224,7 +224,9 @@ export function billingSummary(store, { from, to, prices = null, today = localDa
   const fixedEur = sum(invoices.map(fixedTaxed));
   const breakdown = Object.fromEntries(Object.entries(segments).map(([k, v]) => [k, { eur: cents(v), pct: all ? Math.round((v / all) * 1000) / 10 : 0 }]));
   const monthKeys = [from.slice(0, 7), to.slice(0, 7)];
-  const missing = missingMonths(store.listInvoices({ status: 'confirmed' }).filter(live), today, store.measuredDays()).filter((m) => m >= monthKeys[0] && m <= monthKeys[1]);
+  const inRange = (m) => m >= monthKeys[0] && m <= monthKeys[1];
+  const measured = store.measuredDays();
+  const missing = missingMonths(store.listInvoices({ status: 'confirmed' }).filter(live), today, measured).filter(inRange);
   const review = store.listInvoices({ status: 'draft', from, to }).filter(live)
     .map((i) => ({ id: i.id, month: i.period_from && i.period_to ? billMonth(i.period_from, i.period_to) : null }));
   return {
@@ -232,6 +234,7 @@ export function billingSummary(store, { from, to, prices = null, today = localDa
     tiles: {
       total: cents(total), average: bills.length ? cents(total / bills.length) : null, pricePerKwh: kwh > 0 ? Math.round((total / kwh) * 1000) / 1000 : null,
       surplusDiscount: cents(part('surplus')), bills: bills.length, months: monthIndex(monthKeys[1]) - monthIndex(monthKeys[0]) + 1,
+      measuredMonths: measuredMonths(measured).filter(inRange).length, // months a bill is expected for (>= 15 measured days)
     },
     crossTiles: {
       homeCostPerKwh: load > 0 ? Math.round((sum(compared.map((b) => num(b.total))) / load) * 1000) / 1000 : null,

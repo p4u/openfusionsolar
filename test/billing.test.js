@@ -291,6 +291,7 @@ test('missing months need measured days and agree with the data card', () => {
   const s = billingSummary(store, { from: '2026-01-01', to: TODAY, today: '2026-12-20' });
   assert.deepEqual(s.missing, ['2026-10']);
   assert.deepEqual(card(s, 'data').numbers.missing, s.missing);
+  assert.deepEqual([s.tiles.months, s.tiles.measuredMonths], [11, 1]);
   assert.deepEqual(billingSummary(store, { from: '2026-01-01', to: TODAY, today: TODAY }).missing, [], 'within 45 days of its end');
   confirmed(store);
   assert.deepEqual(billingSummary(store, { from: '2026-01-01', to: TODAY, today: '2026-12-20' }).missing, []);
