@@ -5,9 +5,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { dayMoney } from './tariff.js';
 import { buildEvents } from './events.js';
-import { dayBounds } from './collector.js';
+import { dayBounds, localDay } from './collector.js';
+import * as aggregate from './aggregate.js';
+import {
+  SERIES_BUCKETS, ENERGY_BUCKETS, spanDays, legalSeriesBuckets, legalEnergyBuckets, autoSeriesBucket, autoEnergyBucket,
+} from '../public/js/buckets.js';
 import {
   passwordMatches, sessionKey, signSession, verifySession, createLimiter, clientIp, isHttps, cookieHeader,
 } from './auth.js';
@@ -33,6 +38,10 @@ const MAX_BODY = 16 * 1024;
 const LOGIN_REQUIRED = { error: 'login required' };
 const MAX_RANGE_MS = 400 * 24 * 60 * 60 * 1000;
 
+const { version } = createRequire(import.meta.url)('../package.json');
+const MAX_EVENT_DAYS = 800;
+const MAX_ENERGY_DAYS = 36600;
+
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Configured values win; otherwise what FusionSolar reports for this plant. null when unknown.
@@ -40,6 +49,7 @@ export function batteryInfo(store, cfg) {
   const station = store.getKv('station') ?? {};
   const fs = store.getKv('batteryConfig') ?? {};
   const reserve = cfg.reservePct == null ? null : store.getKv('reserve');
+  const src = (env, fusion) => (env != null ? 'env' : fusion != null ? 'fusionsolar' : null);
   return {
     capacityKwh: cfg.capacityKwh ?? station.batteryKwh ?? null,
     minPct: cfg.minPct ?? fs.endOfDischargePct ?? null,
@@ -47,6 +57,16 @@ export function batteryInfo(store, cfg) {
     reserveSince: reserve?.since ?? null,
     chargeFromGrid: fs.chargeFromGrid ?? null,
     gridChargeCutoffPct: fs.gridChargeCutoffPct ?? null,
+    maxChargeKw: fs.maxChargeKw ?? null,
+    maxDischargeKw: fs.maxDischargeKw ?? null,
+    source: {
+      capacityKwh: src(cfg.capacityKwh, station.batteryKwh),
+      minPct: src(cfg.minPct, fs.endOfDischargePct),
+      reservePct: src(cfg.reservePct, null),
+      gridChargeCutoffPct: src(null, fs.gridChargeCutoffPct),
+      maxChargeKw: src(null, fs.maxChargeKw),
+      maxDischargeKw: src(null, fs.maxDischargeKw),
+    },
   };
 }
 
@@ -105,6 +125,14 @@ export function startServer({
     const to = Number(query.get('to'));
     return Number.isFinite(from) && Number.isFinite(to) && from < to && to - from <= MAX_RANGE_MS ? [from, to] : null;
   };
+  const dayRange = (query, maxDays) => {
+    const [from, to] = [query.get('from') ?? '', query.get('to') ?? ''];
+    if (!DAY_RE.test(from) || !DAY_RE.test(to) || from > to || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) {
+      return { error: [400, { error: 'from/to (YYYY-MM-DD, from <= to) required' }] };
+    }
+    const n = spanDays(from, to);
+    return n > maxDays ? { error: [400, { error: 'range too long' }] } : { from, to, n };
+  };
   const RANGE_ERROR = [400, { error: 'from/to (unix ms, from < to, max 400 days) required' }];
 
   // Handler: (ctx) => [status, body, headers?], may be async. ctx = { req, url, query, body }.
@@ -113,13 +141,19 @@ export function startServer({
       station: store.getKv('station') ?? null,
       realtime: store.latestRealtime() ?? null,
       lastSampleTs: store.lastSampleTs(),
-      collector: collector?.status ?? null,
+      collector: collector ? { ...collector.status, authBlockedUntil: collector.authBlockedUntil ?? 0 } : null,
+      firstDay: store.firstDay(),
+      firstSampleDay: store.firstSampleTs() == null ? null : localDay(store.firstSampleTs()),
+      version,
+      today: localDay(Date.now()),
+      timeZone: process.env.TZ ?? null,
       activeAlarms: store.activeAlarms?.() ?? [],
       battery: batteryInfo(store, config.battery ?? {}),
       pricesConfigured: Boolean(config.prices),
       plantName: config.plantName ?? null,
       prices: config.prices
-        ? (({ p1, p2, p3, export: exp, adjust, iee, vat }) => ({ p1, p2, p3, export: exp, adjust, iee, vat }))(config.prices)
+        ? (({ p1, p2, p3, export: exp, adjust, iee, vat, contractedP1, contractedP2 }) =>
+          ({ p1, p2, p3, export: exp, adjust, iee, vat, contractedP1, contractedP2 }))(config.prices)
         : null,
     }],
     'GET /api/days': ({ query }) => {
@@ -131,8 +165,52 @@ export function startServer({
       return [200, store.days(from, to).map(withMoney)];
     },
     'GET /api/events': ({ query }) => {
-      const r = range(query);
-      return r ? [200, buildEvents(store.alarms(...r), store.samples(...r))] : RANGE_ERROR;
+      let r;
+      if (DAY_RE.test(query.get('from') ?? '') && DAY_RE.test(query.get('to') ?? '')) {
+        const [from, to] = [query.get('from'), query.get('to')];
+        if (from > to || spanDays(from, to) > MAX_EVENT_DAYS) return [400, { error: `from/to (days, from <= to, max ${MAX_EVENT_DAYS} days) required` }];
+        r = [dayBounds(from)[0], dayBounds(to)[1]];
+      } else {
+        r = range(query);
+        if (!r) return RANGE_ERROR;
+      }
+      const kinds = query.get('kinds')?.split(',');
+      const events = buildEvents(store.alarms(...r), store.samples(...r));
+      return [200, kinds ? events.filter((e) => kinds.includes(e.kind)) : events];
+    },
+    'GET /api/series': ({ query }) => {
+      const p = dayRange(query, MAX_ENERGY_DAYS);
+      if (p.error) return p.error;
+      const bucket = query.get('bucket') === 'auto' ? autoSeriesBucket(p.n) : query.get('bucket');
+      const legal = legalSeriesBuckets(p.n);
+      if (!SERIES_BUCKETS.includes(bucket) || !legal.includes(bucket)) return [400, { error: 'bucket too fine for this range', legal }];
+      return [200, aggregate.series(store, { from: p.from, to: p.to, bucket, now: Date.now() })];
+    },
+    'GET /api/energy': ({ query }) => {
+      const p = dayRange(query, MAX_ENERGY_DAYS);
+      if (p.error) return p.error;
+      const bucket = query.get('bucket') === 'auto' ? autoEnergyBucket(p.n) : query.get('bucket');
+      const legal = legalEnergyBuckets(p.n);
+      if (!ENERGY_BUCKETS.includes(bucket) || !legal.includes(bucket)) return [400, { error: 'bucket too fine for this range', legal }];
+      const compare = query.get('compare');
+      if (compare && !['prev', 'yoy'].includes(compare)) return [400, { error: 'compare must be prev or yoy' }];
+      return [200, aggregate.energy(store, { ...p, bucket, compare, prices: config.prices, now: Date.now() })];
+    },
+    'GET /api/signals': () => [200, (store.getKv('devices') ?? []).map((d) => ({
+      dn: d.dn, type: d.type, name: d.name,
+      signals: d.signals.map((s) => ({ ...s, ...store.signalSpan(d.dn, s.id) })),
+    }))],
+    'GET /api/signals/history': ({ query }) => {
+      const dev = (store.getKv('devices') ?? []).find((d) => d.dn === query.get('dn'));
+      if (!dev) return [404, { error: 'unknown device' }];
+      const ids = (query.get('ids') ?? '').split(',').map((x) => (/^\d+$/.test(x) ? Number(x) : NaN));
+      if (ids.length < 1 || ids.length > 6 || ids.some(Number.isNaN)) return [400, { error: 'ids: 1 to 6 numeric signal ids required' }];
+      const p = dayRange(query, MAX_ENERGY_DAYS);
+      if (p.error) return p.error;
+      const bucket = query.get('bucket') === 'auto' ? autoSeriesBucket(p.n) : query.get('bucket');
+      const legal = legalSeriesBuckets(p.n);
+      if (!SERIES_BUCKETS.includes(bucket) || !legal.includes(bucket)) return [400, { error: 'bucket too fine for this range', legal }];
+      return [200, aggregate.signalHistory(store, { dn: dev.dn, ids, from: p.from, to: p.to, bucket, meta: dev.signals })];
     },
     'GET /api/samples': ({ query }) => {
       const r = range(query);

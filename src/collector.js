@@ -62,7 +62,7 @@ export class Collector {
     this.onSession = onSession;
     this.queue = Promise.resolve();
     this.authBlockedUntil = 0;
-    this.status = { lastTick: null, lastError: null };
+    this.status = { lastTick: null, lastError: null, backfill: null };
   }
 
   // All portal calls go through one queue so backfill and polling never overlap (one session, one CSRF).
@@ -300,25 +300,30 @@ export class Collector {
   async backfill(days) {
     const anchor = localDay(Date.now());
     let empty = 0;
-    for (let i = 1; i <= days && empty < 30; i++) {
-      const day = shiftDay(anchor, -i);
-      if (this.#isFinal(day)) {
-        empty = 0;
-        continue;
-      }
-      let n = null;
-      for (let attempt = 1; attempt <= 3 && n === null; attempt++) {
-        try {
-          n = await this.#serial(() => this.syncDay(day));
-        } catch (err) {
-          this.#fail(err);
-          await sleep(Math.max(attempt * FIVE_MIN, this.authBlockedUntil - Date.now()));
+    try {
+      for (let i = 1; i <= days && empty < 30; i++) {
+        this.status.backfill = { done: i, total: days };
+        const day = shiftDay(anchor, -i);
+        if (this.#isFinal(day)) {
+          empty = 0;
+          continue;
         }
+        let n = null;
+        for (let attempt = 1; attempt <= 3 && n === null; attempt++) {
+          try {
+            n = await this.#serial(() => this.syncDay(day));
+          } catch (err) {
+            this.#fail(err);
+            await sleep(Math.max(attempt * FIVE_MIN, this.authBlockedUntil - Date.now()));
+          }
+        }
+        if (n === null) continue;
+        empty = n ? 0 : empty + 1;
+        this.log(`backfill ${day}: ${n} slots`);
+        await sleep(PAUSE_MS);
       }
-      if (n === null) continue;
-      empty = n ? 0 : empty + 1;
-      this.log(`backfill ${day}: ${n} slots`);
-      await sleep(PAUSE_MS);
+    } finally {
+      this.status.backfill = null;
     }
     this.log('backfill done');
   }

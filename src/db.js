@@ -91,6 +91,13 @@ export class Store {
       historyMax: q('select max(value) as v from signal_history where device_dn = ? and signal_id = ? and ts >= ? and ts < ?'),
       daily: q(`insert or replace into daily (day, ${DAILY_COLS}) values (?, ${DAILY_COLS.map(() => '?')})`),
       days: q('select * from daily where day >= ? and day <= ? order by day'),
+      firstDay: q('select min(day) as v from daily'),
+      firstSample: q('select min(ts) as v from samples'),
+      daySyncs: q('select * from day_sync where day >= ? and day <= ?'),
+      sigHistory: q(`select signal_id, ts, value from signal_history where device_dn = ? and signal_id = ? and ts >= ? and ts < ?
+                     order by ts`),
+      sigFirst: q('select ts from signal_history where device_dn = ? and signal_id = ? order by ts limit 1'),
+      sigLast: q('select ts from signal_history where device_dn = ? and signal_id = ? order by ts desc limit 1'),
       syncedWithoutDaily: q('select day from day_sync where day not in (select day from daily) order by day desc'),
     };
   }
@@ -181,8 +188,28 @@ export class Store {
     return this.st.activeAlarms.all();
   }
 
-  markDay(day, rows) {
-    this.st.daySync.run(day, Date.now(), rows);
+  markDay(day, rows, at = Date.now()) {
+    this.st.daySync.run(day, at, rows);
+  }
+
+  firstDay() {
+    return this.st.firstDay.get().v;
+  }
+
+  firstSampleTs() {
+    return this.st.firstSample.get().v;
+  }
+
+  daySyncs(fromDay, toDay) {
+    return this.st.daySyncs.all(fromDay, toDay);
+  }
+
+  signalHistory(dn, ids, from, to) {
+    return ids.flatMap((id) => this.st.sigHistory.all(dn, id, from, to));
+  }
+
+  signalSpan(dn, id) {
+    return { firstTs: this.st.sigFirst.get(dn, id)?.ts ?? null, lastTs: this.st.sigLast.get(dn, id)?.ts ?? null };
   }
 
   daySync(day) {

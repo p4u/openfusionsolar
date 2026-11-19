@@ -43,3 +43,22 @@ export function dayMoney(day, p) {
   const fixed = (((p.powerP1 * p.contractedP1 + p.powerP2 * p.contractedP2) / 365 + p.socialDay) * (1 + p.iee) + p.meterDay) * (1 + p.vat);
   return { bought, exportIncome, energy: bought - exportIncome, withoutSolar, savings: withoutSolar - (bought - exportIncome), fixed };
 }
+
+// Sums days into one bill. The energy term is capped at zero per calendar month (the bill never pays out a
+// surplus), then summed. null without prices or when no day has data.
+export function periodMoney(dayRows, prices) {
+  const sum = { bought: 0, exportIncome: 0, withoutSolar: 0, fixed: 0 };
+  const months = new Map();
+  let any = false;
+  for (const row of dayRows) {
+    const m = dayMoney(row, prices);
+    if (!m) continue;
+    any = true;
+    for (const k of Object.keys(sum)) sum[k] += m[k];
+    const month = row.day.slice(0, 7);
+    months.set(month, (months.get(month) ?? 0) + m.energy);
+  }
+  if (!any) return null;
+  const energy = [...months.values()].reduce((s, e) => s + Math.max(e, 0), 0);
+  return { ...sum, energy, savings: sum.withoutSolar - energy, bill: energy + sum.fixed };
+}
