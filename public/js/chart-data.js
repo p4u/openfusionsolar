@@ -7,18 +7,77 @@ import { esc } from './ui.js';
 
 export const PARTIAL = 0.9; // coverage below this is drawn faded and flagged in the tooltip
 const GAP_MIN_MS = 15 * 60e3;
-export const HEIGHTS = { desktop: 340, mobile: 260, strip: 160 };
+// mobile: a one-row legend and the x labels leave a plot of about 200 px
+export const HEIGHTS = { desktop: 340, mobile: 280, strip: 160 };
 const DAY_MS = 86400e3;
 
-// Tick label of a time axis, chosen by the span shown: hours within a day; over a few days the day at midnight and
-// hours in between (so a day is never repeated); then days, months with their year, and years.
-export function timeTick(ms, span) {
-  if (span <= 1.5 * DAY_MS) return fmtTime(ms);
-  if (span <= 8 * DAY_MS) return Math.abs(dayStart(dayOf(ms)) - ms) < 60e3 ? fmtDate(ms) : fmtTime(ms);
-  if (span <= 120 * DAY_MS) return fmtDate(ms);
-  if (span <= 800 * DAY_MS) return fmtMonthShort(ms);
-  return dayOf(ms).slice(0, 4);
+const HOUR_MS = 3600e3;
+// Tick units of a time axis: span ceilings (with an hour of slack for DST days), unit length and the steps tried.
+const UNITS = [
+  { unit: 'hour', upTo: 2 * DAY_MS + 2 * HOUR_MS, ms: HOUR_MS, steps: [1, 2, 3, 4, 6, 12] },
+  { unit: 'day', upTo: 45 * DAY_MS + 2 * HOUR_MS, ms: DAY_MS, steps: [1, 2, 3, 5, 7] },
+  { unit: 'month', upTo: 731 * DAY_MS + 2 * HOUR_MS, ms: 30.436875 * DAY_MS, steps: [1, 2, 3, 6] },
+  { unit: 'year', upTo: Infinity, ms: 365.2425 * DAY_MS, steps: [1, 2, 5, 10, 20] },
+];
+const unitOf = (span) => UNITS.find((u) => span <= u.upTo);
+
+// The one tick strategy of every time axis. ApexCharts spaces ticks evenly from x.min to x.max (a custom label
+// formatter turns its calendar scale off), so the tick count is chosen to land each tick on a unit boundary:
+// whole hours up to 2 days, days up to 45 days, months up to 2 years, then years. The step is the smallest that
+// divides the span and gives at most maxTicks ticks; when none does, one tick per unit and overlapping labels hide.
+export function timeAxis(min, max, { mobile = false } = {}) {
+  const span = max - min;
+  const u = unitOf(span);
+  const count = Math.max(1, Math.round(span / u.ms));
+  const maxTicks = mobile ? 6 : 12;
+  const step = u.steps.find((s) => count % s === 0 && count / s <= maxTicks && count / s >= Math.min(4, count)) ?? 1;
+  return { unit: u.unit, tickAmount: count / step };
 }
+
+const dayMonth = (ms) => fmtDate(ms, { day: 'numeric', month: 'short' }).replace(/ de | d’/, ' '); // "13 nov.", not "13 de nov."
+
+// Tick label: the unit boundary nearest the tick (a DST day moves an even tick by an hour), always ascending.
+// Hours show the date on day boundaries; days show day and month; months their year; years the year.
+export function timeTick(ms, span) {
+  const { unit } = unitOf(span);
+  if (unit === 'hour') {
+    const h = Math.round(ms / HOUR_MS) * HOUR_MS;
+    return dayStart(dayOf(h)) === h ? dayMonth(h) : fmtTime(h);
+  }
+  if (unit === 'day') return dayMonth(dayStart(dayOf(ms + 12 * HOUR_MS)));
+  if (unit === 'month') return fmtMonthShort(dayOf(ms + 15 * DAY_MS).slice(0, 7));
+  return dayOf(ms + 15 * DAY_MS).slice(0, 4);
+}
+
+// Category axis of calendar buckets (keys 'YYYY-MM-DD', 'YYYY-MM' or 'YYYY'): one short label per bar, never trimmed.
+// Days read "10", "11" with the month in the axis title; months "gen.", "febr." with the year in the title, or on
+// the first bar and each January when the range spans years; years read as themselves.
+export function bucketAxis(keys, bucket) {
+  if (!keys.length) return { categories: [], title: '' };
+  const years = [...new Set(keys.map((k) => k.slice(0, 4)))];
+  const monthName = (ym, opts) => fmtDate(`${ym}-15`, opts);
+  if (bucket === '1d') {
+    const months = [...new Set(keys.map((k) => k.slice(0, 7)))];
+    const short = (ym) => monthName(ym, { month: 'short' });
+    const title = months.length === 1 ? monthName(months[0], { month: 'long', year: 'numeric' })
+      : `${short(months[0])}${years.length > 1 ? ` ${years[0]}` : ''} – ${short(months.at(-1))} ${years.at(-1)}`;
+    return { categories: keys.map((k) => String(Number(k.slice(8, 10)))), title };
+  }
+  if (bucket === '1mo') {
+    const short = (k) => monthName(k, { month: 'short' });
+    if (years.length === 1) return { categories: keys.map(short), title: years[0] };
+    return { categories: keys.map((k, i) => (i === 0 || k.endsWith('-01') ? `${short(k)} ${k.slice(0, 4)}` : short(k))), title: `${years[0]} – ${years.at(-1)}` };
+  }
+  return { categories: keys.slice(), title: '' };
+}
+
+// Accessible name of a chart, in the app language: what it shows and where the numbers are.
+export function chartLabel(spec) {
+  return t('charts.a11y.chart', { names: spec.series.map((s) => s.name).join(', ') });
+}
+
+// ApexCharts fills {name} and {state} itself, so they must survive our own placeholder pass.
+export const legendItemTemplate = () => t('charts.a11y.legendItem', { name: '{name}', state: '{state}' });
 
 export const opacityFor = (coverage) => (coverage == null || coverage >= PARTIAL ? 1 : coverage <= 0 ? null : 0.45);
 
@@ -164,9 +223,11 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
       parentHeightOffset: 0,
       // ApexCharts' own screen-reader texts (legend items) in the app language
       locales: [{ name: 'app', options: { a11y: {
-        legendItem: t('charts.a11y.legendItem'), visible: t('charts.a11y.visible'), hidden: t('charts.a11y.hidden'),
+        legendItem: legendItemTemplate(), visible: t('charts.a11y.visible'), hidden: t('charts.a11y.hidden'),
       } } }],
       defaultLocale: 'app',
+      // the chart's own name: ApexCharts would announce "line chart with 6 data series" in English
+      accessibility: { description: chartLabel(spec) },
     },
     series,
     colors,
@@ -181,12 +242,15 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
     xaxis: time
       ? {
           type: 'datetime', min: spec.x?.min, max: spec.x?.max, tooltip: { enabled: false },
+          tickAmount: spec.x?.min != null && spec.x?.max != null ? timeAxis(spec.x.min, spec.x.max, { mobile }).tickAmount : undefined,
           axisBorder: { color: palette.hairline }, axisTicks: { color: palette.hairline },
           labels: { style: text, datetimeUTC: false, rotate: 0, hideOverlappingLabels: true, formatter: (v) => timeTick(Number(v), span) },
         }
       : {
+          // short labels, one per bar: overlapping ones hide, none is cut with an ellipsis
           type: 'category', categories: spec.x?.categories ?? [], tooltip: { enabled: false }, axisBorder: { color: palette.hairline }, axisTicks: { color: palette.hairline },
-          labels: { style: text, rotate: 0, hideOverlappingLabels: true, trim: true },
+          labels: { style: text, rotate: 0, rotateAlways: false, hideOverlappingLabels: true, trim: false },
+          title: { text: spec.x?.title ?? '', style: { ...text, fontWeight: 400 } },
         },
     // one y axis only: a second unit gets its own strip, synced through `group`
     yaxis: {

@@ -84,7 +84,11 @@ export function chart(host, initial) {
   const build = () => {
     const o = apexOptions(spec, readPalette(), { mobile: mobile(), hidden, zoom: zoomOn() });
     o.chart.events = {
-      mounted: (c) => spec.series.forEach((s) => hidden.has(s.key) && c.hideSeries(s.name)),
+      mounted: (c) => {
+        spec.series.forEach((s) => hidden.has(s.key) && c.hideSeries(s.name));
+        pressedState();
+      },
+      updated: pressedState,
       // fires before Apex flips the series, so the saved state is the flipped one
       legendClick: (_c, i) => {
         const k = spec.series[i].key;
@@ -97,6 +101,14 @@ export function chart(host, initial) {
       },
     };
     return o;
+  };
+
+  // ApexCharts marks a hidden series as pressed; a legend toggle is pressed while its series is shown
+  const pressedState = () => {
+    for (const el of host.querySelectorAll('.apexcharts-legend-series[aria-pressed]')) {
+      const off = el.querySelector('.apexcharts-legend-marker')?.getAttribute('data:collapsed') === 'true';
+      el.setAttribute('aria-pressed', String(!off));
+    }
   };
 
   const drawKey = () => {

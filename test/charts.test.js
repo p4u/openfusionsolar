@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { apexOptions, toCsv, gapBands, eventBands, opacityFor, isBelow, legendKey, timeTick, tooltipHtml, HEIGHTS } from '../public/js/chart-data.js';
+import { apexOptions, toCsv, gapBands, eventBands, opacityFor, isBelow, legendKey, timeTick, timeAxis, bucketAxis, chartLabel, legendItemTemplate, tooltipHtml, HEIGHTS } from '../public/js/chart-data.js';
 import { setLang } from '../public/js/i18n.js';
 import { setTimeZone, isoLocal, fmtMonthShort, fmtDate } from '../public/js/format.js';
 
@@ -72,7 +72,8 @@ test('time ticks: hours in a day, day at midnight over a few days, months with t
   assert.equal(timeTick(midnight + 12 * 3600e3, DAY), '12:00');
   assert.equal(timeTick(midnight, 3 * DAY), fmtDate(midnight));
   assert.match(timeTick(midnight, 3 * DAY), /10/);
-  assert.equal(timeTick(midnight + 12 * 3600e3, 3 * DAY), '12:00');
+  // ruling R26: past 2 days the ticks are days, so a tick near noon reads as its nearest day
+  assert.equal(timeTick(midnight + 3 * 3600e3, 3 * DAY), '10 Aug');
   assert.equal(timeTick(midnight, 30 * DAY), fmtDate(midnight));
   assert.equal(timeTick(midnight, 400 * DAY), 'Aug 2026');
   assert.equal(timeTick(midnight, 1000 * DAY), '2026');
@@ -164,7 +165,8 @@ test('mixed range, bar and synced strip configs carry what ApexCharts needs', ()
   assert.notEqual(a.chart.id, b.chart.id);
   assert.equal(a.yaxis.labels.minWidth, b.yaxis.labels.minWidth, 'same label width keeps synced plot areas aligned');
   const cat = apexOptions({ id: 'c', kind: 'category', unit: 'kWh', x: { categories: ['a', 'b'] }, series: [{ key: 'k', name: 'K', type: 'bar', entity: 'ok', data: [1, 2] }] }, palette, { mobile: true });
-  assert.equal(cat.chart.height, 260);
+  assert.equal(cat.chart.height, HEIGHTS.mobile);
+  assert.ok(HEIGHTS.mobile >= 280, 'a phone plot keeps about 200 px under a one-row legend');
   assert.deepEqual(cat.series[0].data, [{ x: 'a', y: 1 }, { x: 'b', y: 2 }]);
 });
 
@@ -212,4 +214,76 @@ test('range bars are a light, narrow wash and keep their own legend key', () => 
   assert.match(range, /fill-opacity="0.3"/);
   assert.match(mean, /<line /);
   assert.equal(apexOptions(spec(), palette).plotOptions.bar.columnWidth, '80%', 'charts with real bars keep wide columns');
+});
+
+test('time axes: tick count lands every tick on an hour, day, month or year boundary', () => {
+  setTimeZone('Europe/Madrid');
+  const DAY = 86400e3;
+  const d0 = Date.UTC(2026, 10, 12, 23); // 13 Nov 00:00 Madrid
+  assert.deepEqual(timeAxis(d0, d0 + DAY), { unit: 'hour', tickAmount: 12 }, 'a day: every 2 hours');
+  assert.deepEqual(timeAxis(d0, d0 + DAY, { mobile: true }), { unit: 'hour', tickAmount: 6 }, 'a phone: every 4 hours');
+  assert.deepEqual(timeAxis(d0, d0 + 2 * DAY, { mobile: true }), { unit: 'hour', tickAmount: 4 });
+  assert.deepEqual(timeAxis(d0, d0 + 7 * DAY), { unit: 'day', tickAmount: 7 }, '7 days: one tick a day');
+  assert.deepEqual(timeAxis(d0, d0 + 30 * DAY), { unit: 'day', tickAmount: 10 });
+  assert.deepEqual(timeAxis(d0, d0 + 31 * DAY), { unit: 'day', tickAmount: 31 }, 'no step divides 31: one a day, overlaps hide');
+  assert.equal(timeAxis(d0, d0 + 365 * DAY).unit, 'month');
+  assert.equal(timeAxis(d0, d0 + 365 * DAY).tickAmount, 12);
+  assert.equal(timeAxis(d0, d0 + 5 * 365 * DAY).unit, 'year');
+  // a 25 h DST day is still an hour axis with whole-hour ticks
+  const oct25 = Date.UTC(2026, 9, 24, 22);
+  const a = timeAxis(oct25, oct25 + 25 * 3600e3);
+  assert.equal(a.unit, 'hour');
+  assert.equal(25 % a.tickAmount, 0);
+});
+
+test('time ticks over 7 days are ascending dates, one per day, never hours', () => {
+  setLang('ca');
+  setTimeZone('Europe/Madrid');
+  const DAY = 86400e3;
+  const d0 = Date.UTC(2026, 10, 12, 23); // 13 Nov 00:00 Madrid
+  const span = 7 * DAY;
+  const { tickAmount } = timeAxis(d0, d0 + span);
+  const labels = Array.from({ length: tickAmount + 1 }, (_, k) => timeTick(d0 + (k * span) / tickAmount, span));
+  assert.deepEqual(labels, ['13 nov.', '14 nov.', '15 nov.', '16 nov.', '17 nov.', '18 nov.', '19 nov.', '20 nov.']);
+  // over 2 days the date replaces the hour at midnight
+  assert.equal(timeTick(d0 + DAY, 2 * DAY), '14 nov.');
+  assert.equal(timeTick(d0 + DAY + 4 * 3600e3, 2 * DAY), '04:00');
+  // a tick an hour off midnight (DST) still names its day
+  assert.equal(timeTick(d0 + 3 * DAY - 3600e3, span), '16 nov.');
+  assert.equal(timeTick(Date.UTC(2026, 0, 31), 400 * DAY), 'febr. 2026', 'nearest month start');
+  setLang('en');
+});
+
+test('bucket axes: one short label per bar, the month or year in the title, no ellipsis', () => {
+  setLang('ca');
+  const days = Array.from({ length: 11 }, (_, i) => `2025-08-${String(10 + i).padStart(2, '0')}`);
+  const d = bucketAxis(days, '1d');
+  assert.equal(d.categories.length, 11);
+  assert.deepEqual(d.categories.slice(0, 3), ['10', '11', '12']);
+  assert.equal(d.title, 'agost del 2025');
+  assert.equal(bucketAxis(['2025-08-31', '2025-09-01'], '1d').title, 'ag. – set. 2025');
+  const months = ['2026-01', '2026-02', '2026-03'];
+  assert.deepEqual(bucketAxis(months, '1mo'), { categories: ['gen.', 'febr.', 'març'], title: '2026' });
+  const span = bucketAxis(['2025-11', '2025-12', '2026-01', '2026-02'], '1mo');
+  assert.deepEqual(span.categories, ['nov. 2025', 'des.', 'gen. 2026', 'febr.']);
+  assert.equal(span.title, '2025 – 2026');
+  assert.deepEqual(bucketAxis(['2025', '2026'], '1y').categories, ['2025', '2026']);
+  for (const c of [...d.categories, ...span.categories]) assert.doesNotMatch(c, /…/);
+  const o = apexOptions({ id: 'c', kind: 'category', unit: 'kWh', x: { categories: d.categories, title: d.title }, series: [{ key: 'k', name: 'K', type: 'bar', entity: 'sun', data: days.map(() => 1) }] }, palette);
+  assert.equal(o.xaxis.labels.trim, false, 'labels are never cut with an ellipsis');
+  assert.equal(o.xaxis.title.text, 'agost del 2025');
+  setLang('en');
+});
+
+test('charts carry a localised accessible name and a legend template ApexCharts can fill', () => {
+  setLang('ca');
+  const o = apexOptions(spec(), palette);
+  assert.equal(o.chart.accessibility.description, 'Gràfic: Panels, Home, Range. Els valors són a la taula de sota.');
+  assert.equal(chartLabel({ series: [{ name: 'Sol' }] }), 'Gràfic: Sol. Els valors són a la taula de sota.');
+  const tpl = o.chart.locales[0].options.a11y.legendItem;
+  assert.equal(tpl, legendItemTemplate());
+  assert.match(tpl, /^\{name\}, \{state\}\./, 'placeholders survive our own t()');
+  // what ApexCharts does with it
+  assert.equal(tpl.replace(/\{(name|state)\}/g, (_, k) => (k === 'name' ? 'Sol' : 'visible')), 'Sol, visible. Prem Retorn o Espai per mostrar-la o amagar-la.');
+  setLang('en');
 });
