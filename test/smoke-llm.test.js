@@ -9,7 +9,8 @@ import { randomUUID } from 'node:crypto';
 import { Store } from '../src/db.js';
 import { createLlm, DEFAULT_MODEL } from '../src/llm.js';
 import { createInvoices } from '../src/invoices.js';
-import { validCups } from '../src/invoice-schema.js';
+import { validCups, normalise, toRow } from '../src/invoice-schema.js';
+import { createAssistant } from '../src/assistant.js';
 import { startTestServer } from './helpers.js';
 
 const REPO = '/volumes/repos/fusionsolar/openfusionsolar';
@@ -56,4 +57,60 @@ test('the sample bill is extracted live and auto-confirmed', { skip, timeout: 24
   assert.deepEqual([inv.surplus_p1_kwh, inv.surplus_p2_kwh, inv.surplus_p3_kwh, inv.surplus_price, inv.surplus_eur], [0, 11.47, 12.53, 0.03, 0.72]);
   assert.equal(inv.total_eur, 59.15);
   assert.ok(validCups(inv.cups), 'the CUPS has valid control letters');
+});
+
+// Chat turns: NDJSON events of one question. AI_SMOKE_OUT (a scratch file) receives the answers for a human read;
+// nothing is printed.
+async function ask(srv, body) {
+  const r = await srv.request('/api/assistant/chat', { method: 'POST', body: JSON.stringify({ lang: 'ca', ...body }) });
+  assert.equal(r.status, 200);
+  const events = (await r.text()).trim().split('\n').map((l) => JSON.parse(l));
+  if (process.env.AI_SMOKE_OUT) fs.appendFileSync(process.env.AI_SMOKE_OUT, `Q: ${body.text}\n${JSON.stringify(events)}\n\n`);
+  assert.equal(events.at(-1).type, 'done', JSON.stringify(events.find((e) => e.type === 'error')));
+  return { events, text: events.filter((e) => e.type === 'text').map((e) => e.text).join('\n'), id: events.at(-1).conversationId };
+}
+
+function chatSetup(t, store) {
+  process.loadEnvFile(path.join(REPO, '.env'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ofs-smoke-'));
+  const llm = createLlm({ apiKey: process.env.AI_API_KEY, store, budgetUsd: 0.05 });
+  const invoices = createInvoices({ store, llm, dir, model: process.env.AI_MODEL_EXTRACT || DEFAULT_MODEL });
+  invoices.start();
+  const assistant = createAssistant({ store, llm, invoices, config: { plantName: 'Casa' }, model: process.env.AI_MODEL_CHAT || DEFAULT_MODEL });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return startTestServer({ store, routes: { ...invoices.routes, ...assistant.routes } });
+}
+
+test('a chat question about the golden bill is answered live through a tool', { skip, timeout: 240e3 }, async (t) => {
+  const store = new Store(':memory:');
+  const { row, lines, readings } = toRow(normalise(JSON.parse(fs.readFileSync(new URL('./fixtures/bills/sample-v1.json', import.meta.url)))));
+  store.insertInvoice({ ...row, status: 'confirmed' }, lines, readings);
+  const srv = await chatSetup(t, store);
+  t.after(() => srv.close());
+  const t0 = Date.now();
+  const q1 = await ask(srv, { text: 'Quant vaig pagar a l’octubre?' });
+  assert.ok(q1.events.some((e) => e.type === 'status'), 'at least one tool call');
+  assert.match(q1.text, /59,15/);
+  // no measured data in this store: the answer must not invent a comparison
+  const q2 = await ask(srv, { text: 'Quadra amb el que han mesurat les plaques?', conversationId: q1.id });
+  assert.ok(q2.text.length > 0);
+  console.log(`smoke chat: 2 turns, ${store.usageCostSince(0).toFixed(4)} USD, ${Date.now() - t0} ms`);
+});
+
+test('one chat turn with the sample PDF attached answers with its total', { skip, timeout: 240e3 }, async (t) => {
+  const store = new Store(':memory:');
+  const srv = await chatSetup(t, store);
+  t.after(() => srv.close());
+  const pdfPath = process.env.AI_SMOKE_PDF || path.join(REPO, '.delivery/2026-11-19-billing-assistant/sample-bill.pdf');
+  const t0 = Date.now();
+  const group = randomUUID();
+  const up = await srv.request(`/api/invoices/upload?group=${group}&pos=0&source=chat`, {
+    method: 'POST', headers: { 'content-type': 'application/pdf' }, body: fs.readFileSync(pdfPath),
+  });
+  assert.equal(up.status, 201);
+  assert.equal((await srv.request('/api/invoices/process', { method: 'POST', body: JSON.stringify({ group }) })).status, 202);
+  const r = await ask(srv, { text: 'Quant he de pagar en aquesta factura?', attachments: [group] });
+  assert.ok(r.events.some((e) => e.type === 'invoice'));
+  assert.match(r.text, /59,15/);
+  console.log(`smoke chat attachment: ${store.usageCostSince(0).toFixed(4)} USD, ${Date.now() - t0} ms`);
 });

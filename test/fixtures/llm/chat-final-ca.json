@@ -1,0 +1,35 @@
+{
+  "request": {
+    "model": "google/gemini-3.1-flash-lite",
+    "temperature": 0,
+    "max_tokens": 1200,
+    "provider": {
+      "data_collection": "deny"
+    },
+    "tools": "<the TOOLS of src/assistant-tools.js>",
+    "messages": "<system, user, the assistant tool-call message verbatim, one tool message per call>"
+  },
+  "status": 200,
+  "response": {
+    "id": "gen-fixture",
+    "model": "google/gemini-3.1-flash-lite",
+    "provider": "Google",
+    "choices": [
+      {
+        "index": 0,
+        "finish_reason": "stop",
+        "message": {
+          "role": "assistant",
+          "content": "A l’octubre de 2026 vas pagar **59,15 €** (factura de l’1 al 31 d’octubre).",
+          "refusal": null
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 3200,
+      "completion_tokens": 40,
+      "total_tokens": 3240,
+      "cost": 0.00086
+    }
+  }
+}

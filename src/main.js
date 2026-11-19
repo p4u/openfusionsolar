@@ -10,6 +10,7 @@ import { createAlertEngine } from './alerts.js';
 import { createTransport, smtpInfo } from './mailer.js';
 import { createLlm, DEFAULT_MODEL } from './llm.js';
 import { createInvoices } from './invoices.js';
+import { createAssistant } from './assistant.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const env = process.env;
@@ -91,8 +92,9 @@ fs.mkdirSync(billsDir, { recursive: true });
 const llm = createLlm({ apiKey: env.AI_API_KEY, store, budgetUsd: Number(env.AI_MONTHLY_BUDGET_USD || 5), log });
 const invoices = createInvoices({ store, llm, dir: billsDir, log, model: env.AI_MODEL_EXTRACT || DEFAULT_MODEL });
 invoices.start();
+const assistant = createAssistant({ store, llm, invoices, config, model: env.AI_MODEL_CHAT || DEFAULT_MODEL, log });
 startServer({
   store, collector: env.COLLECT === '0' ? null : collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log,
-  alerts: engine, routes: { ...invoices.routes },
+  alerts: engine, routes: { ...invoices.routes, ...assistant.routes },
 });
 if (env.COLLECT !== '0') collector.run({ backfillDays: Number(env.BACKFILL_DAYS ?? 30) });
