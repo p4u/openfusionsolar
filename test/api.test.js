@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Store } from '../src/db.js';
 import { dayBounds } from '../src/collector.js';
-import { series } from '../src/aggregate.js';
+import { series, signalHistory } from '../src/aggregate.js';
 import { startTestServer } from './helpers.js';
 
 const H = 3600e3;
@@ -184,6 +184,21 @@ test('signals list and history', async () => {
   } finally {
     await srv.close();
   }
+});
+
+test('an inverter temperature of exactly 0 while it is off is a gap, not a reading', () => {
+  const store = new Store(':memory:');
+  const day = '2026-11-18';
+  const meta = [{ id: 30011, name: 'Internal temperature', unit: '℃' }, { id: 1, name: 'Power', unit: 'kW' }];
+  store.saveHistory('D1', 30011, at(day, 10, 0), 31);
+  store.saveHistory('D1', 30011, at(day, 10, 30), 0); // inverter stopped
+  store.saveHistory('D1', 30011, at(day, 12, 0), 0);
+  store.saveHistory('D1', 1, at(day, 12, 0), 0); // a real zero power stays
+  const h = signalHistory(store, { dn: 'D1', ids: [30011, 1], from: day, to: day, bucket: '1h', meta });
+  const [i10, i12] = [h.t.indexOf(at(day, 10)), h.t.indexOf(at(day, 12))];
+  assert.deepEqual([h.signals[0].avg[i10], h.signals[0].min[i10]], [31, 31]);
+  assert.equal(h.signals[0].avg[i12], null);
+  assert.equal(h.signals[1].avg[i12], 0);
 });
 
 test('status reports first days, version, today, time zone, backfill and auth block', async () => {

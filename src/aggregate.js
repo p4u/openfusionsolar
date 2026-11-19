@@ -173,18 +173,20 @@ export function signalHistory(store, { dn, ids, from, to, bucket, meta = [] }) {
   const end = t.pop();
   const rows = store.signalHistory(dn, ids, t[0], end);
   const signals = ids.map((id) => {
+    const m = meta.find((s) => s.id === id);
+    // a temperature of exactly 0 is what the inverter reports while it is off: a gap, not a reading
+    const offIsZero = /[℃°]/.test(m?.unit ?? '');
     const col = () => Array(t.length).fill(null);
     const [avg, min, max, cnt] = [col(), col(), col(), Array(t.length).fill(0)];
     let i = 0;
     for (const r of rows) {
-      if (r.signal_id !== id || r.value == null) continue;
+      if (r.signal_id !== id || r.value == null || (offIsZero && r.value === 0)) continue;
       while (i < t.length - 1 && r.ts >= t[i + 1]) i++;
       avg[i] = (avg[i] ?? 0) + r.value;
       cnt[i]++;
       if (min[i] === null || r.value < min[i]) min[i] = r.value;
       if (max[i] === null || r.value > max[i]) max[i] = r.value;
     }
-    const m = meta.find((s) => s.id === id);
     return { id, name: m?.name ?? null, unit: m?.unit ?? null, avg: avg.map((x, j) => (cnt[j] ? x / cnt[j] : null)), min, max };
   });
   return { bucket, t, signals };

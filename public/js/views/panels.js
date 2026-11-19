@@ -3,7 +3,7 @@ import { register, t } from '../i18n.js';
 import dict from '../i18n/panels.js';
 import { esc, icon, ledger, loadBlock, emptyState } from '../ui.js';
 import { getSeries, getEnergy, getEvents, getSignals, getSignalHistory } from '../api.js';
-import { kw, kwh, nf, fmtDate, fmtDateTime, fmtMonth, dayStart } from '../format.js';
+import { kw, kwh, nf, fmtDate, fmtDateTime, fmtMonthShort, dayStart, isoLocal } from '../format.js';
 import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { defaultMode, addDays } from '../buckets.js';
@@ -29,7 +29,7 @@ const xOf = (r) => ({
   label: (i) => (r.bucket === '1d' ? fmtDate(r.t[i], { weekday: 'short', day: 'numeric', month: 'short' }) : fmtDateTime(r.t[i])),
 });
 const stamp = (r, i) => (r.bucket === '1d' ? fmtDate(r.t[i]) : fmtDateTime(r.t[i]));
-const bucketLabel = (bucket, key) => (bucket === '1d' ? fmtDate(key) : bucket === '1mo' ? fmtMonth(key) : key);
+const bucketLabel = (bucket, key) => (bucket === '1d' ? fmtDate(key) : bucket === '1mo' ? fmtMonthShort(key) : key);
 const isTemp = (s) => /[℃°]/.test(s.unit ?? '');
 
 export async function render(root, ctx) {
@@ -50,7 +50,6 @@ export async function render(root, ctx) {
       <div class="panels-detail-list">
         <div class="card" data-block="strings"></div>
         <div class="card" data-block="temp"></div>
-        <div class="card" data-block="dcac"></div>
       </div></details>`;
   const q = (name) => root.querySelector(`[data-block="${name}"]`);
   const bar = renderRangeBar(root.querySelector('.panels-range'), { range, ctx: rctx, mode: defaultMode(range.days), onChange: (p) => ctx.setParams(p) });
@@ -73,11 +72,11 @@ export async function render(root, ctx) {
     body: cl.from > range.to && status.firstSampleDay ? t('panels.noReadingsBefore', { date: fmtDate(status.firstSampleDay) }) : t('panels.noReadings'),
   });
 
-  const draw = (el, { title, caption, csv, spec, columns, rows }) => {
+  const draw = (el, { title, caption, csv, spec, columns, rows, iso }) => {
     el.replaceChildren();
-    const f = figure(el, { title, csvName: csv });
+    const f = figure(el, { title, csvName: `${csv}-${range.from}_${range.to}` });
     f.setCaption(caption);
-    f.setTable(columns, rows);
+    f.setTable(columns, rows, iso);
     kept.push(f, chart(f.host, spec));
     return f;
   };
@@ -110,12 +109,13 @@ export async function render(root, ctx) {
           id: 'panels-production', kind: 'time', unit: 'kW', x: xOf(r), y: { min: 0, decimals: 2 }, coverage: r.coverage, provisional: r.provisional,
           series: [
             { key: 'dc', name: t('panels.prod.dc'), type: 'area', entity: 'sun', data: pairs(r, r.series.pv_kw) },
-            { key: 'ac', name: t('panels.prod.ac'), type: 'line', entity: 'p2', data: pairs(r, r.series.inverter_kw) },
+            { key: 'ac', name: t('panels.prod.ac'), type: 'line', entity: 'ac', data: pairs(r, r.series.inverter_kw) },
           ],
           bands: [...gapBands({ t: r.t, coverage: r.coverage, bucketMs: BUCKET_MS[r.bucket], now: Date.now() }), ...eventBands(ev, r.t[0], r.t.at(-1) + BUCKET_MS[r.bucket])],
         },
         columns: [t('panels.col.time'), { label: t('panels.prod.dc'), unit: 'kW' }, { label: t('panels.prod.ac'), unit: 'kW' }],
         rows: r.t.map((_, i) => [stamp(r, i), r.series.pv_kw[i], r.series.inverter_kw[i]]),
+        iso: r.t.map((ms) => isoLocal(ms, r.bucket)),
       });
       el.insertAdjacentHTML('beforeend', note);
       return;
@@ -133,6 +133,7 @@ export async function render(root, ctx) {
       },
       columns: [t('panels.col.period'), { label: t('panels.prod.kwh'), unit: 'kWh' }, ...(cmp ? [{ label: t('panels.prod.compare'), unit: 'kWh' }] : [])],
       rows: e.buckets.map((k, i) => [cats[i], k.pv_kwh, ...(cmp ? [cmp[i]?.pv_kwh ?? null] : [])]),
+      iso: e.buckets.map((k) => k.key),
     });
     if (e.compare && !e.compare.comparable) f.setCaption(`${t('panels.prod.caption', { kwh: kwh(e.total.pv_kwh) })} ${({ beforeFirstDay: t('panels.cmp.beforeFirstDay'), lowCoverage: t('panels.cmp.lowCoverage') })[e.compare.reason]}`);
   });
@@ -155,6 +156,7 @@ export async function render(root, ctx) {
       },
       columns: [t('panels.col.month'), { label: String(year), unit: 'kWh', decimals: 0 }, { label: String(year - 1), unit: 'kWh', decimals: 0 }],
       rows: rows.map((m, i) => [cats[i], m.thisYear, m.lastYear]),
+      iso: rows.map((m) => String(m.month).padStart(2, '0')),
     });
   });
 
@@ -182,9 +184,9 @@ export async function render(root, ctx) {
         const [v, a] = [got[gi].signals.find((x) => x.id === s.voltage), got[gi].signals.find((x) => x.id === s.current)];
         const r = { t: got[gi].t, bucket: got[gi].bucket };
         const p = v.avg.map((x, i) => stringPower(x, a.avg[i]));
-        const f = figure(list, { title: t('panels.string', { n: s.n }), csvName: `panels-string-${s.n}` });
+        const f = figure(list, { title: t('panels.string', { n: s.n }), csvName: `panels-string-${s.n}-${range.from}_${range.to}` });
         f.setTable([t('panels.col.time'), { label: t('panels.col.volt'), unit: 'V', decimals: 1 }, { label: t('panels.col.amp'), unit: 'A', decimals: 2 }, { label: t('panels.col.power'), unit: 'kW', decimals: 3 }],
-          r.t.map((_, i) => [stamp(r, i), v.avg[i], a.avg[i], p[i]]));
+          r.t.map((_, i) => [stamp(r, i), v.avg[i], a.avg[i], p[i]]), r.t.map((ms) => isoLocal(ms, r.bucket)));
         kept.push(f);
         for (const [key, unit, name, vals, decimals] of [['v', 'V', t('panels.col.volt'), v.avg, 1], ['a', 'A', t('panels.col.amp'), a.avg, 2], ['kw', 'kW', t('panels.col.power'), p, 3]]) {
           const strip = document.createElement('div');
@@ -217,34 +219,8 @@ export async function render(root, ctx) {
         },
         columns: [t('panels.col.time'), { label: t('panels.col.temp'), unit: sig.unit, decimals: 1 }, { label: t('panels.col.tempMin'), unit: sig.unit, decimals: 1 }, { label: t('panels.col.tempMax'), unit: sig.unit, decimals: 1 }],
         rows: h.t.map((_, i) => [stamp(r, i), s.avg[i], s.min[i], s.max[i]]),
+        iso: h.t.map((ms) => isoLocal(ms, h.bucket)),
       });
-    });
-
-    loadBlock(q('dcac'), 340, async (el) => {
-      if (cl.empty) return void (el.innerHTML = noDetail());
-      const r = await detail();
-      if (!known(r.series.pv_kw).length) return void (el.innerHTML = noDetail());
-      let dc = 0;
-      let ac = 0;
-      r.t.forEach((_, i) => {
-        if (r.series.pv_kw[i] != null && r.series.inverter_kw[i] != null) {
-          dc += r.series.pv_kw[i];
-          ac += r.series.inverter_kw[i];
-        }
-      });
-      draw(el, {
-        title: t('panels.dcac.title'), caption: dc > 0 ? t('panels.dcac.caption', { pct: `${Math.round((ac / dc) * 100)} %` }) : '', csv: 'panels-dc-ac',
-        spec: {
-          id: 'panels-dcac', kind: 'time', unit: 'kW', x: xOf(r), y: { min: 0, decimals: 2 }, coverage: r.coverage, provisional: r.provisional,
-          series: [
-            { key: 'dc', name: t('panels.prod.dc'), type: 'line', entity: 'sun', data: pairs(r, r.series.pv_kw) },
-            { key: 'ac', name: t('panels.prod.ac'), type: 'line', entity: 'p2', dashed: true, data: pairs(r, r.series.inverter_kw) },
-          ],
-        },
-        columns: [t('panels.col.time'), { label: t('panels.prod.dc'), unit: 'kW' }, { label: t('panels.prod.ac'), unit: 'kW' }],
-        rows: r.t.map((_, i) => [stamp(r, i), r.series.pv_kw[i], r.series.inverter_kw[i]]),
-      });
-      el.insertAdjacentHTML('beforeend', note);
     });
   });
 
