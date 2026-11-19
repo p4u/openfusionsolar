@@ -12,7 +12,7 @@ import {
   addDays, legalSeriesBuckets, legalEnergyBuckets, autoSeriesBucket, autoEnergyBucket, defaultMode, compareDays,
 } from '../buckets.js';
 import { reserveMarks } from './battery-model.js';
-import { shares, deltaText, energyBars, powerAllowed, compareLabel } from './energy-model.js';
+import { shares, deltaText, energyBars, powerAllowed, compareLabel, shareLabels } from './energy-model.js';
 
 register(dict);
 
@@ -105,12 +105,15 @@ export async function render(root, ctx) {
 
   function segmented(title, parts) {
     const known = parts.filter((p) => p.v != null);
-    const shown = known.filter((p) => p.v > 0);
+    const shown = shareLabels(parts);
     const labels = shown.map((p) => esc(t(p.label, { pct: p.v })));
+    // narrow segments keep an empty slot under the bar and get their label in the key line below
+    const aside = shown.map((p, i) => (p.inline ? '' : `<span><i class="energy-seg-key energy-seg-${p.entity}"></i>${labels[i]}</span>`)).join('');
     return `<section class="card energy-seg-card"><h2 class="card-title">${esc(title)}</h2>${!known.length
       ? `<p class="hint">${esc(t('energy.shares.unknown'))}</p>`
       : `<div class="energy-seg" role="img" aria-label="${labels.join(', ')}">${shown.map((p) => `<span class="energy-seg-${p.entity}" style="flex-grow:${p.v}"></span>`).join('')}</div>
-        <div class="energy-seg-labels" aria-hidden="true">${shown.map((p, i) => `<span style="flex-grow:${p.v}">${labels[i]}</span>`).join('')}</div>`}</section>`;
+        <div class="energy-seg-labels" aria-hidden="true">${shown.map((p, i) => `<span style="flex-grow:${p.v}">${p.inline ? labels[i] : ''}</span>`).join('')}</div>
+        ${aside ? `<p class="energy-seg-aside" aria-hidden="true">${aside}</p>` : ''}`}</section>`;
   }
 
   // buckets for the energy chart: calendar buckets from /api/energy, or hours from /api/series

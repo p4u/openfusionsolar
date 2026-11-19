@@ -47,6 +47,12 @@ export function shares(total) {
   };
 }
 
+// Share bar labels: a segment under 8 % is too narrow to carry its label without touching the next one, so its label
+// moves to a key line under the bar. parts: [{ v, ... }] (v whole percent or null). Returns the parts drawn
+// (v > 0), each with `inline` true when its label sits under its own segment.
+export const SMALL_SHARE = 8;
+export const shareLabels = (parts) => parts.filter((p) => p.v > 0).map((p) => ({ ...p, inline: p.v >= SMALL_SHARE }));
+
 const REASONS = { beforeFirstDay: 'energy.cmp.beforeFirstDay', lowCoverage: 'energy.cmp.lowCoverage' };
 
 // Catalan joins "respecte" to a period with the right contraction: "del 17 de nov.", "d’octubre", "de març".

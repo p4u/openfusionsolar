@@ -83,3 +83,12 @@ test('catalan comparisons use the right contraction', () => {
   setLang('en');
   assert.equal(ofPeriod('2025'), '2025');
 });
+
+test('share labels under 8 % move to the key line; hidden zero segments are dropped', async () => {
+  const { shareLabels, percents } = await import('../public/js/views/energy-model.js');
+  const v = percents([0.62, 0.31, 0.07]);
+  assert.equal(v.reduce((a, x) => a + x, 0), 100);
+  const parts = [{ v: v[0], entity: 'sun' }, { v: v[1], entity: 'battery' }, { v: v[2], entity: 'sold' }, { v: 0, entity: 'grid' }, { v: null, entity: 'home' }];
+  assert.deepEqual(shareLabels(parts).map((p) => [p.entity, p.inline]), [['sun', true], ['battery', true], ['sold', false]]);
+  assert.equal(shareLabels([{ v: 8 }])[0].inline, true, '8 % still fits');
+});
