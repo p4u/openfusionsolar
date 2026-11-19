@@ -62,10 +62,14 @@ test('phases come from W or kW signals named Pa, Pb, Pc and are scaled to kW', (
   assert.equal(phaseSignals(undefined), null);
 });
 
-test('the money sentence names the .env keys in both languages', () => {
+// ruling R26: key names only in the Settings administrator detail; the bill sentence points there
+test('the price keys are named for the administrator, and the money sentence points there', async () => {
+  const { default: settingsDict } = await import('../public/js/i18n/settings.js');
   for (const lang of ['en', 'ca']) {
-    setLang(lang);
-    assert.ok(billDict[lang]['bill.noPrices'].includes('PRICE_P1') && billDict[lang]['bill.noPrices'].includes('PRICE_P3'), lang);
+    const admin = settingsDict[lang]['settings.admin.prices'];
+    assert.ok(admin.includes('PRICE_P1') && admin.includes('PRICE_P3'), lang);
+    assert.ok(billDict[lang]['bill.noPrices'].includes(settingsDict[lang]['settings.admin.title']), lang);
+    assert.doesNotMatch(billDict[lang]['bill.noPrices'], /PRICE_|\.env/, lang);
   }
 });
 

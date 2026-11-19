@@ -28,6 +28,26 @@ for (const [ns, dict] of dicts) {
   });
 }
 
+test('catalan copy uses the curly apostrophe only', () => {
+  const straight = [];
+  for (const [, dict] of dicts) for (const [k, v] of Object.entries(dict.ca)) if (typeof v === 'string' && v.includes("'")) straight.push(k);
+  assert.deepEqual(straight, []);
+});
+
+// configuration key names (PRICE_P1, SMTP_HOST, .env) only appear in the administrator detail of Settings
+test('user copy names no configuration keys outside the administrator detail', () => {
+  const hits = [];
+  for (const [, dict] of dicts) {
+    for (const lang of ['en', 'ca']) {
+      for (const [k, v] of Object.entries(dict[lang])) {
+        if (k.startsWith('settings.admin.')) continue;
+        if (typeof v === 'string' && (/\.env\b/.test(v) || /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/.test(v))) hits.push(`${lang} ${k}`);
+      }
+    }
+  }
+  assert.deepEqual(hits, []);
+});
+
 test('no key is defined in two files', () => {
   const owner = new Map();
   const dupes = [];

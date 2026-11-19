@@ -83,7 +83,9 @@ function plantHtml(status) {
       ${row(t('settings.collector.lastError'), lastError ?? t('settings.collector.noError'))}
       ${row(t('settings.collector.backfill'), bf && bf.done < bf.total ? t('settings.collector.backfillValue', { done: bf.done, total: bf.total }) : t('settings.collector.backfillDone'))}
       ${row(t('settings.collector.auth'), t(authKey(c), { when: fmtTime(c.authBlockedUntil) }))}
-    </dl>` : `<p class="hint">${esc(t('settings.collector.off'))}</p>`}`;
+    </dl>` : `<p class="hint">${esc(t('settings.collector.off'))}</p>`}
+    <details class="disclosure settings-admin"><summary><span>${esc(t('settings.admin.title'))}</span>${icon('chevron-down', { size: 16 })}</summary>
+      ${['intro', 'prices', 'battery', 'email', 'collect'].map((k) => `<p class="hint">${esc(t(`settings.admin.${k}`))}</p>`).join('')}</details>`;
 }
 
 function appearanceHtml() {
