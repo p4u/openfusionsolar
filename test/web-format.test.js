@@ -61,7 +61,7 @@ test('incidents: titles have no em dash, internet losses group per plant day', (
     { kind: 'network', start: day + 2 * H, end: day + 2.5 * H, ongoing: false, names: [] },
     { kind: 'network', start: day + 23 * H, end: day + 25 * H, ongoing: false, names: [] }, // 1 h falls on the next day
   ];
-  assert.equal(eventTitle(cut), 'Power cut from the grid: the battery powered the home');
+  assert.equal(eventTitle(cut), 'Power cut from the grid: the battery powered the home.', 'a full sentence, with its full stop');
   const grouped = groupNetwork([cut, ...nets]);
   assert.equal(grouped.length, 2);
   const g = grouped.find((e) => e.kind === 'networkDay');

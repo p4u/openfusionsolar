@@ -30,8 +30,12 @@ export default {
     'incidents.month.networkTitle': 'Internet losses per month',
     'incidents.month.networkCaption': 'Hours without internet, on their own scale: the installation keeps working without it.',
     'incidents.more': 'Incidents per month',
+    'incidents.recovered.all': 'The installation kept working and the readings of those days have been recovered.',
+    'incidents.recovered.partial': 'The installation kept working; some readings of those days are missing.',
   },
   ca: {
+    'incidents.recovered.all': 'La instal·lació ha seguit funcionant i les lectures d’aquells dies s’han recuperat.',
+    'incidents.recovered.partial': 'La instal·lació ha seguit funcionant; falten algunes lectures d’aquells dies.',
     'incidents.title': 'Incidències',
     'incidents.summary': '{period}: {list}.',
     'incidents.none': 'Cap incidència en aquest període.',

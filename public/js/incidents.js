@@ -17,7 +17,7 @@ const LOOK = {
 export function eventTitle(e) {
   if (e.kind === 'gridCut') {
     const cover = { true: 'core.ev.covered', false: 'core.ev.notCovered', overload: 'core.ev.coveredUntilOverload' }[e.batteryCovered];
-    return `${t('core.ev.gridCut')}: ${t(cover ?? 'core.ev.unknown')}`;
+    return `${t('core.ev.gridCut')}: ${t(cover ?? 'core.ev.unknown')}.`;
   }
   if (e.kind === 'network') return t(e.ongoing ? 'core.ev.networkOngoing' : 'core.ev.networkPast');
   if (e.kind === 'batteryLow') return t('core.ev.batteryLow');

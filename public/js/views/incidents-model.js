@@ -30,3 +30,14 @@ export function hoursPerMonth(events, kinds) {
   for (let m = months[0]; m && m <= months.at(-1); m = nextMonth(m)) out.push({ month: m, hours: by.get(m) ?? {} });
   return out;
 }
+
+// Were the readings of the days with internet losses recovered afterwards? The dongle keeps readings and FusionSolar
+// fills them in, so a day with a loss usually still has its 5-minute slots. series: /api/series with 1d buckets.
+// 'all' (every such day at 90 % or more), 'partial', or null when there were no losses or no readings to tell.
+export function lossesRecovered(events, series) {
+  const days = new Set(events.filter((e) => e.kind === 'network' && !e.ongoing).map((e) => dayOf(e.start)));
+  if (!days.size || !series?.t?.length) return null;
+  const cov = series.t.map((ms, i) => [dayOf(ms), series.coverage[i]]).filter(([d]) => days.has(d)).map(([, c]) => c ?? 0);
+  if (!cov.length) return null;
+  return cov.every((c) => c >= 0.9) ? 'all' : 'partial';
+}

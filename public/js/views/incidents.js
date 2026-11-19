@@ -2,14 +2,15 @@
 import { register, t, locale } from '../i18n.js';
 import dict from '../i18n/incidents.js';
 import { esc, icon, emptyState, loadBlock, every } from '../ui.js';
-import { getEvents } from '../api.js';
+import { getEvents, getSeries } from '../api.js';
 import { parseRange, rangeLabel } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
 import { addDays } from '../buckets.js';
-import { duration, fmtDate, fmtTime, fmtMonthShort, dayOf } from '../format.js';
+import { duration, fmtDate, fmtTime, fmtMonth, dayOf } from '../format.js';
+import { bucketAxis } from '../chart-data.js';
 import { eventItem, summarize, groupNetwork, groupEpisodes } from '../incidents.js';
-import { filterKinds, hoursPerMonth } from './incidents-model.js';
+import { filterKinds, hoursPerMonth, lossesRecovered } from './incidents-model.js';
 
 register(dict);
 
@@ -86,10 +87,21 @@ export async function render(root, ctx) {
         return `<button type="button" class="pill pill-outline incidents-chip" data-kind="${k}" aria-pressed="${on}">${esc(t(`incidents.kind.${k}`))} <span class="num">${all.filter((e) => e.kind === k).length}</span></button>`;
       }).join('')}</div>` : '';
     const summary = events_.length ? t('incidents.summary', { period: label, list: summarize(events_) }) : t(picked.length ? 'incidents.noneFiltered' : 'incidents.none');
-    el.innerHTML = `<p class="lead incidents-summary">${esc(summary)}</p>${chips}${clamped ? `<p class="hint">${esc(t('incidents.clamped', { date: fmtDate(from, { day: 'numeric', month: 'short', year: 'numeric' }) }))}</p>` : ''}`;
+    el.innerHTML = `<p class="lead incidents-summary">${esc(summary)}</p><p class="hint incidents-reassure" hidden></p>${chips}${clamped ? `<p class="hint">${esc(t('incidents.clamped', { date: fmtDate(from, { day: 'numeric', month: 'short', year: 'numeric' }) }))}</p>` : ''}`;
     if (!events_.length) {
       el.insertAdjacentHTML('beforeend', emptyState({ title: t('core.empty.title'), body: t('incidents.noneHint') }));
       return;
+    }
+    // many internet losses read as alarming: say whether the installation's readings came back afterwards
+    if (events_.some((e) => e.kind === 'network')) {
+      const sFrom = [from, status.firstSampleDay, addDays(range.to, -749)].filter(Boolean).reduce((a, b) => (b > a ? b : a));
+      getSeries({ from: sFrom, to: range.to, bucket: '1d' }, { signal }).then((s) => {
+        const r = lossesRecovered(events_, s);
+        const p = el.querySelector('.incidents-reassure');
+        if (!r || !p) return;
+        p.textContent = t(`incidents.recovered.${r}`);
+        p.hidden = false;
+      }).catch(() => {}); // only a reassurance: the list stands without it
     }
     // network losses are one row per day; the rest stays one row per event, most recent first
     const items = groupNetwork(groupEpisodes(events_));
@@ -136,7 +148,8 @@ export async function render(root, ctx) {
     }
     const data = (g) => rows.map((r) => g.kinds.reduce((a, k) => a + (r.hours[k] ?? 0), 0));
     const names = Object.fromEntries([...GROUPS, ...NETWORK].map((g) => [g.key, t(`incidents.month.${g.key}`)]));
-    const cats = rows.map((r) => fmtMonthShort(r.month));
+    const cats = rows.map((r) => fmtMonth(r.month));
+    const axis = bucketAxis(rows.map((r) => r.month), '1mo');
     const parts = [];
     const draw = (id, groups, title, caption) => {
       if (!groups.some((g) => data(g).some((v) => v > 0))) return;
@@ -145,7 +158,7 @@ export async function render(root, ctx) {
       fig.setTable([t('incidents.month.col'), ...groups.map((g) => ({ label: names[g.key], unit: 'h', decimals: 1 }))],
         rows.map((r, i) => [cats[i], ...groups.map((g) => data(g)[i])]), rows.map((r) => r.month));
       const c = chart(fig.host, {
-        id, kind: 'category', unit: 'h', stacked: true, y: { min: 0, decimals: 1 }, x: { categories: cats },
+        id, kind: 'category', unit: 'h', stacked: true, y: { min: 0, decimals: 1 }, x: { categories: axis.categories, title: axis.title, label: (i) => cats[i] },
         ...(groups === NETWORK && { height: 'strip' }),
         series: groups.map((g) => ({ key: g.key, name: names[g.key], type: 'bar', entity: g.entity, data: data(g) })),
       });

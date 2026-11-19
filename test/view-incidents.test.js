@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dayStart } from '../public/js/format.js';
 import { groupNetwork } from '../public/js/incidents.js';
-import { hoursPerMonth, filterKinds } from '../public/js/views/incidents-model.js';
+import { hoursPerMonth, filterKinds, lossesRecovered } from '../public/js/views/incidents-model.js';
 
 const H = 3600e3;
 const ev = (kind, start, end, extra = {}) => ({ kind, start, end, ongoing: false, names: [], ...extra });
@@ -46,4 +46,15 @@ test('the kind filter keeps a day of internet losses in one group', () => {
   assert.deepEqual(filterKinds(events, ['gridCut']).map((e) => e.kind), ['gridCut']);
   assert.equal(filterKinds(events, []).length, 3);
   assert.equal(filterKinds(events, null).length, 3);
+});
+
+test('internet losses are reassuring only when the readings of those days came back', () => {
+  const d1 = dayStart('2026-11-10');
+  const d2 = dayStart('2026-11-11');
+  const series = { t: [d1, d2], coverage: [1, 0.95] };
+  const losses = [ev('network', d1 + 2 * H, d1 + 3 * H), ev('network', d2 + 5 * H, d2 + 9 * H)];
+  assert.equal(lossesRecovered(losses, series), 'all');
+  assert.equal(lossesRecovered(losses, { t: [d1, d2], coverage: [1, 0.4] }), 'partial');
+  assert.equal(lossesRecovered([ev('gridCut', d1, d1 + H)], series), null, 'no internet loss, nothing to say');
+  assert.equal(lossesRecovered(losses, { t: [], coverage: [] }), null);
 });
