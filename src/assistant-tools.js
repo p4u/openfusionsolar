@@ -82,30 +82,43 @@ const month = (inv) => (isDate(inv.period_from) && isDate(inv.period_to) && inv.
 const HIDDEN = new Set(['cups', 'contract_number', 'supplier_tax_id', 'group_id', 'edits', 'created_at', 'updated_at']);
 
 const cents = (v) => Math.round(v * 100) / 100;
-const add = (inv, cols) => cents(cols.reduce((s, c) => s + (inv[c] ?? 0), 0));
-// The bill's parts as Facturació shows them, so the model never adds amounts itself.
-const breakdown = (inv) => ({
-  energy: add(inv, ['energy_eur']), surplusDiscount: add(inv, ['surplus_eur']),
-  fixed: add(inv, ['power_eur', 'social_bonus_eur', 'meter_rent_eur']), taxes: add(inv, ['elec_tax_eur', 'vat_eur']),
-  other: add(inv, ['other_taxed_eur', 'other_exempt_eur']), total: inv.total_eur,
-  howToRead: 'energy already includes adjust_eur (adjustment services); fixed = contracted power + social bonus + meter rent; taxes = electricity tax + VAT; energy - surplusDiscount + fixed + taxes + other = total',
-});
+const BREAKDOWN_NOTE = 'Read the items out as they are, in this order: never merge, regroup or re-add them. energy already includes the adjustment services; surplusDiscount is already negative. The items add up to total (itemsSum).';
+
+// The bill as an itemised list the model reads out as given: each "other" line by its concept when the bill's lines
+// add up to its other charges, else one `other` item; the surplus discount as a negative amount.
+function breakdown(inv, lines = []) {
+  const otherCols = ['other_taxed_eur', 'other_exempt_eur'].filter((c) => inv[c] != null);
+  const otherEur = otherCols.reduce((s, c) => s + inv[c], 0);
+  const otherLines = lines.filter((l) => l.section === 'other' && !l.info && l.amount_eur != null);
+  const byLine = otherLines.length && Math.abs(otherLines.reduce((s, l) => s + l.amount_eur, 0) - otherEur) <= 0.02;
+  const items = [
+    ['energy', inv.energy_eur], ['power', inv.power_eur], ['socialBonus', inv.social_bonus_eur], ['meterRent', inv.meter_rent_eur],
+    ['electricityTax', inv.elec_tax_eur], ['vat', inv.vat_eur],
+  ].filter(([, v]) => v != null).map(([key, amount]) => ({ key, amount }));
+  if (byLine) items.push(...otherLines.map((l) => ({ key: 'other', concept: l.concept, amount: l.amount_eur })));
+  else if (otherCols.length) items.push({ key: 'other', amount: cents(otherEur) });
+  if (inv.surplus_eur != null) items.push({ key: 'surplusDiscount', amount: -Math.abs(inv.surplus_eur) });
+  return { items, itemsSum: cents(items.reduce((s, i) => s + i.amount, 0)), total: inv.total_eur, howToRead: BREAKDOWN_NOTE };
+}
 
 export function invoiceForModel(store, inv, today = localDay(Date.now())) {
   const fields = Object.fromEntries(Object.entries(inv).filter(([k]) => !HIDDEN.has(k)));
   const readings = store.invoiceReadings(inv.id);
+  const lines = store.invoiceLines(inv.id);
   return {
-    ...fields, cups_masked: maskCups(inv.cups), month: month(inv), breakdown: breakdown(inv),
-    lines: store.invoiceLines(inv.id).map((l) => pick(l, ['section', 'concept', 'period', 'quantity', 'unit', 'unit_price', 'amount_eur', 'info'])),
+    ...fields, cups_masked: maskCups(inv.cups), month: month(inv), breakdown: breakdown(inv, lines),
+    lines: lines.map((l) => pick(l, ['section', 'concept', 'period', 'quantity', 'unit', 'unit_price', 'amount_eur', 'info'])),
     readings: readings.map((r) => pick(r, ['kind', 'period', 'from_date', 'to_date', 'start_kwh', 'end_kwh', 'estimated'])),
     checks: checks(inv, { readings, today }).map((c) => ({ id: c.id, hard: c.hard, outcome: c.outcome })),
   };
 }
 
-const COMPARE_NOTE = 'Billed kWh are the supplier\'s hourly net balance; measured kWh come from the installation meter. verdict: ok (within 5 %), small (5-10 %), check (more), nodata (under 90 % of the days measured). estimateBill uses the bill\'s own prices, estimateEnv the configured ones.';
+const COMPARE_NOTE = 'Billed kWh are bought from the grid as the supplier counts them (its hourly net balance); measured kWh come from the installation meter. verdict: ok (within 5 %), small (5-10 %), check (more), nodata (under 90 % of the days measured). diffKwh = billed - measured kWh over the bill\'s days; diff.kwh is the euros the bill differs from the estimate at its own prices; daysWithData of days is the coverage. Only for ok call the difference normal; for small or check give diffKwh, diff.kwh, the days compared and the coverage, and call the supplier\'s hourly netting a possible cause, never a proven one. estimateBill uses the bill\'s own prices, estimateEnv the configured ones.';
+const SAVINGS_NOTE = 'These savings cover only this bill\'s days (period), never a month or a year: for a whole range call estimate_bill. avoided (electricity not bought) + surplusDiscount (the surplus discount with its taxes; surplusDiscountPrinted is the amount printed on the bill) = withoutSolar - the bill\'s total.';
+const noted = (c) => (c.savings ? { ...c, savings: { ...c.savings, howToRead: SAVINGS_NOTE } } : c);
 
 export function compareForModel(store, inv, prices) {
-  return { id: inv.id, month: month(inv), period: { from: inv.period_from, to: inv.period_to }, ...compareInvoice(store, inv, { prices }), howToRead: COMPARE_NOTE };
+  return { id: inv.id, month: month(inv), period: { from: inv.period_from, to: inv.period_to }, ...noted(compareInvoice(store, inv, { prices })), howToRead: COMPARE_NOTE };
 }
 
 const ENERGY_KEYS = ['key', 'from', 'to', 'pv_kwh', 'load_kwh', 'import_kwh', 'export_kwh', 'self_use_kwh', 'import_p1', 'import_p2', 'import_p3',
@@ -167,7 +180,10 @@ const TOOL_FNS = {
     const rows = store.days(from, to);
     const m = periodMoney(rows, config.prices);
     if (!m) fail('there is no measured data in that range');
-    return { from, to, days: n, daysWithData: rows.length, ...moneyOf(m), note: 'estimate at the configured prices, taxes included; the energy part is capped at zero per calendar month' };
+    return {
+      from, to, days: n, daysWithData: rows.length, ...moneyOf(m),
+      howToRead: `Estimate from the measured data at the configured prices, taxes included, for the whole range ${from} to ${to}; the energy part is capped at zero per calendar month. savings is what the installation saved over that whole range (withoutSolar - (bought - exportIncome)): use it for savings over a period, never one bill's savings.`,
+    };
   },
 
   list_invoices(args, { store, now }) {
@@ -204,7 +220,8 @@ const TOOL_FNS = {
   get_billing_summary(args, { store, config, now }) {
     allow(args, ['from', 'to']);
     const { from, to } = range(args, MAX_DAYS);
-    return billingSummary(store, { from, to, prices: config.prices ?? null, today: localDay(now()) });
+    const s = billingSummary(store, { from, to, prices: config.prices ?? null, today: localDay(now()) });
+    return { ...s, invoices: s.invoices.map((b) => ({ ...b, compare: noted(b.compare) })) };
   },
 
   get_incidents(args, { store, now }) {

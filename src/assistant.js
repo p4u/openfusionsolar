@@ -35,9 +35,14 @@ export function systemPrompt({ today, timeZone, lang, plantName }) {
     'How to answer:',
     '- Plain, short words for a household without technical knowledge. Explain any technical word in about five words (for example: contracted power = the most you can use at once).',
     `- Every figure must come from a tool result or an attached bill of this conversation turn, with its unit and period (for example: "in October 2026, 159 kWh"). Money in euros${lang === 'ca' ? ' with a decimal comma (59,15 €)' : ' (59.15 €)'}.`,
-    '- Do no arithmetic: sums, differences, percentages, savings and advice come already computed in the tool results (for the parts of a bill use its breakdown). Never state a value that no tool returned.',
+    '- Do no arithmetic: sums, differences, percentages, savings and advice come already computed in the tool results. Never state a value that no tool returned.',
+    '- For the parts of a bill, list its breakdown items as given, one per line, with their amounts: never merge, regroup or re-add them (the surplus discount is already negative).',
+    '- kWh on a bill and import_* values are electricity bought from the grid, not what the house used; what the house used is load_kwh (loadKwh). Say "bought" or "used" accordingly.',
+    '- Savings over a period (this year, this month, a range): call estimate_bill for that range and give its savings. A bill\'s savings cover only that bill\'s days; never give them as a month\'s or a year\'s savings.',
+    '- Contracted power questions (lowering it, what it would save): answer from the power card of get_billing_summary with its numbers (it needs only measured data), and say the peaks are 5-minute averages, so a short peak can be higher.',
     '- When data is missing, say you do not know and what would be needed (for example: the May bill is missing; it can be uploaded in Factures).',
-    '- Whenever two of them appear together, say which figure is measured (the installation meter), billed (the bill) or estimated (forecast with the configured prices). Billed and measured kWh differ a little because the supplier nets hour by hour: call that a normal difference, not an error.',
+    '- Whenever two of them appear together, say which figure is measured (the installation meter), billed (the bill) or estimated (forecast with the configured prices).',
+    '- Billed against measured kWh: only when the verdict is ok call the difference normal (the supplier nets hour by hour). When it is small or check, give the difference in kWh (diffKwh) and in euros (diff.kwh) when returned, the days compared and how many had measurements, and call hourly netting a possible cause, never a proven one.',
     '- Advice only from the cards of get_billing_summary, always with their caveat. No supplier recommendations, no legal or tax advice; for offers mention the CNMC comparator (comparador.cnmc.gob.es).',
     '- Prefer show_chart when the question is about evolution or comparison; one chart per answer unless asked for more.',
     'Safety:',
@@ -60,7 +65,8 @@ function historyMessage(m) {
 
 const invoiceBlock = (inv) => ({ type: 'invoice', id: inv.id, period: { from: inv.period_from, to: inv.period_to }, total: inv.total_eur, status: inv.status });
 
-export function createAssistant({ store, llm, invoices = null, config = {}, model, now = Date.now, log = () => {} }) {
+// pingMs: a quiet stream gets a ping line this often, so a proxy (nginx: 60 s by default) does not close it.
+export function createAssistant({ store, llm, invoices = null, config = {}, model, now = Date.now, log = () => {}, pingMs = 15e3 }) {
   const short = createLimiter({ perIp: 20, global: 20, windowMs: 5 * 60e3, now });
   const daily = createLimiter({ perIp: 200, global: 200, windowMs: 24 * 3600e3, now });
   let inFlight = false; // one turn for the server: one password, one household
@@ -183,14 +189,23 @@ export function createAssistant({ store, llm, invoices = null, config = {}, mode
         daily.fail('chat');
         inFlight = true;
         return [200, async (emit, signal) => {
+          let timer = null;
+          const arm = () => {
+            clearTimeout(timer);
+            if (!signal.aborted) timer = setTimeout(() => { emit({ type: 'ping' }); arm(); }, pingMs);
+          };
+          const send = (obj) => { emit(obj); arm(); };
+          signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
+          arm();
           try {
-            await turn(body, emit, signal);
+            await turn(body, send, signal);
           } catch (err) {
             const code = err instanceof LlmError && LLM_CODES.has(err.code) ? err.code : 'internal';
             log(`assistant error ${code}`);
             if (code === 'internal' && !(err instanceof LlmError)) log(`assistant internal: ${err.message}`);
             emit({ type: 'error', code });
           } finally {
+            clearTimeout(timer);
             inFlight = false;
           }
         }];
