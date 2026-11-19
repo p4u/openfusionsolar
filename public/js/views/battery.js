@@ -8,7 +8,7 @@ import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { defaultMode } from '../buckets.js';
 import { figure, chart } from '../charts.js';
-import { gapBands } from '../chart-data.js';
+import { gapBands, bucketAxis } from '../chart-data.js';
 import { BUCKET_MS, clampFrom, seriesBucket, energyBucket, cycles, roundTrip, daysAtMin, hoursBelow, reserveMarks } from './battery-model.js';
 
 register(dict);
@@ -28,8 +28,8 @@ const xOf = (r) => ({
   label: (i) => (r.bucket === '1d' ? fmtDate(r.t[i], { weekday: 'short', day: 'numeric', month: 'short' }) : fmtDateTime(r.t[i])),
 });
 const stamp = (r, i) => (r.bucket === '1d' ? fmtDate(r.t[i]) : fmtDateTime(r.t[i]));
-// Energy buckets: category labels per bucket kind.
-const bucketLabel = (bucket, key) => (bucket === '1d' ? fmtDate(key) : bucket === '1mo' ? fmtMonthShort(key) : key);
+// Energy buckets: full label per bucket kind (tooltips and the table); the axis gets short ones from bucketAxis.
+const bucketLabel = (bucket, key) => (bucket === '1d' ? fmtDate(key, { weekday: 'short', day: 'numeric', month: 'short' }) : bucket === '1mo' ? fmtMonthShort(key) : key);
 
 function nowCard(status) {
   const b = status.battery ?? {};
@@ -39,18 +39,30 @@ function nowCard(status) {
   const usable = soc != null && b.capacityKwh != null ? (Math.max(soc - (b.minPct ?? 0), 0) / 100) * b.capacityKwh : null;
   const state = bat == null ? '' : bat > 0.01 ? t('battery.now.charging', { kw: kw(bat) }) : bat < -0.01 ? t('battery.now.giving', { kw: kw(-bat) }) : t('battery.now.idle');
   const below = soc != null && b.reservePct != null && soc < b.reservePct ? t('battery.now.belowReserve', { pct: b.reservePct }) : '';
-  const mark = (v) => (v == null ? '' : `<i class="battery-mark" style="left:${Math.min(Math.max(v, 0), 100)}%"></i>`);
+  const at = (v) => Math.min(Math.max(v, 0), 100);
+  const mark = (v) => (v == null ? '' : `<i class="battery-mark" style="left:${at(v)}%"></i>`);
+  // each mark on the bar is named under it; near an edge the name aligns to that edge
+  const marks = [[b.minPct, t('battery.ref.min', { v: b.minPct })], [b.reservePct, t('battery.ref.reserve', { v: b.reservePct })]]
+    .filter(([v]) => v != null).sort((x, y) => x[0] - y[0]);
+  const close = marks.length === 2 && marks[1][0] - marks[0][0] < 30;
+  const names = marks.map(([v, text], i) => `<span class="battery-mark-name${v < 15 ? ' at-start' : v > 85 ? ' at-end' : ''}${close && i === 1 ? ' second' : ''}" style="left:${at(v)}%">${esc(text)}</span>`).join('');
+  // how long the current flow would take to reach the minimum or a full battery
+  const hours = bat == null || soc == null || b.capacityKwh == null ? null
+    : bat < -0.05 ? usable / -bat : bat > 0.05 ? ((100 - soc) / 100) * b.capacityKwh / bat : null;
+  const eta = hours == null || hours > 48 ? '' : t(bat < 0 ? 'battery.now.toMin' : 'battery.now.toFull', { h: nf(1).format(hours) });
   return `<div class="battery-now">
     <div class="battery-now-main">
       <span class="tile-label">${icon('battery-medium', { size: 16 })}<span>${esc(t('battery.now.charge'))}</span></span>
       <span class="battery-soc num">${esc(pct(soc))}</span>
-      <div class="battery-bar" role="img" aria-label="${esc(t('battery.now.charge'))}: ${esc(pct(soc))}"><span style="width:${soc ?? 0}%"></span>${mark(b.minPct)}${mark(b.reservePct)}</div>
+      <div class="battery-bar" role="img" aria-label="${esc([`${t('battery.now.charge')}: ${pct(soc)}`, ...marks.map(([, text]) => text)].join(', '))}"><span style="width:${soc ?? 0}%"></span>${mark(b.minPct)}${mark(b.reservePct)}</div>
+      ${names ? `<div class="battery-mark-names${close ? ' two-rows' : ''}" aria-hidden="true">${names}</div>` : ''}
     </div>
     <div class="battery-now-text">
-      <p>${esc(soc == null ? t('battery.now.unknown') : state)}</p>
+      <p>${esc(soc == null ? t('battery.now.unknown') : state)}${eta ? ` ${esc(eta)}` : ''}</p>
       ${usable == null ? '' : `<p class="hint">${esc(t('battery.now.usable', { kwh: kwh(usable) }))}</p>`}
       ${below ? `<p class="hint">${esc(below)}</p>` : ''}
-    </div></div>`;
+    </div>
+    <dl class="battery-today" data-block="today"></dl></div>`;
 }
 
 function limitsCard(status) {
@@ -94,6 +106,15 @@ export async function render(root, ctx) {
       <div class="card" data-block="voltage"></div></details>`;
   const q = (name) => root.querySelector(`[data-block="${name}"]`);
   const bar = renderRangeBar(root.querySelector('.battery-range'), { range, ctx: rctx, mode, onChange: (p) => ctx.setParams(p) });
+
+  // today's totals fill the "right now" card
+  getEnergy({ from: ctx.today, to: ctx.today, bucket: '1d' }, { signal }).then((d) => {
+    const el = root.querySelector('[data-block="today"]');
+    const tt = d.total ?? {};
+    if (!el || (tt.charge_kwh == null && tt.discharge_kwh == null)) return;
+    el.innerHTML = `<div><dt>${esc(t('battery.today.charged'))}</dt><dd class="num">${esc(kwh(tt.charge_kwh))}</dd></div>
+      <div><dt>${esc(t('battery.today.given'))}</dt><dd class="num">${esc(kwh(tt.discharge_kwh))}</dd></div>`;
+  }).catch(() => {}); // the card reads fine without them
 
   // shared requests, made once and only when a block needs them
   const sBucket = power ? seriesBucket(range) : '1d';
@@ -197,10 +218,11 @@ export async function render(root, ctx) {
       return;
     }
     const cats = e.buckets.map((k) => bucketLabel(e.bucket, k.key));
+    const axis = bucketAxis(e.buckets.map((k) => k.key), e.bucket);
     draw(el, {
       title: t('battery.flow.title'), caption, csv: 'battery-flow',
       spec: {
-        id: 'battery-flow-kwh', kind: 'category', unit: 'kWh', x: { categories: cats }, y: { decimals: 1 }, stacked: true,
+        id: 'battery-flow-kwh', kind: 'category', unit: 'kWh', x: { categories: axis.categories, title: axis.title, label: (i) => cats[i] }, y: { decimals: 1 }, stacked: true,
         coverage: e.buckets.map((k) => k.coverage), provisional: e.buckets.map((k) => k.provisional),
         series: [
           { key: 'charge', name: t('battery.flow.charged'), type: 'bar', entity: 'battery', data: e.buckets.map((k) => k.charge_kwh) },

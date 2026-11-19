@@ -6,6 +6,19 @@
 .battery-bar > span { display: block; height: 100%; border-radius: var(--r-pill); background: var(--chart-battery); }
 .battery-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); }
 .battery-now-text p { margin: 0; }
+.battery-mark-names { position: relative; height: 1.5em; color: var(--muted); font-size: var(--fs-caption); }
+.battery-mark-names.two-rows { height: 3em; }
+.battery-mark-name { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.battery-mark-name.at-start { transform: translateX(-1px); }
+.battery-mark-name.at-end { transform: translateX(calc(-100% + 1px)); }
+.battery-mark-name.second { top: 1.5em; }
+/* today's totals sit at the foot of the card, so it is not half empty next to the limits */
+.card:has(> .battery-now) { display: flex; flex-direction: column; }
+.battery-now { flex: 1 1 auto; }
+.battery-today { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-base); margin: auto 0 0; padding-top: var(--sp-base); border-top: 1px solid var(--hairline); }
+.battery-today:empty { display: none; }
+.battery-today dt { color: var(--muted); font-size: var(--fs-caption); }
+.battery-today dd { margin: 0; color: var(--ink); font-size: var(--fs-title-sm); font-weight: 500; }
 /* limits: label left, value and its source right, one row each (the same pattern as the Now battery card) */
 .battery-limits { margin: var(--sp-xs) 0 0; }
 .battery-limit { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 var(--sp-base); padding-block: var(--sp-xs); border-top: 1px solid var(--hairline); }
