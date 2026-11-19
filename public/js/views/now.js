@@ -8,7 +8,7 @@ import { eventItem, groupNetwork, groupEpisodes, summarize } from '../incidents.
 import { addDays } from '../buckets.js';
 import { figure, chart } from '../charts.js';
 import { gapBands, eventBands } from '../chart-data.js';
-import { headline, flow, autonomyHours, reserveNote } from './now-model.js';
+import { headline, flow, autonomyHours, reserveNote, todayTiles } from './now-model.js';
 
 register(dict);
 
@@ -92,6 +92,8 @@ function flowCard(status) {
 }
 
 // ---------- battery card ----------
+const hoursFloor = (b) => (b.minPct ? t('now.bat.autonomyFloor', { min: b.minPct }) : '');
+
 function batteryCard(status) {
   const rt = status.realtime;
   const b = status.battery ?? {};
@@ -101,12 +103,12 @@ function batteryCard(status) {
   let state = t('now.bat.idle');
   if (charge > BAT_ACTIVE_KW) state = t((rt.grid_kw ?? 0) > BAT_ACTIVE_KW && (rt.pv_kw ?? 0) < charge ? 'now.bat.chargingGrid' : 'now.bat.chargingSun', { v: kw(charge) });
   else if (give > BAT_ACTIVE_KW) state = t('now.bat.giving', { v: kw(give) });
+  // one sentence on the card; why the grid stops short of the reserve goes in the detail below
   const note = reserveNote(soc, b);
-  if (note) state += ` ${t(`now.bat.reserve.${note.key}`, note.vars)}`;
+  if (note) state += ` ${t('now.bat.reserve.plain', note.vars)}`;
+  const why = [note && note.key !== 'plain' && t(`now.bat.reserve.${note.key}`, note.vars), hoursFloor(b)].filter(Boolean);
   const hours = autonomyHours(soc, b, rt?.load_kw);
-  const autonomy = hours == null ? ''
-    : hours === 0 ? t('now.bat.autonomyNone')
-      : `${t('now.bat.autonomy', { hours: duration(hours * 3600e3) })}${b.minPct ? ` ${t('now.bat.autonomyFloor', { min: b.minPct })}` : ''}`;
+  const autonomy = hours == null ? '' : hours === 0 ? t('now.bat.autonomyNone') : t('now.bat.autonomy', { hours: duration(hours * 3600e3) });
   const limits = [
     ['capacity', 'capacityKwh', b.capacityKwh != null && kwh(b.capacityKwh, 1), ''],
     ['minPct', 'minPct', b.minPct != null && pct(b.minPct), ''],
@@ -115,14 +117,18 @@ function batteryCard(status) {
     ['maxCharge', 'maxChargeKw', b.maxChargeKw != null && kw(b.maxChargeKw), ''],
     ['maxDischarge', 'maxDischargeKw', b.maxDischargeKw != null && kw(b.maxDischargeKw), ''],
   ].filter((r) => r[2]);
-  const bar = soc == null ? '' : `<div class="now-soc-bar" role="img" aria-label="${esc(pct(soc))}"><span class="now-soc-fill" style="width:${Math.min(Math.max(soc, 0), 100)}%"></span>${b.reservePct == null ? '' : `<span class="now-soc-reserve" style="left:${b.reservePct}%"></span>`}</div>`;
+  const reserveName = b.reservePct == null ? '' : t('now.bat.reserveMark', { v: b.reservePct });
+  const bar = soc == null ? '' : `<div class="now-soc-bar" role="img" aria-label="${esc([pct(soc), reserveName].filter(Boolean).join(', '))}"><span class="now-soc-fill" style="width:${Math.min(Math.max(soc, 0), 100)}%"></span>${b.reservePct == null ? '' : `<span class="now-soc-reserve" style="left:${b.reservePct}%"></span>`}</div>
+    ${reserveName ? `<p class="now-soc-mark${b.reservePct > 80 ? ' at-end' : b.reservePct < 20 ? ' at-start' : ''}" style="--at:${b.reservePct}%" aria-hidden="true">${esc(reserveName)}</p>` : ''}`;
   return `<section class="card span-6 now-bat" aria-labelledby="now-bat-title">
     <div class="card-head"><h2 class="card-title" id="now-bat-title">${esc(t('now.bat.title'))}</h2></div>
     <p class="now-soc">${esc(pct(soc))}</p>${bar}
     <p class="now-bat-state">${esc(soc == null ? t('now.bat.noReading') : state)}</p>
     ${autonomy ? `<p class="now-bat-autonomy">${esc(autonomy)}</p>` : ''}
-    ${limits.length ? `<h3 class="now-limits-title">${esc(t('now.bat.limits'))}</h3><dl class="now-limits">${limits.map(([k, , v, extra]) => `<div class="now-limit"><dt>${esc(t(`now.bat.${k}`))}</dt>
-      <dd><span class="num">${esc(v)}</span>${extra ? ` <span class="hint">${esc(extra)}</span>` : ''}</dd></div>`).join('')}</dl>` : ''}
+    ${why.length || limits.length ? `<details class="disclosure now-bat-more"><summary><span>${esc(t('now.bat.more'))}</span>${icon('chevron-down', { size: 16 })}</summary>
+      ${why.map((w) => `<p class="hint">${esc(w)}</p>`).join('')}
+      ${limits.length ? `<dl class="now-limits">${limits.map(([k, , v, extra]) => `<div class="now-limit"><dt>${esc(t(`now.bat.${k}`))}</dt>
+      <dd><span class="num">${esc(v)}</span>${extra ? ` <span class="hint">${esc(extra)}</span>` : ''}</dd></div>`).join('')}</dl>` : ''}</details>` : ''}
   </section>`;
 }
 
@@ -132,7 +138,7 @@ function heroFacts(status, month, year) {
   const facts = [
     status.pricesConfigured && month?.money && { icon: 'euro', label: t('now.hero.monthSavings'), value: eur(month.money.savings) },
     status.pricesConfigured && year?.money && { icon: 'euro', label: t('now.hero.yearSavings'), value: eur(year.money.savings) },
-    year?.days && { icon: 'sun', label: t('now.hero.yearProduced'), value: kwh(year.pv_kwh, 0) },
+    year?.days && { icon: 'sun', label: t('now.hero.yearProduced'), value: kwh(year.pv_kwh) },
   ].filter(Boolean);
   return facts.length ? `<section class="now-hero-facts" aria-label="${esc(t('now.hero.label'))}">${ledger(facts)}</section>` : '';
 }
@@ -164,35 +170,10 @@ async function fillTop(el, ctx, shared) {
   ctx.fresh.textContent = status.lastSampleTs ? t('now.dataFrom', { time: fmtTime(status.lastSampleTs) }) : '';
 }
 
-function tiles(total, st) {
-  const load = total.load_kwh;
-  // before any sun today the share is not 0 % but not known yet
-  const noSun = !(total.pv_kwh > 0.05);
-  const self = !noSun && load && total.self_use_kwh != null ? Math.min(1, total.self_use_kwh / load) * 100 : null;
-  const out = [
-    { icon: 'sun', label: t('now.tiles.produced'), value: kwh(total.pv_kwh) },
-    { icon: 'house', label: t('now.tiles.consumed'), value: kwh(load) },
-    { icon: 'utility-pole', label: t('now.tiles.bought'), value: kwh(total.import_kwh) },
-    { icon: 'zap', label: t('now.tiles.sold'), value: kwh(total.export_kwh) },
-    { icon: 'battery-charging', label: t('now.tiles.stored'), value: kwh(total.charge_kwh), hint: t('now.tiles.storedHint') },
-    { icon: 'battery-medium', label: t('now.tiles.taken'), value: kwh(total.discharge_kwh), hint: t('now.tiles.takenHint') },
-    { icon: 'gauge', label: t('now.tiles.self'), value: self == null ? null : pct(self), hint: t(noSun ? 'now.tiles.selfNoSun' : 'now.tiles.selfHint') },
-  ];
-  const m = total.money;
-  if (!st.pricesConfigured) out.push({ icon: 'euro', label: t('now.tiles.cost'), value: null, hint: t('now.tiles.noTariff') });
-  else if (m) {
-    out.push(m.energy < 0
-      ? { icon: 'euro', label: t('now.tiles.earned'), value: eur(-m.energy), hint: t('now.tiles.earnedHint') }
-      : { icon: 'euro', label: t('now.tiles.cost'), value: eur(m.energy), hint: t('now.tiles.costHint') });
-    out.push({ icon: 'check', label: t('now.tiles.savings'), value: eur(m.savings), hint: t(m.savings < 0 ? 'now.tiles.savingsNegative' : 'now.tiles.savingsHint'), status: m.savings < 0 ? undefined : 'ok' });
-  }
-  return out;
-}
-
 async function fillTiles(el, ctx, shared) {
   const day = shared.status?.today ?? dayOf(Date.now());
   const e = await getEnergy({ from: day, to: day, bucket: '1d' }, { signal: ctx.signal });
-  el.innerHTML = e.total.days ? ledger(tiles(e.total, shared.status ?? {})) : emptyState({ title: t('now.tiles.none') });
+  el.innerHTML = e.total.days ? ledger(todayTiles(e.total, shared.status ?? {})) : emptyState({ title: t('now.tiles.none') });
 }
 
 async function fillChart(el, ctx, shared, state) {

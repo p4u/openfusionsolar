@@ -1,5 +1,6 @@
 // Pure helpers of the Now view (no DOM): the status headline, the flow links and the battery autonomy.
-import { fmtTime, duration } from '../format.js';
+import { t } from '../i18n.js';
+import { fmtTime, duration, kwh, pct, eur } from '../format.js';
 import { eventTitle } from '../incidents.js';
 
 export const STALE_MS = 20 * 60e3;
@@ -73,4 +74,31 @@ export function autonomyHours(soc, battery, loadKw) {
   if (soc == null || battery?.capacityKwh == null) return null;
   const usable = (Math.max(soc - (battery.minPct ?? 0), 0) / 100) * battery.capacityKwh;
   return usable < 0.1 ? 0 : usable / Math.max(loadKw ?? 0.3, 0.15);
+}
+
+// The "today so far" tiles: { icon, label, value, hint, status } for ui.ledger.
+export function todayTiles(total, st) {
+  const load = total.load_kwh;
+  // before any sun today the share is not 0 % but not known yet
+  const noSun = !(total.pv_kwh > 0.05);
+  const self = !noSun && load && total.self_use_kwh != null ? Math.min(1, total.self_use_kwh / load) * 100 : null;
+  const out = [
+    { icon: 'sun', label: t('now.tiles.produced'), value: kwh(total.pv_kwh) },
+    { icon: 'house', label: t('now.tiles.consumed'), value: kwh(load) },
+    { icon: 'utility-pole', label: t('now.tiles.bought'), value: kwh(total.import_kwh) },
+    { icon: 'zap', label: t('now.tiles.sold'), value: kwh(total.export_kwh) },
+    { icon: 'battery-charging', label: t('now.tiles.stored'), value: kwh(total.charge_kwh), hint: t('now.tiles.storedHint') },
+    { icon: 'battery-medium', label: t('now.tiles.taken'), value: kwh(total.discharge_kwh), hint: t('now.tiles.takenHint') },
+    { icon: 'gauge', label: t('now.tiles.self'), value: self == null ? null : pct(self), hint: t(noSun ? 'now.tiles.selfNoSun' : 'now.tiles.selfHint') },
+  ];
+  const m = total.money;
+  if (!st.pricesConfigured) out.push({ icon: 'euro', label: t('now.tiles.cost'), value: null, hint: t('now.tiles.noTariff') });
+  else if (m) {
+    out.push(m.energy < 0
+      ? { icon: 'euro', label: t('now.tiles.earned'), value: eur(-m.energy), hint: t('now.tiles.earnedHint') }
+      : { icon: 'euro', label: t('now.tiles.cost'), value: eur(m.energy), hint: t('now.tiles.costHint') });
+    // before any sun today there is nothing saved yet: no tile; a negative figure never gets a check icon
+    if (!noSun) out.push({ icon: m.savings < 0 ? 'euro' : 'check', label: t('now.tiles.savings'), value: eur(m.savings), hint: t(m.savings < 0 ? 'now.tiles.savingsNegative' : 'now.tiles.savingsHint'), status: m.savings < 0 ? undefined : 'ok' });
+  }
+  return out;
 }

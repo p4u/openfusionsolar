@@ -42,6 +42,15 @@
 .now-soc-fill { display: block; height: 100%; border-radius: 5px; background: var(--chart-battery); }
 .now-soc-reserve { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); }
 .now-bat-autonomy { margin-top: var(--sp-xs); }
+/* the reserve tick on the bar, named under it */
+.now-soc-mark { width: max-content; margin: calc(-1 * var(--sp-sm)) 0 var(--sp-sm) var(--at); transform: translateX(-50%); color: var(--muted); font-size: var(--fs-caption); }
+.now-soc-mark.at-start { margin-left: 0; transform: none; }
+.now-soc-mark.at-end { margin-left: auto; transform: none; }
+.now-bat-more { margin-top: var(--sp-sm); }
+.now-bat-more .hint { margin: 0 0 var(--sp-xs); }
+/* the flow diagram sits in the middle of its card when the battery card next to it is taller */
+.now-flow { display: flex; flex-direction: column; }
+.now-flow-svg { margin-block: auto; }
 .now-limits-title { margin-top: var(--sp-lg); font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
 .now-limits { margin-top: var(--sp-xs); }
 .now-limit { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 var(--sp-base); padding-block: var(--sp-xs); border-top: 1px solid var(--hairline); }

@@ -91,3 +91,17 @@ test('every headline has a short title and a sentence in both languages', () => 
     }
   }
 });
+
+test('before any sun today there is no savings tile, and a negative figure never gets a check icon', async () => {
+  const { todayTiles } = await import('../public/js/views/now-model.js');
+  const night = { pv_kwh: 0, load_kwh: 2, import_kwh: 2, export_kwh: 0, money: { energy: 0.46, savings: -0.46 } };
+  const tiles = todayTiles(night, { pricesConfigured: true });
+  assert.equal(tiles.find((x) => x.icon === 'check'), undefined);
+  assert.equal(tiles.filter((x) => x.icon === 'euro').length, 1, 'only the cost tile');
+  const day = { ...night, pv_kwh: 3, self_use_kwh: 1 };
+  const neg = todayTiles(day, { pricesConfigured: true }).at(-1);
+  assert.equal(neg.icon, 'euro', 'negative savings: neutral icon');
+  assert.equal(neg.status, undefined);
+  const pos = todayTiles({ ...day, money: { energy: 0.2, savings: 0.8 } }, { pricesConfigured: true }).at(-1);
+  assert.deepEqual([pos.icon, pos.status], ['check', 'ok']);
+});
