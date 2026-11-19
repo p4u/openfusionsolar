@@ -127,7 +127,7 @@ function billModel(bills, id) {
 
   if (id === 'bill_breakdown') {
     const taxes = col((b) => round2(b.parts.taxes + b.parts.other));
-    return model(t('billing.chart.breakdown'), t('billing.chart.breakdownCaption', { total: eur(sum(sorted.map((b) => b.total))), n: sorted.length }),
+    return model(t('billing.chart.breakdown'), t(sorted.length === 1 ? 'billing.chart.breakdownCaptionOne' : 'billing.chart.breakdownCaption', { total: eur(sum(sorted.map((b) => b.total))), n: sorted.length }),
       cols(['billing.col.energy', '€'], ['billing.col.fixed', '€'], ['billing.col.taxes', '€'], ['billing.col.surplus', '€'], ['billing.col.total', '€']),
       rows((b) => b.parts.energy, (b) => b.parts.fixed, (b) => round2(b.parts.taxes + b.parts.other), (b) => b.parts.surplus, (b) => b.total),
       { stacked: true, y: { decimals: 0 }, series: [
@@ -182,8 +182,8 @@ function billModel(bills, id) {
     const without = col((b) => c(b).savings?.withoutSolar ?? null);
     const s = (b) => c(b).savings;
     return model(t('billing.chart.savings'), [t('billing.chart.savingsCaption'), notCompared].filter(Boolean).join(' '),
-      cols(['billing.col.without', '€'], ['billing.col.paid', '€'], ['billing.col.avoided', '€'], ['billing.col.surplus', '€'], ['billing.col.other', '€']),
-      rows((b) => s(b)?.withoutSolar ?? null, (b) => b.total, (b) => s(b)?.avoided ?? null, (b) => s(b)?.surplusDiscount ?? null, (b) => s(b)?.other ?? null),
+      cols(['billing.col.without', '€'], ['billing.col.paid', '€'], ['billing.col.avoided', '€'], ['billing.col.surplus', '€']),
+      rows((b) => s(b)?.withoutSolar ?? null, (b) => b.total, (b) => s(b)?.avoided ?? null, (b) => s(b)?.surplusDiscount ?? null),
       { stacked: false, series: [
         bar('without', t('billing.s.without'), 'home', without),
         bar('paid', t('billing.s.paid'), 'grid', col((b) => b.total)),

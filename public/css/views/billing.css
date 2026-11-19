@@ -16,7 +16,7 @@
 .billing-seg-muted { background: var(--muted); }
 .billing-seg-home { background: var(--chart-home); }
 .billing-seg-labels { margin-top: var(--sp-xs); column-gap: var(--sp-sm); color: var(--ink); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
-.billing-seg-labels > span { flex-basis: 0; min-width: min-content; white-space: nowrap; }
+.billing-seg-labels > span { flex-basis: 0; min-width: 0; overflow-wrap: anywhere; } /* wraps instead of widening the page on a phone */
 .billing-seg-labels > span:last-child:not(:first-child) { text-align: right; }
 .billing-seg-labels > span:empty { min-width: 0; }
 .billing-seg-aside { display: flex; flex-wrap: wrap; gap: var(--sp-xxs) var(--sp-base); margin: var(--sp-xs) 0 0; color: var(--ink); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }

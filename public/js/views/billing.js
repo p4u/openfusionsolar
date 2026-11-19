@@ -9,7 +9,7 @@ import { addDays, addMonths } from '../buckets.js';
 import { eur, kwh, nf, pct, fmtDate, fmtMonth, fmtMonthShort } from '../format.js';
 import { presetModel, drawModel } from '../chart-presets.js';
 import { shareLabels } from './energy-model.js';
-import { statusSentence, breakdownSegments, adviceView, reconRows, savingsSplit } from './billing-model.js';
+import { statusSentence, breakdownSegments, adviceView, reconRows, savingsSplit, fixedShare, adviceNote } from './billing-model.js';
 import { render as renderForecast } from './bill.js';
 
 register(dict);
@@ -49,19 +49,19 @@ export async function render(root, ctx) {
     const shown = shareLabels(segs.map((s) => ({ ...s, v: s.pct, label: `billing.seg.${s.key}` })));
     const labels = shown.map((p) => esc(t(p.label, { pct: p.v })));
     const aside = shown.map((p, i) => (p.inline ? '' : `<span><i class="billing-seg-key billing-seg-${p.entity}"></i>${labels[i]}</span>`)).join('');
-    const fixedShare = segs.filter((s) => s.key === 'fixed' || s.key === 'other').reduce((a, s) => a + s.pct, 0);
+    const fixed = fixedShare(summary.invoices);
     return `<section class="card billing-seg-card"><h2 class="card-title">${esc(t('billing.seg.title'))}</h2>
       <div class="billing-seg" role="img" aria-label="${labels.join(', ')}">${shown.map((p) => `<span class="billing-seg-${p.entity}" style="flex-grow:${p.v}"></span>`).join('')}</div>
       <div class="billing-seg-labels" aria-hidden="true">${shown.map((p, i) => `<span style="flex-grow:${p.v}">${p.inline ? labels[i] : ''}</span>`).join('')}</div>
       ${aside ? `<p class="billing-seg-aside" aria-hidden="true">${aside}</p>` : ''}
-      <p class="hint">${esc(t('billing.seg.zero', { pct: nf(0).format(fixedShare) }))}</p>
+      ${fixed == null ? '' : `<p class="hint">${esc(t('billing.seg.zero', { pct: nf(0).format(fixed) }))}</p>`}
       <details class="disclosure"><summary><span>${esc(t('billing.seg.explain'))}</span>${icon('chevron-down', { size: 16 })}</summary>
         <ul class="billing-explain">${SEG_KEYS.map((k) => `<li>${esc(t(`billing.seg.${k}Text`))}</li>`).join('')}</ul></details></section>`;
   }
 
   function recon(summary) {
     const rows = reconRows(summary.invoices);
-    const reason = (r) => (r.reason == null ? '' : t(`billing.recon.${r.reason}`, { eur: eur(r.reasonEur) }));
+    const reason = (r) => (r.reasonKey == null ? '' : t(r.reasonKey, { eur: eur(Math.abs(r.reasonEur ?? 0)) }));
     const td = (label, html, cls = '') => `<td${cls ? ` class="${cls}"` : ''} data-label="${esc(label)}">${html}</td>`;
     const body = rows.map((r) => `<tr>
       <th scope="row"><span>${esc(fmtMonth(r.month))}</span><span class="hint">${esc(`${fmtDate(r.period.from)} - ${fmtDate(r.period.to)}`)}</span></th>
@@ -79,7 +79,7 @@ export async function render(root, ctx) {
 
   function advice(summary) {
     const cards = summary.advice.map(adviceView);
-    const notEnough = cards.length === 1 && cards[0].id === 'data';
+    const note = adviceNote(summary.advice);
     const card = (a) => `<article class="card billing-advice billing-advice-${esc(a.state)}">
       <h3 class="card-title">${esc(a.title)}</h3>
       <p class="billing-advice-text">${esc(a.text)}</p>
@@ -89,7 +89,7 @@ export async function render(root, ctx) {
       <p class="hint"><strong>${esc(t('billing.advice.caveat'))}.</strong> ${esc(a.caveat)}</p>
       ${aiOn ? askLink(ask(t('billing.ask.q', { title: a.title }))) : ''}</article>`;
     return `<section class="billing-advice-block"><h2 class="section-title">${esc(t('billing.advice.title'))}</h2>
-      ${notEnough ? `<p class="hint">${esc(t('billing.advice.notEnough'))}</p>` : ''}
+      ${note ? `<p class="hint">${esc(t(note))}</p>` : ''}
       <div class="billing-advice-grid">${cards.map(card).join('')}</div></section>`;
   }
 
@@ -97,8 +97,8 @@ export async function render(root, ctx) {
     const { tiles: tl, crossTiles: x } = summary;
     const top = ledger([
       { icon: 'euro', label: t('billing.tile.total'), value: eur(tl.total), title: t('billing.tile.totalHint') },
-      { icon: 'calendar', label: t('billing.tile.average'), value: eur(tl.average) },
-      { icon: 'utility-pole', label: t('billing.tile.price'), value: tl.pricePerKwh == null ? null : `${nf(3).format(tl.pricePerKwh)} €/kWh`, title: t('billing.tile.priceHint') },
+      ...(tl.bills > 1 ? [{ icon: 'calendar', label: t('billing.tile.average'), value: eur(tl.average) }] : []), // one bill: the average is the total
+      { icon: 'utility-pole', label: t('billing.tile.price'), value: tl.pricePerKwh == null ? null : `${nf(3).format(tl.pricePerKwh)} €/kWh`, title: t('billing.tile.priceHint'), hint: t('billing.tile.priceNote') },
       { icon: 'zap', label: t('billing.tile.surplus'), value: eur(tl.surplusDiscount), title: t('billing.tile.surplusHint') },
       { icon: 'calendar', label: t('billing.tile.bills'), value: t('billing.tile.billsValue', { n: tl.bills, m: tl.months }) },
     ]);
@@ -119,7 +119,7 @@ export async function render(root, ctx) {
     const last = [...summary.invoices].sort((a, b) => (a.period.to < b.period.to ? -1 : 1)).at(-1);
     const details = [
       summary.missing.length ? t('billing.missing', { list: summary.missing.map(fmtMonthShort).join(', ') }) : '',
-      summary.review.length ? t('billing.review', { n: summary.review.length }) : '',
+      summary.review.length ? t(summary.review.length === 1 ? 'billing.reviewOne' : 'billing.review', { n: summary.review.length }) : '',
     ].filter(Boolean);
     const split = savingsSplit(summary.invoices);
     el.innerHTML = `${statusLine({ state: STATE[last.compare.verdict] ?? 'info', title: statusSentence(summary, getLang()), details })}
@@ -139,7 +139,7 @@ export async function render(root, ctx) {
         drawn.push({ destroy: () => { h.destroy(); card.remove(); } });
         if (id === 'savings' && split.bills) {
           card.insertAdjacentHTML('beforeend', `<details class="disclosure billing-split"><summary><span>${esc(t('billing.savings.explain'))}</span>${icon('chevron-down', { size: 16 })}</summary>
-          <p>${esc(t('billing.savings.text', { saved: eur(split.saved), avoided: eur(split.avoided), surplus: eur(split.surplus), other: eur(split.other) }))}</p></details>`);
+          <p>${esc(t(split.printed == null ? 'billing.savings.text' : 'billing.savings.textPrinted', { saved: eur(split.saved), avoided: eur(split.avoided), surplus: eur(split.surplus), printed: eur(split.printed) }))}</p></details>`);
         }
       }
     }

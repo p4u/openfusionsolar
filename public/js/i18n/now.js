@@ -34,8 +34,8 @@ export default {
     'now.head.seeIncidents': 'See the incidents',
     'now.backfill': 'Downloading history: {done} of {total} days',
     'now.authPaused': 'Login to FusionSolar paused until {time} after a failed attempt. The data already stored is safe.',
-    'now.hero.monthSavings': 'Saved this month',
-    'now.hero.yearSavings': 'Saved this year',
+    'now.hero.monthSavings': 'Saved this month, from the measurements',
+    'now.hero.yearSavings': 'Saved this year, from the measurements',
     'now.hero.yearProduced': 'Produced this year',
     'now.hero.label': 'This month and this year',
 
@@ -151,8 +151,8 @@ export default {
     'now.head.seeIncidents': 'Mira les incidències',
     'now.backfill': 'Descarregant l’historial: {done} de {total} dies',
     'now.authPaused': 'L’accés a FusionSolar està en pausa fins a les {time} després d’un intent fallit. Les dades ja guardades són segures.',
-    'now.hero.monthSavings': 'Estalviat aquest mes',
-    'now.hero.yearSavings': 'Estalviat aquest any',
+    'now.hero.monthSavings': 'Estalviat aquest mes, segons les mesures',
+    'now.hero.yearSavings': 'Estalviat aquest any, segons les mesures',
     'now.hero.yearProduced': 'Produït aquest any',
     'now.hero.label': 'Aquest mes i aquest any',
 
