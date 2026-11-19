@@ -7,7 +7,7 @@ import { kw, kwh, fmtDate, fmtDateTime, fmtMonth, dayOf, dayStart, isoLocal } fr
 import { parseRange, rangeParams, customFromZoom } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
-import { gapBands, eventBands } from '../chart-data.js';
+import { gapBands, eventBands, bucketAxis } from '../chart-data.js';
 import {
   addDays, legalSeriesBuckets, legalEnergyBuckets, autoSeriesBucket, autoEnergyBucket, defaultMode, compareDays,
 } from '../buckets.js';
@@ -45,6 +45,7 @@ export async function render(root, ctx) {
         ${['power', 'energy'].map((m) => `<label><input type="radio" name="energy-mode" value="${m}"${m === mode ? ' checked' : ''}${m === 'power' && !power ? ' disabled' : ''}>${esc(t(`energy.mode.${m}`))}</label>`).join('')}
       </div></header>
     ${power ? '' : `<p class="hint">${esc(t('energy.mode.powerOff'))}</p>`}
+    ${range.r === 'all' && status.firstDay ? `<p class="hint">${esc(t('energy.allSince', { date: fmtDate(status.firstDay, { day: 'numeric', month: 'long', year: 'numeric' }) }))}</p>` : ''}
     <div class="energy-bar"></div>
     <div class="energy-body" aria-live="polite"></div>`;
   const q = (s) => root.querySelector(s);
@@ -138,34 +139,42 @@ export async function render(root, ctx) {
     const m = energyModel(data);
     if (!m || !m.buckets.length) return false;
     const bars = energyBars(m.buckets);
+    // hours sit on a time axis; calendar buckets get one centred, short label per bar
     const x = m.start.map((s, i) => (s + m.end[i]) / 2);
+    const col = hourly ? (arr) => pairs(x, arr) : (arr) => arr;
     const series = [
-      { key: 'homeSolar', name: t('energy.series.homeSolar'), type: 'bar', entity: 'sun', data: pairs(x, bars.home_solar) },
-      { key: 'bought', name: t('energy.series.bought'), type: 'bar', entity: 'grid', data: pairs(x, bars.bought) },
-      { key: 'sold', name: t('energy.series.sold'), type: 'bar', entity: 'sold', below: true, data: pairs(x, bars.sold) },
-      { key: 'produced', name: t('energy.series.produced'), type: 'line', entity: 'sun', markers: true, data: pairs(x, bars.produced) },
+      { key: 'homeSolar', name: t('energy.series.homeSolar'), type: 'bar', entity: 'sun', data: col(bars.home_solar) },
+      { key: 'bought', name: t('energy.series.bought'), type: 'bar', entity: 'grid', data: col(bars.bought) },
+      { key: 'sold', name: t('energy.series.sold'), type: 'bar', entity: 'sold', below: true, data: col(bars.sold) },
+      { key: 'produced', name: t('energy.series.produced'), type: 'line', entity: 'sun', markers: true, data: col(bars.produced) },
     ];
     const c = data.energy.compare;
     if (c && !hourly) {
       const mt = METRICS[metric];
+      // the other period is a neutral grey dashed line in every chart, never an entity colour
       series.push({
-        key: 'cmp', name: t('energy.cmp.series', { metric: t(mt.name), label: compareLabel(c, locale()) }), type: 'line', entity: mt.entity, dashed: true,
-        data: pairs(x, x.map((_, i) => { const v = c.buckets[i]?.[mt.key]; return v == null ? null : v * mt.sign; })),
+        key: 'cmp', name: t('energy.cmp.series', { metric: t(mt.name), label: compareLabel(c, locale()) }), type: 'line', entity: 'muted', dashed: true,
+        data: m.buckets.map((_, i) => { const v = c.buckets[i]?.[mt.key]; return v == null ? null : v * mt.sign; }),
       });
     }
+    const value = (s, i) => (hourly ? s.data[i][1] : s.data[i]);
     const fig = figure(figs, { title: t('energy.chart.energy'), csvName: `energy-${from}_${to}` });
-    fig.setCaption(t('energy.caption.energy', {
-      produced: kwh(data.energy.total.pv_kwh, 0), consumed: kwh(data.energy.total.load_kwh, 0),
-      bought: kwh(data.energy.total.import_kwh, 0), sold: kwh(data.energy.total.export_kwh, 0),
-    }));
+    // buckets with production but no meter readings: the bars are missing there, the production point is real
+    const noMeter = hourly ? [] : m.buckets.map((b, i) => (b.pv_kwh != null && b.load_kwh == null && b.import_kwh == null ? m.label(i) : null)).filter(Boolean);
+    fig.setCaption(`${t('energy.caption.energy', {
+      produced: kwh(data.energy.total.pv_kwh), consumed: kwh(data.energy.total.load_kwh),
+      bought: kwh(data.energy.total.import_kwh), sold: kwh(data.energy.total.export_kwh),
+    })}${noMeter.length ? ` ${t('energy.noMeter', { list: noMeter.join(', ') })}` : ''}`);
     const bands = hourly ? [...gapBands({ t: m.start, coverage: m.coverage, bucketMs: HOUR, now: Date.now() }), ...eventBands(data.events, fromMs, toMs)] : [];
-    live.push(chart(fig.host, {
-      id: 'energy-bars', kind: 'time', unit: 'kWh', x: { min: m.start[0], max: m.end[m.end.length - 1], label: m.label }, y: { decimals: 1 },
-      stacked: true, series, coverage: m.coverage, provisional: m.provisional, bands, onZoom,
-    }));
+    const axis = hourly ? null : bucketAxis(m.buckets.map((b) => b.key), data.energy.bucket);
+    live.push(chart(fig.host, hourly
+      ? { id: 'energy-bars', kind: 'time', unit: 'kWh', x: { min: m.start[0], max: m.end[m.end.length - 1], label: m.label }, y: { decimals: 1 },
+        stacked: true, series, coverage: m.coverage, provisional: m.provisional, bands, onZoom }
+      : { id: 'energy-bars', kind: 'category', unit: 'kWh', x: { categories: axis.categories, title: axis.title, label: m.label }, y: { decimals: 1 },
+        stacked: true, series, coverage: m.coverage, provisional: m.provisional }));
     fig.setTable(
       [{ label: t('energy.col.time') }, ...series.map((s) => ({ label: s.name, unit: 'kWh', decimals: 1 }))],
-      m.buckets.map((_, i) => [m.label(i), ...series.map((s) => (s.key === 'sold' && s.data[i][1] != null ? -s.data[i][1] : s.data[i][1]))]),
+      m.buckets.map((_, i) => [m.label(i), ...series.map((s) => (s.key === 'sold' && value(s, i) != null ? -value(s, i) : value(s, i)))]),
       m.iso,
     );
     return true;
@@ -193,7 +202,7 @@ export async function render(root, ctx) {
     const cmpKnown = cs?.series.pv_kw.some((v) => v != null);
     if (cmpKnown) {
       // aligned by bucket index: both periods have the same span and bucket
-      main.push(line('cmp', t('energy.cmp.series', { metric: t('energy.metric.produced'), label: cmpLabel }), 'line', 'sun', s.t.map((_, i) => cs.series.pv_kw[i] ?? null), { dashed: true, width: 1.5 }));
+      main.push(line('cmp', t('energy.cmp.series', { metric: t('energy.metric.produced'), label: cmpLabel }), 'line', 'muted', s.t.map((_, i) => cs.series.pv_kw[i] ?? null), { dashed: true, width: 1.5 }));
     }
     const fig = figure(figs, { title: t('energy.chart.power'), csvName: `power-${from}_${to}` });
     // the series are bucket means, so the caption gives the highest mean, the value the reader can find on the chart
@@ -245,11 +254,14 @@ export async function render(root, ctx) {
         ${clamped && (mode === 'power' || hourly) ? `<p class="hint">${esc(t('core.clamped', { date: fmtDate(seriesFrom, { day: 'numeric', month: 'short', year: 'numeric' }) }))}</p>` : ''}
       </section>
       <div class="grid">
-        <div class="span-6">${segmented(t('energy.shares.consumption'), [
-    { v: sh.consumption.solar, label: 'energy.shares.fromSolar', entity: 'sun' }, { v: sh.consumption.grid, label: 'energy.shares.fromGrid', entity: 'grid' }])}</div>
         <div class="span-6">${segmented(t('energy.shares.solar'), [
-    { v: sh.solar.home, label: 'energy.shares.toHome', entity: 'home' }, { v: sh.solar.sold, label: 'energy.shares.toGrid', entity: 'grid' }])}</div>
-      </div>`;
+    { v: sh.solar.home, label: 'energy.shares.toHome', entity: 'home' }, { v: sh.solar.battery, label: 'energy.shares.toBattery', entity: 'battery' },
+    { v: sh.solar.sold, label: 'energy.shares.toGrid', entity: 'sold' }])}</div>
+        <div class="span-6">${segmented(t('energy.shares.consumption'), [
+    { v: sh.consumption.solar, label: 'energy.shares.fromSolar', entity: 'sun' }, { v: sh.consumption.grid, label: 'energy.shares.fromGrid', entity: 'grid' },
+    { v: sh.consumption.battery, label: 'energy.shares.fromBattery', entity: 'discharge' }])}</div>
+      </div>
+      ${sh.solar.battery || sh.consumption.battery ? `<p class="hint">${esc(t('energy.shares.note'))}</p>` : ''}`;
     const figs = el.querySelector('.energy-figs');
     const ok = mode === 'power' ? drawPower(el, data, figs) : drawEnergy(el, data, figs);
     if (!ok) figs.innerHTML = emptyState({ title: t('energy.empty.title'), body: t('energy.empty.body'), action: { label: t('charts.range.30d'), href: '#/energy?r=30d&mode=energy' } });
