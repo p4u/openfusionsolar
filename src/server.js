@@ -7,6 +7,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { dayMoney } from './tariff.js';
+import { billingSummary, compareInvoice } from './billing.js';
 import { buildEvents } from './events.js';
 import { dayBounds, localDay } from './collector.js';
 import * as aggregate from './aggregate.js';
@@ -237,6 +238,15 @@ export function startServer({
       return r ? [200, store.alarms(...r)] : RANGE_ERROR;
     },
     // The real amount of each monthly bill, typed in by the user to compare with the estimate: { 'YYYY-MM': euros }.
+    'GET /api/billing': ({ query }) => {
+      const p = dayRange(query, 36600);
+      return p.error ?? [200, billingSummary(store, { from: p.from, to: p.to, prices: config.prices ?? null })];
+    },
+    'GET /api/billing/invoice': ({ query }) => {
+      const id = Number(query.get('id'));
+      const inv = Number.isInteger(id) ? store.invoice(id) : null;
+      return inv ? [200, compareInvoice(store, inv, { prices: config.prices ?? null })] : [404, { error: 'unknown invoice' }];
+    },
     'GET /api/bills': () => [200, store.getKv('realBills') ?? {}],
     'PUT /api/bills': ({ body }) => {
       const { month, amount } = body ?? {};
