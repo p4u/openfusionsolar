@@ -67,6 +67,8 @@ const config = {
   plantName: env.PLANT_NAME || null,
   password: env.APP_PASSWORD,
   trustProxy: env.TRUST_PROXY === '1',
+  // only whether the key is set; the key itself never enters config
+  ai: { enabled: Boolean(env.AI_API_KEY) },
 };
 // SMTP is optional: without SMTP_HOST alerts are only listed in the app. Credentials stay in mailer.js.
 const transport = await createTransport(env);

@@ -51,6 +51,8 @@ export const ICONS = Object.freeze([
   'bell', 'bell-off', 'settings', 'log-out', 'languages', 'moon', 'sun-medium', 'activity', 'euro', 'cpu', 'refresh-cw',
   'x', 'ellipsis', 'mail', 'thermometer', 'gauge', 'circle-alert', 'chevron-down', 'check', 'plug-zap', 'rotate-ccw',
   'sliders-horizontal', 'book-open', 'calendar-range', 'sun-moon', 'eye', 'eye-off',
+  'message-circle', 'upload', 'file-text', 'camera', 'trash-2', 'send', 'paperclip', 'circle-help', 'receipt', 'scale',
+  'file-check', 'file-warning',
 ]);
 
 // Stroke attributes live on the outer <svg> and are dropped: CSS `.icon` sets them.
