@@ -13,6 +13,7 @@ export default {
     'signals.noMatch': 'No signal matches the filter.',
     'signals.choose': 'Choose at least one signal',
     'signals.chooseBody': 'Its chart appears here.',
+    'signals.defaults': 'Shown until you choose: the inverter output power and the battery charge, today. Pick a device and signals above to change it.',
     'signals.noReadings': 'No readings for the chosen signals in this period.',
     'signals.caption': 'Line: average of each interval. Shaded: lowest to highest reading.',
     'signals.band': '{name}, range',
@@ -22,6 +23,7 @@ export default {
     'signals.col.max': '{name}, highest',
   },
   ca: {
+    'signals.defaults': 'Es mostra fins que en triïs: la potència de sortida de l’inversor i la càrrega de la bateria, avui. Tria un aparell i senyals a dalt per canviar-ho.',
     'signals.title': 'Dades tècniques',
     'signals.lead': 'Lectures en brut dels aparells, per quan cal mirar-ho de prop. Tria un aparell i fins a {max} senyals.',
     'signals.device': 'Aparell',

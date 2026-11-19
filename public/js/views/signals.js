@@ -9,7 +9,7 @@ import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
 import { gapBands } from '../chart-data.js';
 import { BUCKET_MS, clampFrom, seriesBucket } from './battery-model.js';
-import { MAX_SIGNALS, groupByUnit, parseIds, toggleId } from './signals-model.js';
+import { MAX_SIGNALS, groupByUnit, parseIds, toggleId, defaultPicks } from './signals-model.js';
 
 register(dict);
 
@@ -33,8 +33,12 @@ export async function render(root, ctx) {
     q('pick').innerHTML = emptyState({ title: t('signals.noDevices'), body: t('signals.noDevicesBody') });
     return () => bar.destroy();
   }
-  const dev = devices.find((d) => d.dn === ctx.params.get('dn')) ?? devices[0];
-  let ids = parseIds(ctx.params.get('ids'), dev.signals.map((s) => s.id));
+  // nothing chosen yet: inverter power and battery charge, so the page never opens empty
+  const asked = ctx.params.has('dn') || ctx.params.has('ids');
+  const defaults = asked ? [] : defaultPicks(devices);
+  const dev = devices.find((d) => d.dn === (asked ? ctx.params.get('dn') : defaults[0]?.dn)) ?? devices[0];
+  let ids = asked ? parseIds(ctx.params.get('ids'), dev.signals.map((s) => s.id)) : defaults.find((p) => p.dn === dev.dn)?.ids ?? [];
+  const picks = asked ? [{ dev, ids }] : defaults.map((p) => ({ dev: devices.find((d) => d.dn === p.dn), ids: p.ids }));
 
   const pick = q('pick');
   const checklist = (filter = '') => dev.signals.filter((s) => `${s.name} ${s.unit ?? ''}`.toLowerCase().includes(filter.toLowerCase()))
@@ -62,15 +66,18 @@ export async function render(root, ctx) {
   const cl = clampFrom(range.from, range.to, status.firstSampleDay);
   const bucket = seriesBucket(range);
   const chartsEl = q('charts');
-  if (!ids.length) chartsEl.innerHTML = emptyState({ title: t('signals.choose'), body: t('signals.chooseBody') });
+  if (!picks.some((p) => p.ids.length)) chartsEl.innerHTML = emptyState({ title: t('signals.choose'), body: t('signals.chooseBody') });
   else {
     chartsEl.className = 'card signals-charts';
     loadBlock(chartsEl, 340, async (el) => {
       if (cl.empty) return void (el.innerHTML = emptyState({ title: t('core.empty.title'), body: t('signals.noReadings') }));
-      const h = await getSignalHistory({ dn: dev.dn, ids, from: cl.from, to: range.to, bucket }, { signal });
-      const known = h.signals.filter((s) => s.avg.some((v) => v != null));
+      const hs = await Promise.all(picks.filter((p) => p.ids.length).map((p) => getSignalHistory({ dn: p.dev.dn, ids: p.ids, from: cl.from, to: range.to, bucket }, { signal })
+        .then((r) => ({ ...r, signals: r.signals.map((x) => ({ ...x, key: `${p.dev.dn}-${x.id}` })) }))));
+      const h = hs[0]; // same range and bucket: every device shares this time grid
+      const known = hs.flatMap((r) => r.signals).filter((s) => s.avg.some((v) => v != null));
       if (!known.length) return void (el.innerHTML = emptyState({ title: t('core.empty.title'), body: t('signals.noReadings') }));
       el.replaceChildren();
+      if (!asked) el.insertAdjacentHTML('beforeend', `<p class="hint">${esc(t('signals.defaults'))}</p>`);
       const stamp = (i) => (h.bucket === '1d' ? fmtDate(h.t[i]) : fmtDateTime(h.t[i]));
       const x = { min: h.t[0], max: h.t.at(-1) + BUCKET_MS[h.bucket], label: (i) => (h.bucket === '1d' ? fmtDate(h.t[i], { weekday: 'short', day: 'numeric', month: 'short' }) : fmtDateTime(h.t[i])) };
       const bands = gapBands({ t: h.t, coverage: h.t.map((_, i) => (known.some((s) => s.avg[i] != null) ? 1 : 0)), bucketMs: BUCKET_MS[h.bucket], now: Date.now() });
@@ -83,10 +90,11 @@ export async function render(root, ctx) {
           { label: t('signals.col.avg', { name: s.name }), unit, decimals: 3 }, { label: t('signals.col.min', { name: s.name }), unit, decimals: 3 }, { label: t('signals.col.max', { name: s.name }), unit, decimals: 3 }])],
         h.t.map((_, i) => [stamp(i), ...signals.flatMap((s) => [s.avg[i], s.min[i], s.max[i]])]), h.t.map((ms) => isoLocal(ms, h.bucket)));
         const series = signals.flatMap((s) => {
-          const entity = ENTITIES[ids.indexOf(s.id) % ENTITIES.length];
+          // the default pair keeps its concept colours: inverter output (AC) and battery charge
+          const entity = (!asked && ['ac', 'battery'][known.indexOf(s)]) || ENTITIES[known.indexOf(s) % ENTITIES.length];
           return [
-            { key: `b${s.id}`, name: t('signals.band', { name: s.name }), type: 'rangeArea', entity, data: h.t.map((ms, i) => [ms, s.min[i] == null ? null : [s.min[i], s.max[i]]]) },
-            { key: `m${s.id}`, name: s.name, type: 'line', entity, data: h.t.map((ms, i) => [ms, s.avg[i]]) },
+            { key: `b${s.key}`, name: t('signals.band', { name: s.name }), type: 'rangeArea', entity, data: h.t.map((ms, i) => [ms, s.min[i] == null ? null : [s.min[i], s.max[i]]]) },
+            { key: `m${s.key}`, name: s.name, type: 'line', entity, data: h.t.map((ms, i) => [ms, s.avg[i]]) },
           ];
         });
         kept.push(f, chart(f.host, { id: `signals-${unit || 'none'}`, kind: 'time', unit, group: 'signals', x, y: { decimals: 2 }, series, bands }));

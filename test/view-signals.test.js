@@ -21,3 +21,17 @@ test('the selection caps at 6 and ignores unknown or repeated ids', () => {
   assert.deepEqual(toggleId(ids, 7), ids);
   assert.deepEqual(toggleId(ids, 1), [2, 3, 4, 5, 6]);
 });
+
+test('with nothing chosen the view shows inverter power and battery charge, from their own devices', async () => {
+  const { defaultPicks, phaseLink } = await import('../public/js/views/signals-model.js');
+  const devices = [
+    { dn: 'B', type: 'Battery', signals: [{ id: 30005, name: 'Charge/Discharge power', unit: 'kW' }, { id: 30007, name: 'Battery SOC', unit: '%' }] },
+    { dn: 'D', type: 'Dongle', signals: [] },
+    { dn: 'I', type: 'Inverter', signals: [{ id: 30017, name: 'Total input power', unit: 'kW' }, { id: 30014, name: 'Active power', unit: 'kW' }] },
+    { dn: 'M', type: 'Power Sensor', signals: [{ id: 3, name: 'Active power', unit: 'W' }, { id: 17, name: 'Active power Pa', unit: 'W' }, { id: 18, name: 'Active power Pb', unit: 'W' }] },
+  ];
+  assert.deepEqual(defaultPicks(devices), [{ dn: 'I', ids: [30014] }, { dn: 'B', ids: [30007] }]);
+  assert.deepEqual(defaultPicks([devices[1]]), []);
+  assert.equal(phaseLink(devices), '#/signals?dn=M&ids=17,18');
+  assert.equal(phaseLink([devices[0]]), null);
+});
