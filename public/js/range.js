@@ -99,16 +99,17 @@ export function stepRange(range, dir, ctx) {
 }
 
 export function rangeLabel(range, locale) {
-  const f = (opts, day) => {
+  const utc = (day) => {
     const [y, m, d] = day.split('-').map(Number);
-    return new Intl.DateTimeFormat(locale, { ...opts, timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d, 12));
+    return Date.UTC(y, m - 1, d, 12);
   };
+  const f = (opts) => new Intl.DateTimeFormat(locale, { ...opts, timeZone: 'UTC' });
   const full = { day: 'numeric', month: 'short', year: 'numeric' };
-  if (range.r === 'month') return f({ month: 'long', year: 'numeric' }, `${range.d}-01`);
+  if (range.r === 'month') return f({ month: 'long', year: 'numeric' }).format(utc(`${range.d}-01`));
   if (range.r === 'year') return range.d;
-  if (range.from === range.to) return f(full, range.from);
-  const sameYear = range.from.slice(0, 4) === range.to.slice(0, 4);
-  return `${f(sameYear ? { day: 'numeric', month: 'short' } : full, range.from)} – ${f(full, range.to)}`;
+  if (range.from === range.to) return f(full).format(utc(range.from));
+  // the shortest form the language has: "13–19 de nov. 2026", "21 d’oct. – 19 de nov. 2026"
+  return f(full).formatRange(utc(range.from), utc(range.to));
 }
 
 const localDay = (ms) => {

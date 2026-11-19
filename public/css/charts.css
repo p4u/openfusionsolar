@@ -20,6 +20,19 @@
 /* ApexCharts' keyboard focus ring follows the design (2 px ink), not its default blue */
 .chart-host .apexcharts-canvas { --apexcharts-focus-color: var(--ink); }
 
+/* on a phone the legend is one row that scrolls sideways, so the plot keeps its height */
+@media (max-width: 639px) {
+  .chart-host .apexcharts-legend.apx-legend-position-top {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+  .chart-host .apexcharts-legend-series { flex: 0 0 auto; white-space: nowrap; }
+}
+
 /* coverage and band legend */
 .chart-key { display: flex; flex-wrap: wrap; gap: var(--sp-xxs) var(--sp-base); margin: var(--sp-xs) 0 0; padding: 0; list-style: none; color: var(--muted); font-size: var(--fs-caption); }
 .chart-key li { display: inline-flex; align-items: center; gap: var(--sp-xs); }
@@ -65,12 +78,24 @@
 .range-dialog form { display: flex; flex-direction: column; gap: var(--sp-base); }
 .range-dialog-actions { display: flex; justify-content: flex-end; gap: var(--sp-xs); }
 @media (max-width: 639px) {
-  /* presets scroll sideways: a fade at the edge says there is more */
+  /* two rows, about 100 px: presets with the options button, then previous/next with the comparison */
+  .range-bar { gap: var(--sp-xs); }
   .range-presets {
-    flex: 1 1 100%;
+    flex: 1 1 0;
+    min-width: 0;
     padding-right: var(--sp-xl);
     mask-image: linear-gradient(to right, #000 calc(100% - var(--sp-xl)), transparent);
   }
-  .range-field { flex: 1 1 100%; flex-direction: column; align-items: stretch; }
-  .range-field > select { width: 100%; }
+  .range-advanced { order: 1; }
+  .range-advanced > summary { width: 44px; justify-content: center; }
+  .range-advanced > summary .range-advanced-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .range-advanced > summary .range-advanced-icon { display: inline-flex; }
+  .range-advanced > summary .range-advanced-chevron { display: none; }
+  .range-step { order: 2; flex: 0 1 auto; min-width: 0; }
+  .range-label { min-width: 0; }
+  .range-bar > .range-field { order: 3; flex: 1 1 0; min-width: 0; }
+  .range-field > select { width: 100%; min-width: 0; }
+  .range-advanced[open] { order: 4; }
+  .range-advanced .range-field { flex-direction: column; align-items: stretch; }
 }
+.range-advanced-icon { display: none; }

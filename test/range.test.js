@@ -62,6 +62,9 @@ test('custom from zoom covers the dragged days', () => {
   assert.deepEqual(customFromZoom(Date.UTC(2026, 0, 2, 12), Date.UTC(2026, 0, 1, 12), (ms) => new Date(ms).toISOString().slice(0, 10)),
     { r: 'custom', from: '2026-01-01', to: '2026-01-02' });
   assert.equal(rangeLabel(parseRange(P({ r: 'month', d: '2026-10' }), ctx), 'en-GB'), 'October 2026');
+  // one month and year written once, so the bar fits one row
+  assert.equal(rangeLabel(parseRange(P({ r: 'custom', from: '2026-11-13', to: '2026-11-19' }), ctx), 'ca-ES'), '13–19 de nov. 2026');
+  assert.match(rangeLabel(parseRange(P({ r: 'custom', from: '2025-12-30', to: '2026-01-02' }), ctx), 'en-GB'), /^30 Dec 2025\s–\s2 Jan 2026$/);
 });
 
 test('params round-trip without defaults', () => {

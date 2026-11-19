@@ -26,7 +26,7 @@ export function renderRangeBar(container, { range, ctx, mode = null, compare = t
     </div>
     ${compare ? `<div class="field range-field"><label class="sr-only" for="${id}-cmp">${esc(t('charts.compare.label'))}</label>
       <select id="${id}-cmp">${COMPARES.map((c) => opt(c, t(`charts.compare.${c}`), range.cmp)).join('')}</select></div>` : ''}
-    ${mode ? `<details class="disclosure range-advanced"><summary><span>${esc(t('charts.advanced'))}</span>${icon('chevron-down', { size: 16 })}</summary>
+    ${mode ? `<details class="disclosure range-advanced"><summary aria-label="${esc(t('charts.advanced'))}"><span class="range-advanced-icon">${icon('sliders-horizontal', { size: 20 })}</span><span class="range-advanced-text">${esc(t('charts.advanced'))}</span><span class="range-advanced-chevron">${icon('chevron-down', { size: 16 })}</span></summary>
       <div class="field range-field"><label for="${id}-b">${esc(t('charts.bucket.label'))}</label>
         <select id="${id}-b">${opt('auto', t('charts.bucket.auto'), range.b)}${buckets.map((b) => opt(b, t(`charts.bucket.${b}`), range.b)).join('')}</select></div></details>` : ''}
     <dialog class="range-dialog" aria-labelledby="${id}-title"><form method="dialog">
