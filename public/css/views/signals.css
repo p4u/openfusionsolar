@@ -1,1 +1,9 @@
 /* Technical data view (task 10). Every class here starts with 'signals-'. */
+[data-block="pick"] { display: grid; gap: var(--sp-base); }
+.signals-device { max-width: 420px; }
+.signals-list { margin: 0; padding: 0; border: 0; min-width: 0; }
+.signals-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 0 var(--sp-base); max-height: 320px; overflow-y: auto; }
+.signals-item { display: flex; align-items: center; gap: var(--sp-xs); min-height: 44px; color: var(--ink); cursor: pointer; }
+.signals-item input { flex: none; width: 20px; height: 20px; accent-color: var(--primary); }
+.signals-item input:disabled + span { color: var(--muted); }
+.signals-charts { display: flex; flex-direction: column; gap: var(--sp-xl); }
