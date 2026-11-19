@@ -136,8 +136,8 @@ export async function render(root, ctx) {
     const series = [
       { key: 'homeSolar', name: t('energy.series.homeSolar'), type: 'bar', entity: 'sun', data: pairs(x, bars.home_solar) },
       { key: 'bought', name: t('energy.series.bought'), type: 'bar', entity: 'grid', data: pairs(x, bars.bought) },
-      { key: 'sold', name: t('energy.series.sold'), type: 'bar', entity: 'grid', data: pairs(x, bars.sold) },
-      { key: 'produced', name: t('energy.series.produced'), type: 'line', entity: 'sun', data: pairs(x, bars.produced) },
+      { key: 'sold', name: t('energy.series.sold'), type: 'bar', entity: 'grid', below: true, data: pairs(x, bars.sold) },
+      { key: 'produced', name: t('energy.series.produced'), type: 'line', entity: 'sun', markers: true, data: pairs(x, bars.produced) },
     ];
     const c = data.energy.compare;
     if (c && !hourly) {

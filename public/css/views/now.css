@@ -1,7 +1,7 @@
 /* Now view (task 5). Every class here starts with 'now-'. */
 
 /* flow diagram */
-.now-flow-svg { display: block; width: 100%; max-width: 460px; margin-inline: auto; height: auto; }
+.now-flow-svg { display: block; width: 100%; max-width: 400px; margin-inline: auto; height: auto; }
 .now-node circle { fill: var(--surface-card); stroke-width: 3; }
 .now-n-pv circle { stroke: var(--chart-sun); }
 .now-n-grid circle { stroke: var(--chart-grid); }
@@ -51,4 +51,4 @@
 
 .now-more { margin-top: var(--sp-sm); }
 .now-more a { display: inline-flex; align-items: center; gap: var(--sp-xxs); color: var(--ink); font-weight: 500; }
-.now-grid { margin-top: var(--sp-sm); }
+.now-grid { margin-top: var(--sp-xl); }

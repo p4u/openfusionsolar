@@ -108,6 +108,9 @@ main:focus { outline: none; }
   justify-content: space-between;
   gap: var(--sp-sm) var(--sp-lg);
 }
+/* the range bar and a lead hint belong to the view head: closer to it, and less air before the data they filter */
+.view > .view-head + .hint { margin-top: calc(var(--sp-xs) - var(--band-gap-y)); }
+.view > :has(> .range-bar) { margin-block: calc(var(--sp-base) - var(--band-gap-y)) calc(var(--sp-lg) - var(--band-gap-y)); }
 .band { display: flex; flex-direction: column; gap: var(--sp-base); }
 .band-head {
   display: flex;
@@ -224,7 +227,6 @@ main:focus { outline: none; }
 .nav-links a:focus-visible { outline-offset: -14px; border-radius: var(--r-pill); }
 
 .nav-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
-.more-btn { display: none; margin-left: auto; }
 
 .icon-btn {
   display: inline-grid;
@@ -244,6 +246,8 @@ main:focus { outline: none; }
 }
 .icon-btn:hover { background: var(--surface-strong); color: var(--ink); }
 .icon-btn[aria-current="page"] { background: var(--surface-strong); color: var(--ink); }
+/* after .icon-btn, which would otherwise show it: only the tablet bar collapses its icon buttons into "More" */
+.more-btn { display: none; margin-left: auto; }
 
 /* tablet "More" menu (a popover anchored under the bar's right end) */
 .menu {

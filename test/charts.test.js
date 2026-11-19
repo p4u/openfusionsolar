@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { apexOptions, toCsv, gapBands, eventBands, opacityFor } from '../public/js/chart-data.js';
+import { apexOptions, toCsv, gapBands, eventBands, opacityFor, isBelow, legendKey } from '../public/js/chart-data.js';
 
 const palette = {
   sun: '#c98500', home: '#2a78d6', grid: '#b0409a', battery: '#199e70', p1: '#7f2c6f', p2: '#b0409a', p3: '#d98fc8',
@@ -120,4 +120,50 @@ test('mixed range, bar and synced strip configs carry what ApexCharts needs', ()
   const cat = apexOptions({ id: 'c', kind: 'category', unit: 'kWh', x: { categories: ['a', 'b'] }, series: [{ key: 'k', name: 'K', type: 'bar', entity: 'ok', data: [1, 2] }] }, palette, { mobile: true });
   assert.equal(cat.chart.height, 260);
   assert.deepEqual(cat.series[0].data, [{ x: 'a', y: 1 }, { x: 'b', y: 2 }]);
+});
+
+test('legend keys tell same-coloured series apart by shape, side and dash', () => {
+  const x = [T0, T0 + 900e3];
+  const energy = {
+    id: 'e', kind: 'time', unit: 'kWh', stacked: true, x: { min: T0, max: T0 + 1800e3 },
+    series: [
+      { key: 'homeSolar', name: 'Home, solar', type: 'bar', entity: 'sun', data: [[x[0], 1], [x[1], 2]] },
+      { key: 'sold', name: 'Sold', type: 'bar', entity: 'grid', below: true, data: [[x[0], 0], [x[1], 0]] },
+      { key: 'bought', name: 'Bought', type: 'bar', entity: 'grid', data: [[x[0], 1], [x[1], null]] },
+      { key: 'produced', name: 'Produced', type: 'line', entity: 'sun', markers: true, data: [[x[0], 3], [x[1], 4]] },
+      { key: 'cmp', name: 'Last year', type: 'line', entity: 'sun', dashed: true, data: [[x[0], 2], [x[1], 3]] },
+    ],
+  };
+  const o = apexOptions(energy, palette);
+  const keys = o.legend.markers.customHTML.map((f) => f());
+  assert.equal(new Set(keys).size, keys.length, 'every legend key differs');
+  assert.match(keys[0], /<rect x="4" y="1"/, 'above the baseline');
+  assert.match(keys[1], /<rect x="4" y="9"/, 'sold sits below the baseline even with only zeros');
+  assert.match(keys[3], /<line [^>]*stroke="#c98500"[^>]*\/><circle/, 'produced: a line with a dot');
+  assert.doesNotMatch(keys[3], /<rect/);
+  assert.match(keys[4], /stroke-dasharray/);
+  assert.deepEqual(o.markers.size, [0, 0, 0, 4, 0], 'only the produced line carries dots');
+  assert.equal(o.markers.strokeColors, palette.surface);
+  // a chart with nothing below zero keeps plain square keys
+  assert.match(legendKey({ type: 'bar' }, { colour: '#c98500', text: '#777', surface: '#fff' }), /<rect x="3" y="3" width="12" height="12"/);
+  assert.equal(isBelow({ kind: 'category' }, { data: [null, -1, 0] }), true);
+  assert.equal(isBelow({ kind: 'category' }, { data: [0, 0] }), false);
+});
+
+test('range bars are a light, narrow wash and keep their own legend key', () => {
+  const soc = {
+    id: 's', kind: 'time', unit: '%', x: { min: T0, max: T0 + 2 * 86400e3 },
+    series: [
+      { key: 'range', name: 'Min and max', type: 'rangeBar', entity: 'battery', data: [[T0, [20, 90]], [T0 + 86400e3, null]] },
+      { key: 'soc', name: 'Mean', type: 'line', entity: 'battery', data: [[T0, 50], [T0 + 86400e3, null]] },
+    ],
+  };
+  const o = apexOptions(soc, palette);
+  assert.ok(o.fill.opacity[0] <= 0.35, 'range bars are faint');
+  assert.equal(o.fill.opacity[1], 1);
+  assert.equal(o.plotOptions.bar.columnWidth, '40%');
+  const [range, mean] = o.legend.markers.customHTML.map((f) => f());
+  assert.match(range, /fill-opacity="0.3"/);
+  assert.match(mean, /<line /);
+  assert.equal(apexOptions(spec(), palette).plotOptions.bar.columnWidth, '80%', 'charts with real bars keep wide columns');
 });

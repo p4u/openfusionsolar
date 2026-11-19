@@ -1,5 +1,6 @@
 /* Energy view (task 6). Every class here starts with 'energy-'. */
 .energy-bar { min-width: 0; }
+.energy-body { display: flex; flex-direction: column; gap: var(--band-gap-y); }
 .energy-tools { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--sp-sm); margin-bottom: var(--sp-sm); }
 .energy-tools:empty { display: none; }
 .energy-figs { display: flex; flex-direction: column; gap: var(--sp-lg); }

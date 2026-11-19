@@ -2,5 +2,5 @@
 .bill-more-body { display: flex; flex-direction: column; gap: var(--gutter); padding-top: var(--sp-sm); }
 .bill-tiles { display: flex; flex-direction: column; gap: var(--sp-sm); }
 .bill-explain-list { display: flex; flex-direction: column; gap: var(--sp-xs); margin: 0 0 var(--sp-sm); padding-left: var(--sp-base); color: var(--body); font-size: var(--fs-caption); }
-.bill-badges { margin: 0; }
+.bill-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-xs); margin: 0; }
 .bill-noprices, .bill-incomplete { max-width: 70ch; }

@@ -104,7 +104,9 @@ export async function render(root, ctx) {
     }
     const missing = total.daysExpected - total.days;
     const warn = missing > 0 ? `<p class="hint bill-incomplete">${esc(t('bill.incomplete', { n: missing, days: total.daysExpected }))}</p>` : '';
-    el.innerHTML = `${ledger(list)}${total.provisional ? `<p class="bill-badges">${badge(t('core.badge.provisional'), 'provisional')}</p>` : ''}${warn}${extra}`;
+    // the badge says what it qualifies: these totals, with the reason beside it
+    const prov = total.provisional ? `<p class="hint bill-note">${badge(t('core.badge.provisional'), 'provisional')}<span>${esc(t('bill.provisional'))}</span></p>` : '';
+    el.innerHTML = `${ledger(list)}${prov}${warn}${extra}`;
   }
 
   async function monthly(el) {

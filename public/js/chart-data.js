@@ -53,6 +53,40 @@ function rgba(hex, alpha) {
 }
 
 const yOf = (point) => (Array.isArray(point) ? point[1] : point);
+
+// Fill opacity as drawn: areas and ranges are washes so the lines over them stay readable.
+const FILL = { area: 0.25, rangeArea: 0.25, rangeBar: 0.3 };
+const fillOf = (s) => FILL[s.type] ?? 1;
+
+// A series that lives below zero (sold, discharged): flagged by the view or every non-zero value negative.
+export function isBelow(spec, s) {
+  if (s.below) return true;
+  const ys = s.data.map((p) => (spec.kind === 'category' ? p : p?.[1])).filter((v) => typeof v === 'number' && v !== 0);
+  return ys.length > 0 && ys.every((v) => v < 0);
+}
+
+// Legend key drawn like its series (18 px box), so identity never rests on colour alone: a block for bars, above or
+// below a baseline when the chart diverges; a wash with its edge for areas; a stroke, dashed and dotted as drawn, for lines.
+export function legendKey(s, { colour, text, surface, diverging = false, below = false }) {
+  const c = esc(colour);
+  const dash = s.dashed ? ' stroke-dasharray="5 3"' : '';
+  let body;
+  if (s.type === 'bar') {
+    body = !diverging ? `<rect x="3" y="3" width="12" height="12" rx="2" fill="${c}"/>`
+      : `<rect x="4" y="${below ? 9 : 1}" width="10" height="8" fill="${c}"/><line x1="1" y1="9" x2="17" y2="9" stroke="${esc(text)}" stroke-width="1.5"/>`;
+  } else if (s.type === 'rangeBar') {
+    body = `<rect x="5" y="1" width="8" height="16" rx="2" fill="${c}" fill-opacity="${FILL.rangeBar}"/>`;
+  } else if (s.type === 'rangeArea') {
+    body = `<rect x="1" y="4" width="16" height="10" fill="${c}" fill-opacity="${FILL.rangeArea}"/>`;
+  } else if (s.type === 'area') {
+    const edge = below ? 13 : 5;
+    body = `<rect x="1" y="5" width="16" height="8" fill="${c}" fill-opacity="${FILL.area}"/><line x1="1" y1="${edge}" x2="17" y2="${edge}" stroke="${c}" stroke-width="2"${dash}/>`;
+  } else {
+    body = `<line x1="1" y1="9" x2="17" y2="9" stroke="${c}" stroke-width="2.5"${dash}/>`
+      + (s.markers ? `<circle cx="9" cy="9" r="3.5" fill="${c}" stroke="${esc(surface)}" stroke-width="1.5"/>` : '');
+  }
+  return `<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">${body}</svg>`;
+}
 const at = (s, i) => s.data[i];
 
 // Shared tooltip: header, every visible series with its unit, then data-quality notes.
@@ -93,7 +127,11 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
       ? ({ dataPointIndex }) => rgba(base, opacityFor(spec.coverage?.[dataPointIndex]) ?? 0)
       : base;
   });
-  const fade = (s) => (s.type === 'area' || s.type === 'rangeArea' ? 0.25 : 1);
+  const diverging = spec.series.some((s) => isBelow(spec, s));
+  const keys = spec.series.map((s) => {
+    const html = legendKey(s, { colour: palette[s.entity] ?? palette.muted, text: palette.text, surface: palette.surface, diverging, below: isBelow(spec, s) });
+    return () => html;
+  });
   const bands = (spec.bands ?? []).map((b) => ({ x: b.from, x2: b.to, fillColor: palette.band[b.kind], opacity: 1, borderColor: 'transparent' }));
   const text = { fontFamily: palette.fontFamily, colors: palette.text, fontSize: '12px' };
   const options = {
@@ -113,12 +151,13 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
     series,
     colors,
     stroke: { width: spec.series.map((s) => (s.type === 'bar' ? 0 : s.width ?? 2)), curve: 'straight', dashArray: spec.series.map((s) => (s.dashed ? 5 : 0)) },
-    fill: { type: 'solid', opacity: spec.series.map(fade) },
-    markers: { size: 0 },
+    fill: { type: 'solid', opacity: spec.series.map(fillOf) },
+    markers: { size: spec.series.map((s) => (s.markers ? 4 : 0)), strokeColors: palette.surface, strokeWidth: 1.5 },
     dataLabels: { enabled: false },
-    plotOptions: { bar: { columnWidth: '80%', borderRadius: 0 } },
+    // a lone range bar per day reads as a light whisker, not a solid column
+    plotOptions: { bar: { columnWidth: spec.series.some((s) => s.type === 'bar') ? '80%' : '40%', borderRadius: 0 } },
     grid: { borderColor: palette.hairline, strokeDashArray: 0, padding: { left: 8, right: 8 } },
-    legend: { show: spec.series.length > 1, position: 'top', horizontalAlign: 'left', fontFamily: palette.fontFamily, labels: { colors: palette.text }, markers: { size: 6 } },
+    legend: { show: spec.series.length > 1, position: 'top', horizontalAlign: 'left', fontFamily: palette.fontFamily, labels: { colors: palette.text }, markers: { size: 8, strokeWidth: 1, customHTML: keys } },
     xaxis: time
       ? {
           type: 'datetime', min: spec.x?.min, max: spec.x?.max, tooltip: { enabled: false },

@@ -17,13 +17,14 @@ const REFRESH_MS = 60e3;
 const BAT_ACTIVE_KW = 0.05;
 
 // ---------- flow diagram ----------
+// a 400-unit-wide box keeps node text near its nominal size on a 390 px phone
 const NODES = {
-  pv: { x: 230, y: 70, icon: 'sun', name: 'core.entity.sun' },
-  grid: { x: 72, y: 210, icon: 'utility-pole', name: 'core.entity.grid' },
-  home: { x: 388, y: 210, icon: 'house', name: 'core.entity.home' },
-  bat: { x: 230, y: 350, icon: 'battery-medium', name: 'core.entity.battery' },
+  pv: { x: 200, y: 70, icon: 'sun', name: 'core.entity.sun' },
+  grid: { x: 68, y: 210, icon: 'utility-pole', name: 'core.entity.grid' },
+  home: { x: 332, y: 210, icon: 'house', name: 'core.entity.home' },
+  bat: { x: 200, y: 350, icon: 'battery-medium', name: 'core.entity.battery' },
 };
-const CENTRE = [230, 210];
+const CENTRE = [200, 210];
 
 // Straight when the nodes share a row or column, else a curve through the middle. Returns the path and an arrow pose.
 function linkGeometry(a, b, at = 0.55) {
@@ -68,22 +69,24 @@ function flowCard(status) {
       <path class="now-arrow now-from-${a}" d="M-7,-6 L7,0 L-7,6 Z" transform="translate(${g.x.toFixed(1)} ${g.y.toFixed(1)}) rotate(${g.deg.toFixed(1)})"/>`;
   }).join('');
   const gridVerb = f.exp > 0.01 ? t('now.flow.selling') : f.imp > 0.01 ? t('now.flow.buying') : t('now.flow.idle');
+  // value, then up to two short lines: a number and a verb never share a line, so each fits inside the circle
+  const batKw = f.give > 0.01 ? f.give : f.charge > BAT_ACTIVE_KW ? f.charge : null;
   const rows = {
-    pv: [kw(rt?.pv_kw), ''],
-    home: [kw(rt?.load_kw), ''],
+    pv: [kw(rt?.pv_kw)],
+    home: [kw(rt?.load_kw)],
     grid: [kw(f.exp > 0.01 ? f.exp : f.imp), gridVerb],
-    bat: [pct(rt?.soc), f.give > 0.01 ? `${kw(f.give)} ${t('now.flow.giving')}` : f.charge > BAT_ACTIVE_KW ? `${kw(f.charge)} ${t('now.flow.charging')}` : t('now.flow.idle')],
+    bat: [pct(rt?.soc), ...(batKw == null ? [t('now.flow.idle')] : [kw(batKw), t(f.give > 0.01 ? 'now.flow.giving' : 'now.flow.charging')])],
   };
   const nodes = Object.entries(NODES).map(([k, n]) => `<g class="now-node now-n-${k}" aria-hidden="true">
       <circle cx="${n.x}" cy="${n.y}" r="64"/>
-      <svg class="icon" x="${n.x - 10}" y="${n.y - 46}" width="20" height="20" viewBox="0 0 24 24"><use href="/icons.svg#${n.icon}"/></svg>
-      <text class="now-node-label" x="${n.x}" y="${n.y - 8}">${esc(name(k))}</text>
-      <text class="now-node-value" x="${n.x}" y="${n.y + 14}">${esc(rows[k][0])}</text>
-      <text class="now-node-sub" x="${n.x}" y="${n.y + 34}">${esc(rows[k][1])}</text></g>`).join('');
+      <svg class="icon" x="${n.x - 10}" y="${n.y - 52}" width="20" height="20" viewBox="0 0 24 24"><use href="/icons.svg#${n.icon}"/></svg>
+      <text class="now-node-label" x="${n.x}" y="${n.y - 14}">${esc(name(k))}</text>
+      <text class="now-node-value" x="${n.x}" y="${n.y + 8}">${esc(rows[k][0])}</text>
+      ${rows[k].slice(1).map((line, i) => `<text class="now-node-sub" x="${n.x}" y="${n.y + 26 + i * 17}">${esc(line)}</text>`).join('')}</g>`).join('');
   const text = sentence(rt, f);
   return `<section class="card span-6 now-flow" aria-labelledby="now-flow-title">
     <div class="card-head"><h2 class="card-title" id="now-flow-title">${esc(t('now.flow.title'))}</h2></div>
-    <svg class="now-flow-svg" viewBox="0 0 460 420" role="img" aria-label="${esc(text)}">${links}${nodes}</svg>
+    <svg class="now-flow-svg" viewBox="0 0 400 420" role="img" aria-label="${esc(text)}">${links}${nodes}</svg>
     <p class="now-sentence">${esc(text)}</p>
   </section>`;
 }

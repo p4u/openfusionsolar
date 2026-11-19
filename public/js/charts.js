@@ -1,7 +1,7 @@
 // Chart factory over the global ApexCharts: a <figure> with caption, table and CSV, and a themed chart.
 // Spec: { id, kind: 'time'|'category', height: number|'strip', unit, x: { min, max, categories, label(i) },
 // y: { min, max, decimals }, stacked, series: [{ key, name, type: 'line'|'area'|'bar'|'rangeBar'|'rangeArea', entity,
-// dashed, width, data, hidden }], coverage, provisional, bands: [{ from, to, kind }], refLines, group, onZoom }.
+// dashed, width, markers (dots on a line), below (drawn under zero), data, hidden }], coverage, provisional, bands: [{ from, to, kind }], refLines, group, onZoom }.
 // Data layout is described in chart-data.js. Range types take ([min, max] | null) values.
 import { register, t } from './i18n.js';
 import dict from './i18n/charts.js';

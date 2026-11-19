@@ -176,7 +176,7 @@ export async function render(root, ctx) {
           id: 'battery-flow', kind: 'time', unit: 'kW', x: xOf(r), y: { decimals: 2 }, coverage: r.coverage, provisional: r.provisional,
           series: [
             { key: 'charge', name: t('battery.flow.charged'), type: 'area', entity: 'battery', data: pairs(r, r.series.charge_kw) },
-            { key: 'discharge', name: t('battery.flow.discharged'), type: 'area', entity: 'battery', dashed: true, data: pairs(r, r.series.discharge_kw, (v) => -v) },
+            { key: 'discharge', name: t('battery.flow.discharged'), type: 'area', entity: 'battery', dashed: true, below: true, data: pairs(r, r.series.discharge_kw, (v) => -v) },
           ],
           bands: gapBands({ t: r.t, coverage: r.coverage, bucketMs: BUCKET_MS[r.bucket], now: Date.now() }),
         },
@@ -193,7 +193,7 @@ export async function render(root, ctx) {
         coverage: e.buckets.map((k) => k.coverage), provisional: e.buckets.map((k) => k.provisional),
         series: [
           { key: 'charge', name: t('battery.flow.charged'), type: 'bar', entity: 'battery', data: e.buckets.map((k) => k.charge_kwh) },
-          { key: 'discharge', name: t('battery.flow.discharged'), type: 'bar', entity: 'battery', data: e.buckets.map((k) => (k.discharge_kwh == null ? null : -k.discharge_kwh)) },
+          { key: 'discharge', name: t('battery.flow.discharged'), type: 'bar', entity: 'battery', below: true, data: e.buckets.map((k) => (k.discharge_kwh == null ? null : -k.discharge_kwh)) },
         ],
       },
       columns: [t('battery.col.period'), { label: t('battery.flow.charged'), unit: 'kWh' }, { label: t('battery.flow.discharged'), unit: 'kWh' }],
