@@ -1,0 +1,17 @@
+{
+  "name": "openfusionsolar",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/main.js",
+    "probe": "node scripts/probe.js",
+    "test": "node --disable-warning=ExperimentalWarning --test"
+  },
+  "dependencies": {
+    "apexcharts": "^8.9.1"
+  }
+}

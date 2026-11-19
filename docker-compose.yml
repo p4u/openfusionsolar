@@ -1,0 +1,10 @@
+services:
+  openfusionsolar:
+    build: .
+    image: openfusionsolar:latest
+    restart: unless-stopped
+    env_file: .env                # credentials and optional settings, see .env.example
+    volumes:
+      - ./data:/app/data          # SQLite DB and portal session; owned by uid 1000 (node)
+    ports:
+      - "127.0.0.1:8080:8080"     # the dashboard has no login: keep it on localhost

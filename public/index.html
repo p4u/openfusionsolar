@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ca">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenFusionSolar</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☀</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1 id="plant">OpenFusionSolar</h1>
+      <p id="freshness"></p>
+    </div>
+    <label class="lang"><span data-i18n="language"></span> <select id="lang"></select></label>
+  </header>
+  <p id="status" class="status" role="status"></p>
+
+  <main>
+    <section class="row" aria-labelledby="now-title">
+      <article class="card">
+        <h2 id="now-title" data-i18n="nowTitle"></h2>
+        <svg id="flow" viewBox="0 -18 400 440" role="img" data-i18n-aria="flowAria"></svg>
+        <p id="now-sentence" class="sentence"></p>
+      </article>
+      <article class="card" aria-labelledby="bat-title">
+        <h2 id="bat-title" data-i18n="batteryTitle"></h2>
+        <div class="soc"><span id="soc-value" class="big"></span> <span data-i18n="batteryCharged"></span></div>
+        <div id="soc-bar" class="socbar" aria-hidden="true"><div class="fill"></div><div class="reserve"></div></div>
+        <p id="reserve-label" class="hint"></p>
+        <p id="bat-state" class="sentence"></p>
+        <p id="bat-autonomy" class="sentence"></p>
+      </article>
+    </section>
+
+    <article class="card" aria-labelledby="day-title">
+      <div class="titlebar">
+        <h2 id="day-title" data-i18n="dayTitle"></h2>
+        <nav class="pager" aria-labelledby="day-title">
+          <button id="prev-day" data-i18n-aria="prevDay">←</button>
+          <input id="day" type="date" data-i18n-aria="pickDay">
+          <button id="next-day" data-i18n-aria="nextDay">→</button>
+          <button id="today" data-i18n="today"></button>
+        </nav>
+      </div>
+      <p id="day-warning" class="warning"></p>
+      <div id="day-tiles" class="tiles"></div>
+      <h3 data-i18n="dayPower"></h3>
+      <p class="hint" data-i18n="dayPowerHint"></p>
+      <p class="hint" data-i18n="bandsHint"></p>
+      <p id="day-starting" class="hint"></p>
+      <div id="chart-day"></div>
+      <h3 data-i18n="cumulative"></h3>
+      <div id="chart-cum"></div>
+    </article>
+
+    <article class="card" aria-labelledby="month-title">
+      <div class="titlebar">
+        <h2 id="month-title" data-i18n="monthTitle"></h2>
+        <nav class="pager" aria-labelledby="month-title">
+          <button id="prev-month" data-i18n-aria="prevMonth">←</button>
+          <select id="month" data-i18n-aria="pickMonth"></select>
+          <button id="next-month" data-i18n-aria="nextMonth">→</button>
+        </nav>
+      </div>
+      <p id="month-warning" class="warning"></p>
+      <div id="month-tiles" class="tiles"></div>
+      <h3 data-i18n="monthChart"></h3>
+      <div id="chart-month"></div>
+      <p id="prices-used" class="hint"></p>
+    </article>
+
+    <details class="card">
+      <summary data-i18n="glossaryTitle"></summary>
+      <dl id="glossary" class="glossary"></dl>
+    </details>
+
+    <article class="card" aria-labelledby="events-title">
+      <h2 id="events-title" data-i18n="eventsTitle"></h2>
+      <p id="events-summary" class="sentence"></p>
+      <ul id="events" class="events"></ul>
+      <details id="events-more" hidden>
+        <summary id="events-more-label"></summary>
+        <ul id="events-rest" class="events"></ul>
+      </details>
+    </article>
+  </main>
+
+  <script src="/vendor/apexcharts.js"></script>
+  <script src="/i18n.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
