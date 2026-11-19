@@ -1,0 +1,277 @@
+{
+  "is_electricity_bill": true,
+  "supplier": {
+    "name": "Som Energia, SCCL",
+    "tax_id": "F55091367"
+  },
+  "invoice": {
+    "number": "FE0000000001",
+    "kind": "normal",
+    "rectifies_number": null,
+    "issue_date": "2026-11-12",
+    "period_from": "2026-10-01",
+    "period_to": "2026-10-31",
+    "days": 31,
+    "due_date": "2026-11-19"
+  },
+  "supply": {
+    "cups": "ES0031000000000001BJ0F",
+    "contract_number": "0000000",
+    "tariff": "2.0TD",
+    "self_consumption": true,
+    "contracted_kw": {
+      "p1": 4.4,
+      "p2": 4.4
+    },
+    "max_demand_kw": {
+      "p1": 4.952,
+      "p2": 3.572
+    }
+  },
+  "power": {
+    "price_kw_year": {
+      "p1": 29.934,
+      "p2": 2.955
+    },
+    "amount": {
+      "p1": 11.19,
+      "p2": 1.10
+    },
+    "total": 12.29
+  },
+  "energy": {
+    "kwh": {
+      "p1": 25.704,
+      "p2": 29.651,
+      "p3": 103.725
+    },
+    "price_kwh": {
+      "p1": 0.249,
+      "p2": 0.169,
+      "p3": 0.15
+    },
+    "amount": {
+      "p1": 6.40,
+      "p2": 5.01,
+      "p3": 15.56
+    },
+    "adjust_amount": 4.62,
+    "total": 26.97
+  },
+  "surplus": {
+    "kwh": {
+      "p1": 0.0,
+      "p2": 11.47,
+      "p3": 12.53
+    },
+    "price_kwh": 0.03,
+    "amount": -0.72,
+    "uncompensated_amount": null
+  },
+  "charges": {
+    "social_bonus": 0.77,
+    "meter_rent": 1.39,
+    "electricity_tax_pct": 5.11269,
+    "electricity_tax": 2.25,
+    "other_taxed": 1.59,
+    "other_exempt": 0.0
+  },
+  "totals": {
+    "tax_base": 47.57,
+    "vat_pct": 21.0,
+    "vat": 9.99,
+    "total": 59.15
+  },
+  "readings": [
+    {
+      "kind": "import",
+      "period": "p1",
+      "from_date": "2026-09-30",
+      "to_date": "2026-10-31",
+      "start_kwh": 5933.69,
+      "end_kwh": 5960.34,
+      "estimated": false
+    },
+    {
+      "kind": "import",
+      "period": "p2",
+      "from_date": "2026-09-30",
+      "to_date": "2026-10-31",
+      "start_kwh": 1923.98,
+      "end_kwh": 1954.46,
+      "estimated": false
+    },
+    {
+      "kind": "import",
+      "period": "p3",
+      "from_date": "2026-09-30",
+      "to_date": "2026-10-31",
+      "start_kwh": 4574.92,
+      "end_kwh": 4679.66,
+      "estimated": false
+    },
+    {
+      "kind": "export",
+      "period": "p1",
+      "from_date": "2026-09-30",
+      "to_date": "2026-10-31",
+      "start_kwh": 2016.92,
+      "end_kwh": 2017.87,
+      "estimated": false
+    },
+    {
+      "kind": "export",
+      "period": "p2",
+      "from_date": "2026-09-30",
+      "to_date": "2026-10-31",
+      "start_kwh": 3385.1,
+      "end_kwh": 3397.4,
+      "estimated": false
+    },
+    {
+      "kind": "export",
+      "period": "p3",
+      "from_date": "2026-09-30",
+      "to_date": "2026-10-31",
+      "start_kwh": 2525.85,
+      "end_kwh": 2539.41,
+      "estimated": false
+    }
+  ],
+  "lines": [
+    {
+      "section": "power",
+      "concept": "Potència contractada",
+      "period": "p1",
+      "quantity": 4.4,
+      "unit": "kW",
+      "unit_price": 29.934,
+      "amount": 11.19,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "power",
+      "concept": "Potència contractada",
+      "period": "p2",
+      "quantity": 4.4,
+      "unit": "kW",
+      "unit_price": 2.955,
+      "amount": 1.1,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "energy",
+      "concept": "Electricitat utilitzada",
+      "period": "p1",
+      "quantity": 25.704,
+      "unit": "kWh",
+      "unit_price": 0.249,
+      "amount": 6.4,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "energy",
+      "concept": "Electricitat utilitzada",
+      "period": "p2",
+      "quantity": 29.651,
+      "unit": "kWh",
+      "unit_price": 0.169,
+      "amount": 5.01,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "energy",
+      "concept": "Electricitat utilitzada",
+      "period": "p3",
+      "quantity": 103.725,
+      "unit": "kWh",
+      "unit_price": 0.15,
+      "amount": 15.56,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "adjust",
+      "concept": "Serveis d'Ajust",
+      "period": null,
+      "quantity": null,
+      "unit": null,
+      "unit_price": null,
+      "amount": 4.62,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "surplus",
+      "concept": "Electricitat excedentària",
+      "period": "p2",
+      "quantity": 11.47,
+      "unit": "kWh",
+      "unit_price": 0.03,
+      "amount": -0.34,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "surplus",
+      "concept": "Electricitat excedentària",
+      "period": "p3",
+      "quantity": 12.53,
+      "unit": "kWh",
+      "unit_price": 0.03,
+      "amount": -0.38,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "social",
+      "concept": "Bo social",
+      "period": null,
+      "quantity": 31.0,
+      "unit": "days",
+      "unit_price": 0.024688,
+      "amount": 0.77,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "other",
+      "concept": "Donatiu voluntari",
+      "period": null,
+      "quantity": 159.08,
+      "unit": "kWh",
+      "unit_price": 0.01,
+      "amount": 1.59,
+      "vat_pct": 0.0,
+      "info": false
+    },
+    {
+      "section": "elec_tax",
+      "concept": "Impost de l'electricitat",
+      "period": null,
+      "quantity": 43.93,
+      "unit": "EUR",
+      "unit_price": 0.0511269,
+      "amount": 2.25,
+      "vat_pct": 21.0,
+      "info": false
+    },
+    {
+      "section": "meter",
+      "concept": "Lloguer del comptador",
+      "period": null,
+      "quantity": 31.0,
+      "unit": "days",
+      "unit_price": 0.044712,
+      "amount": 1.39,
+      "vat_pct": 21.0,
+      "info": false
+    }
+  ],
+  "unreadable": [],
+  "notes": null
+}
