@@ -1,1 +1,15 @@
 /* Battery view (task 7). Every class here starts with 'battery-'. */
+.battery-now { display: flex; flex-direction: column; gap: var(--sp-base); }
+.battery-now-main { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.battery-soc { color: var(--ink); font-size: var(--fs-hero); font-weight: 500; line-height: 1.1; }
+.battery-bar { position: relative; height: 12px; border-radius: var(--r-pill); background: var(--surface-strong); overflow: hidden; }
+.battery-bar > span { display: block; height: 100%; border-radius: var(--r-pill); background: var(--chart-battery); }
+.battery-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); }
+.battery-now-text p { margin: 0; }
+.battery-limits { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: var(--sp-base) var(--sp-lg); margin: 0; }
+.battery-limit { display: flex; flex-direction: column; gap: var(--sp-xxs); min-width: 0; }
+.battery-limit dt { color: var(--muted); font-size: var(--fs-caption); }
+.battery-limit dd { display: flex; flex-direction: column; margin: 0; }
+.battery-limit .num { color: var(--ink); font-size: var(--fs-title-md); font-weight: 500; }
+.battery-details > .card { margin-top: var(--sp-base); }
+.battery-details > summary { min-height: 44px; }
