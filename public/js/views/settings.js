@@ -4,13 +4,13 @@ import dict from '../i18n/settings.js';
 import { esc, icon, loadBlock, emptyState, getTheme, setTheme } from '../ui.js';
 import { getAlertsConfig, putAlertsConfig, sendTestEmail, getAlertsHistory, ApiError } from '../api.js';
 import { kw, nf, pct, fmtDateTime, fmtTime } from '../format.js';
-import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, errorText, authKey, lastFired, deliveryWords, setField } from './settings-model.js';
+import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, errorText, authKey, lastFired, deliveryWords, setField, validateAlerts } from './settings-model.js';
 
 register(dict);
 
 const PAGE = 50;
 const THEMES = ['light', 'dark', 'system'];
-const errorLine = (msg) => `<p class="field-error">${icon('circle-alert', { size: 16 })}<span>${esc(msg)}</span></p>`;
+const errorLine = (msg, id = '') => `<p class="field-error"${id ? ` id="${id}"` : ''}>${icon('circle-alert', { size: 16 })}<span>${esc(msg)}</span></p>`;
 
 export async function render(root, ctx) {
   const { status, signal } = ctx;
@@ -173,16 +173,25 @@ function drawAlerts(el, config, rows, signal) {
   const showErrors = (fields) => {
     const form = el.querySelector('.settings-errors');
     const loose = [];
-    for (const e of fieldErrorsByInput(fields)) {
+    let first = null;
+    fieldErrorsByInput(fields).forEach((e, n) => {
       const input = el.querySelector(`[data-field="${e.path}"]`);
       if (!input) {
         loose.push(e.message);
-        continue;
+        return;
       }
+      // the message is tied to its field: read out with it, and the field is marked invalid
+      const id = `settings-err-${n}`;
       input.setAttribute('aria-invalid', 'true');
-      (input.closest('.settings-rule-body, .settings-mail, .field, .settings-quiet') ?? input.parentElement).insertAdjacentHTML('beforeend', errorLine(e.message));
-    }
+      input.setAttribute('aria-describedby', id);
+      (input.closest('.settings-rule-body, .settings-mail, .field, .settings-quiet') ?? input.parentElement).insertAdjacentHTML('beforeend', errorLine(e.message, id));
+      first ??= input;
+    });
     el.querySelector('[data-save]').textContent = t('settings.saveFailed');
+    if (first) {
+      first.closest('details')?.setAttribute('open', '');
+      first.focus();
+    }
     if (loose.length) {
       form.hidden = false;
       form.innerHTML = `<p>${esc(t('settings.formErrors'))}</p>${loose.map(errorLine).join('')}`;
@@ -219,6 +228,8 @@ function drawAlerts(el, config, rows, signal) {
     e.preventDefault();
     read();
     draw(); // blank addresses are gone, so error indexes match the rows
+    const invalid = validateAlerts(cfg);
+    if (Object.keys(invalid).length) return showErrors(invalid); // nothing is sent until every field is valid
     const status = el.querySelector('[data-save]');
     const btn = el.querySelector('[type="submit"]');
     btn.disabled = true;

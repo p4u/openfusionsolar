@@ -18,6 +18,34 @@ export function splitSentence(template) {
   return String(template).split(/\{(\w+)\}/).map((s, i) => (i % 2 ? { input: s } : { text: s })).filter((p) => p.input || p.text);
 }
 
+// The server's own checks (alerts.js validateConfig), run before saving so a wrong value never leaves the page.
+// Returns { path: message } in the server's words (errorText translates them); empty when everything is valid.
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const EMAIL = /^[^\s@<>()[\],;:"\\]+@[^\s@<>()[\],;:"\\]+\.[^\s@<>()[\],;:"\\]+$/;
+export function validateAlerts(cfg) {
+  const fields = {};
+  const int = (path, v, [min, max]) => {
+    if (!(Number.isInteger(v) && v >= min && v <= max)) fields[path] = `integer from ${min} to ${max}`;
+  };
+  const time = (path, v) => {
+    if (!(typeof v === 'string' && HHMM.test(v))) fields[path] = 'HH:MM';
+  };
+  if ((cfg.recipients ?? []).length > 10) fields.recipients = 'up to 10 email addresses';
+  (cfg.recipients ?? []).forEach((r, i) => {
+    if (!(typeof r === 'string' && r.length <= 254 && EMAIL.test(r))) fields[`recipients.${i}`] = 'invalid email address';
+  });
+  for (const k of ['from', 'to']) time(`quiet.${k}`, cfg.quiet?.[k]);
+  for (const rule of cfg.rules ?? []) {
+    for (const [name, v] of Object.entries(rule.params ?? {})) {
+      const path = `rules.${rule.id}.params.${name}`;
+      if (name === 'time') time(path, v);
+      else if (LIMITS[name]) int(path, v, LIMITS[name]);
+    }
+    if (rule.repeatHours !== undefined) int(`rules.${rule.id}.repeatHours`, rule.repeatHours, [0, 720]);
+  }
+  return fields;
+}
+
 // Server field paths ('rules.noData.params.minutes', 'recipients.2', 'quiet.from', 'lang') -> where the message goes.
 // The path is the data-field of the input; an unknown path (or '') lands in the form-level list (area 'form').
 // The server explains a rejected field in English (alerts.js validateConfig); show it in the app language.

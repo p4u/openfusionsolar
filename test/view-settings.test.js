@@ -114,3 +114,29 @@ test('the FusionSolar access state is unknown until the first check', async () =
   assert.equal(authKey({ lastTick: null, authBlockedUntil: 2000 }, 1000), 'settings.collector.authPaused');
   for (const lang of ['en', 'ca']) assert.ok(dict[lang]['settings.collector.authUnknown'], lang);
 });
+
+test('the page checks alert settings like the server does, before sending anything', async () => {
+  const { validateAlerts, fieldErrorsByInput } = await import('../public/js/views/settings-model.js');
+  const ok = structuredClone(DEFAULT_CONFIG);
+  assert.deepEqual(validateAlerts(ok), {});
+  assert.equal(validateConfig(ok).fields, undefined, 'the server agrees');
+  const bad = structuredClone(DEFAULT_CONFIG);
+  bad.rules.find((r) => r.id === 'noData').params.minutes = 0;
+  bad.rules.find((r) => r.id === 'batteryLowInCut').params.soc = 0;
+  bad.rules.find((r) => r.id === 'dailySummary').params.time = '25:00';
+  bad.rules.find((r) => r.id === 'gridCut').repeatHours = 1000;
+  bad.recipients = ['a@b.cat', 'not-an-address'];
+  bad.quiet.from = '';
+  const fields = validateAlerts(bad);
+  // same paths and messages as the server, so one code path shows them by their fields
+  assert.deepEqual(fields, validateConfig(bad).fields);
+  assert.deepEqual(Object.keys(fields).sort(), [
+    'quiet.from', 'recipients.1', 'rules.batteryLowInCut.params.soc', 'rules.dailySummary.params.time', 'rules.gridCut.repeatHours', 'rules.noData.params.minutes',
+  ]);
+  // an emptied field is refused here too (the server would quietly put the default back)
+  const empty = structuredClone(DEFAULT_CONFIG);
+  empty.rules.find((r) => r.id === 'noData').params.minutes = null;
+  assert.deepEqual(Object.keys(validateAlerts(empty)), ['rules.noData.params.minutes']);
+  setLang('ca');
+  assert.match(fieldErrorsByInput(fields).find((e) => e.path === 'rules.noData.params.minutes').message, /5.*1440/);
+});
