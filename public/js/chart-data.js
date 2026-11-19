@@ -38,7 +38,8 @@ export function timeAxis(min, max, { mobile = false } = {}) {
     if (start(max) !== max) max = next(max);
   }
   const count = Math.max(1, Math.round((max - min) / u.ms));
-  const maxTicks = mobile ? 6 : 12;
+  // a phone day reads "19 nov., 06:00, 12:00, 18:00": four hour labels never touch on a 300 px plot
+  const maxTicks = mobile ? (u.unit === 'hour' ? 4 : 6) : 12;
   const step = u.steps.find((s) => count % s === 0 && count / s <= maxTicks && count / s >= Math.min(4, count)) ?? 1;
   return { unit: u.unit, tickAmount: count / step, min, max };
 }
@@ -99,6 +100,10 @@ export function yExtent(spec) {
   if (max != null) return { min: max - need, max };
   return { min: (lo + hi - need) / 2, max: (lo + hi + need) / 2 };
 }
+
+// A bar label that carries its year ("gen. 2026") is drawn on two lines (ApexCharts takes an array), so it is no
+// wider than its neighbours and the year at each change is never the label hidden for overlapping.
+export const twoLines = (c) => { const m = /^(.+) (\d{4})$/.exec(c ?? ''); return m ? [m[1], m[2]] : c; };
 
 // Accessible name of a chart, in the app language: what it shows and where the numbers are.
 export function chartLabel(spec) {
@@ -220,10 +225,11 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
   const height = spec.height === 'strip' ? HEIGHTS.strip : spec.height ?? (mobile ? HEIGHTS.mobile : HEIGHTS.desktop);
   const span = time ? (spec.x?.max ?? 0) - (spec.x?.min ?? 0) : 0;
   const axis = time && spec.x?.min != null && spec.x?.max != null ? timeAxis(spec.x.min, spec.x.max, { mobile }) : null;
+  const cats = (spec.x?.categories ?? []).map(twoLines);
   const series = spec.series.map((s) => ({
     name: s.name,
     type: s.type,
-    data: s.data.map((p, i) => (time ? { x: p[0], y: p[1] } : { x: spec.x.categories[i], y: p })),
+    data: s.data.map((p, i) => (time ? { x: p[0], y: p[1] } : { x: cats[i], y: p })),
   }));
   const colors = spec.series.map((s) => {
     const base = palette[s.entity] ?? palette.muted;
@@ -277,7 +283,7 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
         }
       : {
           // short labels, one per bar: overlapping ones hide, none is cut with an ellipsis
-          type: 'category', categories: spec.x?.categories ?? [], tooltip: { enabled: false }, axisBorder: { color: palette.hairline }, axisTicks: { color: palette.hairline },
+          type: 'category', categories: cats, tooltip: { enabled: false }, axisBorder: { color: palette.hairline }, axisTicks: { color: palette.hairline },
           labels: { style: text, rotate: 0, rotateAlways: false, hideOverlappingLabels: true, trim: false },
           title: { text: spec.x?.title ?? '', style: { ...text, fontWeight: 400 } },
         },

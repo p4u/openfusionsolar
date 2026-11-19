@@ -221,7 +221,7 @@ test('time axes: tick count lands every tick on an hour, day, month or year boun
   const DAY = 86400e3;
   const d0 = Date.UTC(2026, 10, 12, 23); // 13 Nov 00:00 Madrid
   assert.deepEqual(timeAxis(d0, d0 + DAY), { unit: 'hour', tickAmount: 12, min: d0, max: d0 + DAY }, 'a day: every 2 hours');
-  assert.equal(timeAxis(d0, d0 + DAY, { mobile: true }).tickAmount, 6, 'a phone: every 4 hours');
+  assert.equal(timeAxis(d0, d0 + DAY, { mobile: true }).tickAmount, 4, 'a phone: every 6 hours, so the date and the hours never touch');
   assert.equal(timeAxis(d0, d0 + 2 * DAY, { mobile: true }).tickAmount, 4);
   assert.deepEqual([timeAxis(d0, d0 + 7 * DAY).unit, timeAxis(d0, d0 + 7 * DAY).tickAmount], ['day', 7], '7 days: one tick a day');
   assert.equal(timeAxis(d0, d0 + 30 * DAY).tickAmount, 10);
@@ -312,4 +312,16 @@ test('a nearly flat signal gets a y axis wide enough for distinct labels; fixed 
   assert.deepEqual(yExtent({ kind: 'time', y: { min: 0, decimals: 1 }, series: [{ data: [[0, 0], [1, 0.1]] }] }), { min: 0, max: 0.4 });
   assert.deepEqual(yExtent({ kind: 'category', stacked: true, y: {}, series: [{ data: [1, 1] }] }), { min: undefined, max: undefined });
   assert.deepEqual(yExtent({ kind: 'time', y: {}, series: [{ data: [] }] }), { min: undefined, max: undefined });
+});
+
+test('a month label with its year is drawn on two lines, so the year at each change is kept', async () => {
+  const { twoLines, bucketAxis, apexOptions: opts } = await import('../public/js/chart-data.js');
+  setLang('ca');
+  const span = bucketAxis(['2025-11', '2025-12', '2026-01'], '1mo');
+  const o = opts({ id: 'm', kind: 'category', unit: 'kWh', x: { categories: span.categories }, series: [{ key: 'k', name: 'K', type: 'bar', entity: 'sun', data: [1, 2, 3] }] }, palette);
+  assert.deepEqual(o.xaxis.categories, [['nov.', '2025'], 'des.', ['gen.', '2026']]);
+  assert.deepEqual(o.series[0].data[2].x, ['gen.', '2026']);
+  assert.equal(twoLines('10'), '10');
+  assert.equal(twoLines('2026'), '2026', 'a year bar stays one line');
+  setLang('en');
 });
