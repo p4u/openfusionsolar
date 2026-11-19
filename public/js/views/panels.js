@@ -8,7 +8,7 @@ import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { defaultMode, addDays } from '../buckets.js';
 import { figure, chart } from '../charts.js';
-import { gapBands, eventBands } from '../chart-data.js';
+import { gapBands, eventBands, bucketAxis } from '../chart-data.js';
 import { BUCKET_MS, clampFrom, seriesBucket, energyBucket } from './battery-model.js';
 import { kwhPerKwp, peak, stringPairs, stringPower, yoyMonths, stoppedHours } from './panels-model.js';
 
@@ -29,7 +29,8 @@ const xOf = (r) => ({
   label: (i) => (r.bucket === '1d' ? fmtDate(r.t[i], { weekday: 'short', day: 'numeric', month: 'short' }) : fmtDateTime(r.t[i])),
 });
 const stamp = (r, i) => (r.bucket === '1d' ? fmtDate(r.t[i]) : fmtDateTime(r.t[i]));
-const bucketLabel = (bucket, key) => (bucket === '1d' ? fmtDate(key) : bucket === '1mo' ? fmtMonthShort(key) : key);
+// full label per bucket (tooltips and the table); the axis gets short ones from bucketAxis
+const bucketLabel = (bucket, key) => (bucket === '1d' ? fmtDate(key, { weekday: 'short', day: 'numeric', month: 'short' }) : bucket === '1mo' ? fmtMonthShort(key) : key);
 const isTemp = (s) => /[℃°]/.test(s.unit ?? '');
 
 export async function render(root, ctx) {
@@ -104,12 +105,13 @@ export async function render(root, ctx) {
       const [r, ev, e] = await Promise.all([detail(), events(), energy()]);
       if (!known(r.series.pv_kw).length) return void (el.innerHTML = noDetail());
       draw(el, {
-        title: t('panels.prod.title'), caption: t('panels.prod.caption', { kwh: kwh(e.total.pv_kwh) }), csv: 'panels-production',
+        title: t('panels.prod.title'), caption: `${t('panels.prod.caption', { kwh: kwh(e.total.pv_kwh) })} ${t('panels.prod.acNote')}`, csv: 'panels-production',
         spec: {
           id: 'panels-production', kind: 'time', unit: 'kW', x: xOf(r), y: { min: 0, decimals: 2 }, coverage: r.coverage, provisional: r.provisional,
           series: [
             { key: 'dc', name: t('panels.prod.dc'), type: 'area', entity: 'sun', data: pairs(r, r.series.pv_kw) },
-            { key: 'ac', name: t('panels.prod.ac'), type: 'line', entity: 'ac', data: pairs(r, r.series.inverter_kw) },
+            // the inverter's AC output includes what the battery gives at night: hidden until asked for
+            { key: 'ac', name: t('panels.prod.ac'), type: 'line', entity: 'ac', hidden: true, data: pairs(r, r.series.inverter_kw) },
           ],
           bands: [...gapBands({ t: r.t, coverage: r.coverage, bucketMs: BUCKET_MS[r.bucket], now: Date.now() }), ...eventBands(ev, r.t[0], r.t.at(-1) + BUCKET_MS[r.bucket])],
         },
@@ -122,13 +124,14 @@ export async function render(root, ctx) {
     }
     const e = await energy();
     const cats = e.buckets.map((k) => bucketLabel(e.bucket, k.key));
+    const axis = bucketAxis(e.buckets.map((k) => k.key), e.bucket);
     const cmp = e.compare?.comparable ? e.compare.buckets : null;
     const series = [{ key: 'kwh', name: t('panels.prod.kwh'), type: 'bar', entity: 'sun', data: e.buckets.map((k) => k.pv_kwh) }];
     if (cmp) series.push({ key: 'cmp', name: t('panels.prod.compare'), type: 'line', entity: 'muted', dashed: true, data: e.buckets.map((_, i) => cmp[i]?.pv_kwh ?? null) });
     const f = draw(el, {
       title: t('panels.prod.title'), caption: t('panels.prod.caption', { kwh: kwh(e.total.pv_kwh) }), csv: 'panels-production',
       spec: {
-        id: 'panels-production-kwh', kind: 'category', unit: 'kWh', x: { categories: cats }, y: { min: 0, decimals: 1 },
+        id: 'panels-production-kwh', kind: 'category', unit: 'kWh', x: { categories: axis.categories, title: axis.title, label: (i) => cats[i] }, y: { min: 0, decimals: 1 },
         coverage: e.buckets.map((k) => k.coverage), provisional: e.buckets.map((k) => k.provisional), series,
       },
       columns: [t('panels.col.period'), { label: t('panels.prod.kwh'), unit: 'kWh' }, ...(cmp ? [{ label: t('panels.prod.compare'), unit: 'kWh' }] : [])],
@@ -144,7 +147,7 @@ export async function render(root, ctx) {
     const [a, b] = await Promise.all([get(year), get(year - 1)]);
     const rows = yoyMonths(a.buckets, b.buckets);
     if (!rows.some((m) => m.thisYear != null || m.lastYear != null)) return void (el.innerHTML = emptyState({ title: t('panels.yoy.title'), body: t('panels.yoy.none') }));
-    const cats = rows.map((m) => fmtDate(`${year}-${String(m.month).padStart(2, '0')}-15`, { month: 'short' }));
+    const cats = bucketAxis(rows.map((m) => `${year}-${String(m.month).padStart(2, '0')}`), '1mo').categories;
     draw(el, {
       title: t('panels.yoy.title'), caption: t('panels.yoy.caption', { year, last: year - 1 }), csv: 'panels-year-on-year',
       spec: {
