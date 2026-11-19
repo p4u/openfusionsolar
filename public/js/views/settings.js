@@ -4,7 +4,7 @@ import dict from '../i18n/settings.js';
 import { esc, icon, loadBlock, emptyState, getTheme, setTheme } from '../ui.js';
 import { getAlertsConfig, putAlertsConfig, sendTestEmail, getAlertsHistory, ApiError } from '../api.js';
 import { kw, nf, pct, fmtDateTime, fmtTime } from '../format.js';
-import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, lastFired, deliveryWords, setField } from './settings-model.js';
+import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, errorText, authKey, lastFired, deliveryWords, setField } from './settings-model.js';
 
 register(dict);
 
@@ -64,7 +64,6 @@ function plantHtml(status) {
   const row = (label, value, source) => `<div class="settings-fact"><dt>${esc(label)}</dt><dd><span class="num">${esc(value ?? t('core.unknown'))}</span>${source ? `<span class="hint">${esc(source)}</span>` : ''}</dd></div>`;
   const s = status.station ?? {};
   const c = status.collector;
-  const paused = c && c.authBlockedUntil > Date.now();
   const bf = c?.backfill;
   const lastError = c?.lastError == null ? null : String(c.lastError.message ?? c.lastError);
   return `<dl class="settings-facts">
@@ -83,7 +82,7 @@ function plantHtml(status) {
       ${row(t('settings.collector.lastTick'), c.lastTick == null ? null : fmtDateTime(c.lastTick))}
       ${row(t('settings.collector.lastError'), lastError ?? t('settings.collector.noError'))}
       ${row(t('settings.collector.backfill'), bf && bf.done < bf.total ? t('settings.collector.backfillValue', { done: bf.done, total: bf.total }) : t('settings.collector.backfillDone'))}
-      ${row(t('settings.collector.auth'), paused ? t('settings.collector.authPaused', { when: fmtTime(c.authBlockedUntil) }) : t('settings.collector.authOk'))}
+      ${row(t('settings.collector.auth'), t(authKey(c), { when: fmtTime(c.authBlockedUntil) }))}
     </dl>` : `<p class="hint">${esc(t('settings.collector.off'))}</p>`}`;
 }
 
@@ -209,7 +208,7 @@ function drawAlerts(el, config, rows, signal) {
       out.textContent = r.ok ? t('settings.test.sent') : t('settings.test.failed', { error: r.error });
     } catch (err) {
       if (err?.name === 'AbortError') return;
-      out.textContent = t('settings.test.failed', { error: err.body?.fields?.to ?? err.message });
+      out.textContent = t('settings.test.failed', { error: err.body?.fields?.to ? errorText(err.body.fields.to) : err.message });
     }
     test.disabled = false;
   });

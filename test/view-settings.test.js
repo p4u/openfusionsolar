@@ -87,3 +87,30 @@ test('glossary has the same entries in both languages', () => {
   assert.equal(dict.en['settings.glossary'].length, 11);
   assert.equal(dict.ca['settings.glossary'].length, 11);
 });
+
+test('server validation messages are shown in the app language', async () => {
+  const { errorText } = await import('../public/js/views/settings-model.js');
+  register(dict);
+  setLang('ca');
+  const bad = structuredClone(DEFAULT_CONFIG);
+  bad.recipients = ['x'];
+  bad.quiet.from = '25:00';
+  bad.rules[0].params.minutes = 1;
+  const errs = fieldErrorsByInput(validateConfig(bad).fields);
+  const by = Object.fromEntries(errs.map((e) => [e.path, e.message]));
+  assert.equal(by['recipients.0'], 'Aquesta adreça electrònica no és vàlida.');
+  assert.match(by['rules.noData.params.minutes'], /del 5 al 1440/);
+  assert.match(by['quiet.from'], /HH:MM/);
+  for (const e of errs) assert.doesNotMatch(e.message, /invalid|integer from/, e.path);
+  assert.equal(errorText('something new'), 'Aquest valor no és vàlid.');
+  setLang('en');
+  assert.equal(errorText('invalid email address'), 'This email address is not valid.');
+});
+
+test('the FusionSolar access state is unknown until the first check', async () => {
+  const { authKey } = await import('../public/js/views/settings-model.js');
+  assert.equal(authKey({ lastTick: null, authBlockedUntil: 0 }, 1000), 'settings.collector.authUnknown');
+  assert.equal(authKey({ lastTick: 500, authBlockedUntil: 0 }, 1000), 'settings.collector.authOk');
+  assert.equal(authKey({ lastTick: null, authBlockedUntil: 2000 }, 1000), 'settings.collector.authPaused');
+  for (const lang of ['en', 'ca']) assert.ok(dict[lang]['settings.collector.authUnknown'], lang);
+});

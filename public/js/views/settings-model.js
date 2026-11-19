@@ -20,8 +20,17 @@ export function splitSentence(template) {
 
 // Server field paths ('rules.noData.params.minutes', 'recipients.2', 'quiet.from', 'lang') -> where the message goes.
 // The path is the data-field of the input; an unknown path (or '') lands in the form-level list (area 'form').
+// The server explains a rejected field in English (alerts.js validateConfig); show it in the app language.
+export function errorText(message) {
+  const m = /^integer from (\d+) to (\d+)$/.exec(message ?? '');
+  if (m) return t('settings.err.range', { min: m[1], max: m[2] });
+  const key = { 'invalid email address': 'email', 'up to 10 email addresses': 'recipients', 'HH:MM': 'time' }[message];
+  return t(`settings.err.${key ?? 'invalid'}`);
+}
+
 export function fieldErrorsByInput(fields) {
-  return Object.entries(fields ?? {}).map(([path, message]) => {
+  return Object.entries(fields ?? {}).map(([path, raw]) => {
+    const message = errorText(raw);
     const [head, a, b, c] = path.split('.');
     const area = head === 'recipients' && a != null ? 'recipient' : head === 'quiet' ? 'quiet' : head === 'lang' ? 'lang'
       : head === 'rules' && a && b ? 'rule' : 'form';
@@ -55,3 +64,7 @@ export function setField(cfg, path, value) {
     else rule[b] = value;
   }
 }
+
+// FusionSolar access as Settings shows it: paused after a failure, unknown before the first check, else working.
+export const authKey = (c, now = Date.now()) => (c.authBlockedUntil > now ? 'settings.collector.authPaused'
+  : c.lastTick == null ? 'settings.collector.authUnknown' : 'settings.collector.authOk');
