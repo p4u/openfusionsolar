@@ -1,4 +1,5 @@
 // Pure helpers of the Technical data view.
+import { phaseSignals } from './bill-model.js';
 export const MAX_SIGNALS = 6;
 
 // [{ unit, signals }] in order of first appearance; a missing unit groups under ''.
@@ -33,11 +34,8 @@ export function defaultPicks(devices) {
   return [find('Inverter', /^active power$/i), find('Battery', /\bsoc\b/i)].filter(Boolean);
 }
 
-// Link to the phase powers of the meter (names ending in Pa, Pb, Pc), or null when there are none.
+// Link to the phase powers of the meter (the Bill view points here), or null when there are none.
 export function phaseLink(devices) {
-  for (const d of devices ?? []) {
-    const ids = (d.signals ?? []).filter((s) => /\bP[abc]$/.test(s.name ?? '') && (s.unit === 'W' || s.unit === 'kW')).map((s) => s.id);
-    if (ids.length) return `#/signals?dn=${encodeURIComponent(d.dn)}&ids=${ids.join(',')}`;
-  }
-  return null;
+  const p = phaseSignals(devices);
+  return p ? `#/signals?dn=${encodeURIComponent(p.dn)}&ids=${p.signals.map((x) => x.id).join(',')}` : null;
 }

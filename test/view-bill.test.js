@@ -82,3 +82,21 @@ test('the month table totals each column and keeps unknown columns empty', async
   assert.deepEqual(monthTotals(rows), { bought: 30, sold: 1, byPeriod: [6, 3, 21], money: { energy: 9, fixed: 20, bill: 29, savings: 9 } });
   assert.equal(monthTotals([{ bought: null, sold: null, byPeriod: [null, null, null], money: null }]).money, null);
 });
+
+test('real bill amounts are read the way people type them, and wrong ones are named', async () => {
+  const { parseAmount, billDelta } = await import('../public/js/views/bill-model.js');
+  assert.deepEqual(parseAmount('61,23'), { value: 61.23 });
+  assert.deepEqual(parseAmount('61.23'), { value: 61.23 });
+  assert.deepEqual(parseAmount(' 1.234,5 € '), { value: 1234.5 });
+  assert.deepEqual(parseAmount('1,234.56'), { value: 1234.56 });
+  assert.deepEqual(parseAmount('0'), { value: 0 });
+  assert.deepEqual(parseAmount(''), { value: null }, 'empty clears the month');
+  assert.deepEqual(parseAmount('-5'), { error: 'negative' });
+  assert.deepEqual(parseAmount('abc'), { error: 'format' });
+  assert.deepEqual(parseAmount('12,345'), { value: 12345 }, 'three digits after a comma group thousands');
+  assert.deepEqual(parseAmount('61,234'), { value: 61234 });
+  assert.deepEqual(parseAmount('2000000'), { error: 'range' });
+  assert.equal(billDelta(61.23, 58.1), 3.13);
+  assert.equal(billDelta(null, 58.1), null);
+  assert.equal(billDelta(50, null), null);
+});

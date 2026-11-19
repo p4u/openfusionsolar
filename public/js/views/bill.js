@@ -2,13 +2,15 @@
 import { register, t, locale } from '../i18n.js';
 import dict from '../i18n/bill.js';
 import { esc, icon, emptyState, loadBlock, ledger, badge, every } from '../ui.js';
-import { getEnergy, getSeries, getSignals, getSignalHistory } from '../api.js';
+import { getEnergy, getSeries, getSignals, getBills, putBill, ApiError } from '../api.js';
 import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
-import { addDays, spanDays, autoSeriesBucket } from '../buckets.js';
-import { eur, kwh, kw, nf, fmtDate, fmtDateTime, fmtMonth, fmtMonthShort, dayOf, isoLocal } from '../format.js';
-import { monthRows, peakVsContracted, phaseSignals, monthTotals } from './bill-model.js';
+import { addDays } from '../buckets.js';
+import { bucketAxis } from '../chart-data.js';
+import { eur, kwh, kw, nf, fmtDate, fmtMonth, dayOf } from '../format.js';
+import { monthRows, peakVsContracted, monthTotals, parseAmount, billDelta } from './bill-model.js';
+import { phaseLink } from './signals-model.js';
 import { deltaText, compareLabel } from './energy-model.js';
 
 register(dict);
@@ -42,7 +44,8 @@ export async function render(root, ctx) {
   const rctx = { today: status.today, firstDay: status.firstDay };
   const range = parseRange(ctx.params, rctx, 'year');
   const priced = Boolean(status.pricesConfigured);
-  const monthLabel = (key) => fmtMonthShort(key);
+  const monthLabel = (key) => fmtMonth(key);
+  const monthAxis = (rows) => { const a = bucketAxis(rows.map((r) => r.key), '1mo'); return { categories: a.categories, title: a.title, label: (i) => monthLabel(rows[i].key) }; };
   const csvName = (id) => `${id}-${range.from}_${range.to}`;
   const cmp = range.cmp !== 'none' ? range.cmp : undefined;
 
@@ -53,11 +56,11 @@ export async function render(root, ctx) {
       ${priced ? '<div class="card span-6 bill-monthly"></div>' : ''}
       <div class="card ${priced ? 'span-6' : 'span-12'} bill-period"></div>
     </div>
+    <div class="card bill-table"></div>
     <details class="disclosure bill-more"><summary><span>${esc(t('bill.more'))}</span>${icon('chevron-down', { size: 16 })}</summary>
       <div class="bill-more-body">
         <div class="card bill-peak"></div>
-        <div class="card bill-phases"></div>
-        <div class="card bill-table"></div>
+        <p class="bill-phases" hidden></p>
       </div></details>`;
   const q = (s) => root.querySelector(s);
   const bar = renderRangeBar(q('.bill-range'), { range, ctx: rctx, onChange: (p) => ctx.setParams(p) });
@@ -134,7 +137,7 @@ export async function render(root, ctx) {
       iso: rows.map((r) => r.key), csv: csvName('bill-monthly'),
     }, {
       kind: 'category', unit: '€', stacked: true, y: { min: 0, decimals: 0 },
-      x: { categories: rows.map((r) => monthLabel(r.key)) },
+      x: monthAxis(rows),
       coverage: rows.map((r) => r.coverage), provisional: rows.map((r) => r.provisional),
       series: [
         { key: 'energy', name: t('bill.monthly.energy'), type: 'bar', entity: 'grid', data: energyCol },
@@ -159,7 +162,7 @@ export async function render(root, ctx) {
       iso: rows.map((r) => r.key), csv: csvName('bill-period'),
     }, {
       kind: 'category', unit: 'kWh', stacked: true, y: { min: 0, decimals: 0 },
-      x: { categories: rows.map((r) => monthLabel(r.key)) },
+      x: monthAxis(rows),
       coverage: rows.map((r) => r.coverage), provisional: rows.map((r) => r.provisional),
       series: names.map((name, i) => ({ key: `p${i + 1}`, name, type: 'bar', entity: `p${i + 1}`, data: rows.map((r) => r.byPeriod[i]) })),
     });
@@ -197,50 +200,73 @@ export async function render(root, ctx) {
     clampNote(el, from);
   }
 
+  // the phase powers live in Technical data: a link, not a second copy of the chart
   async function phases(el) {
-    const found = phaseSignals(await getSignals({ signal }));
-    if (!found) return el.remove();
-    const to = range.to;
-    const from = seriesFrom();
-    if (from > to) return el.remove();
-    const h = await getSignalHistory({ dn: found.dn, ids: found.signals.map((s) => s.id), from, to, bucket: autoSeriesBucket(spanDays(from, to)) }, { signal });
-    reset(el);
-    const lines = found.signals.map((s) => ({ s, avg: h.signals.find((x) => x.id === s.id)?.avg ?? [] }));
-    const entities = ['p1', 'home', 'battery'];
-    const val = (l, i) => (l.avg[i] == null ? null : l.avg[i] * l.s.scale);
-    addChart(el, {
-      id: 'bill-phases',
-      title: t('bill.phases.title'),
-      caption: t('bill.phases.caption'),
-      columns: [t('bill.table.time'), ...lines.map((l) => ({ label: l.s.phase, unit: 'kW', decimals: 2 }))],
-      rows: h.t.map((ms, i) => [fmtDateTime(ms), ...lines.map((l) => val(l, i))]),
-      iso: h.t.map((ms) => isoLocal(ms, h.bucket)), csv: csvName('bill-phases'),
-    }, {
-      kind: 'time', unit: 'kW', y: { decimals: 2 },
-      x: { min: h.t[0], max: h.t.at(-1), label: (i) => (h.bucket === '1d' ? fmtDate(h.t[i]) : fmtDateTime(h.t[i])) },
-      series: lines.map((l, k) => ({ key: l.s.phase, name: l.s.phase, type: 'line', entity: entities[k % 3], data: h.t.map((ms, i) => [ms, val(l, i)]) })),
-    });
-    clampNote(el, from);
+    const href = phaseLink(await getSignals({ signal }));
+    if (!href) return;
+    el.innerHTML = `<a class="link" href="${esc(href)}">${esc(t('bill.phases.link'))}</a>`;
+    el.hidden = false;
   }
 
   async function table(el) {
-    const { buckets } = await energy();
+    // the minute refresh never redraws under someone typing an amount
+    if (el.contains(document.activeElement) && document.activeElement.matches('.bill-real')) return;
+    const [{ buckets }, bills] = await Promise.all([energy(), getBills({ signal }).catch(() => ({}))]);
     const rows = monthRows(buckets);
     reset(el);
     if (!rows.length) return empty(el);
     const money = rows.some((r) => r.money);
     const head = [t('bill.table.month'), t('bill.table.bought'), ...['p1', 'p2', 'p3'].map((p) => t(`bill.period.${p}`)), t('bill.table.sold'),
-      ...(money ? ['energy', 'fixed', 'bill', 'savings'].map((k) => t(`bill.table.${k}`)) : [])];
-    const num = (s) => `<td class="num">${esc(s)}</td>`;
+      ...(money ? ['energy', 'fixed', 'bill', 'savings'].map((k) => t(`bill.table.${k}`)) : []), t('bill.table.real'), ...(money ? [t('bill.table.diff')] : [])];
+    const num = (s, cls = '') => `<td class="num${cls}">${esc(s)}</td>`;
+    const signed = (v) => (v == null ? '' : `${v > 0 ? '+' : ''}${eur(v)}`);
     const cells = (r) => `${num(kwh(r.bought))}${r.byPeriod.map((v) => num(kwh(v))).join('')}${num(kwh(r.sold))}${money ? [r.money?.energy, r.money?.fixed, r.money?.bill, r.money?.savings].map((v) => num(eur(v))).join('') : ''}`;
+    const realCell = (r) => {
+      const v = bills[r.key];
+      const id = `bill-real-${r.key}`;
+      return `<td class="num"><input id="${id}" class="input bill-real" type="text" inputmode="decimal" autocomplete="off" data-month="${esc(r.key)}"
+        value="${v == null ? '' : esc(nf(2).format(v))}" aria-label="${esc(t('bill.table.realFor', { month: monthLabel(r.key) }))}" aria-describedby="${id}-msg">
+        <span id="${id}-msg" class="bill-real-msg hint" role="status"></span></td>`;
+    };
+    const diffCell = (r) => (money ? num(signed(billDelta(bills[r.key], r.money?.bill)), ' bill-diff') : '');
     const body = rows.map((r) => {
       const flags = [r.provisional ? badge(t('core.badge.provisional'), 'provisional') : '', r.daysExpected > r.days ? badge(t('bill.table.partial'), 'warn') : ''].join(' ');
-      return `<tr><th scope="row">${esc(fmtMonth(r.key))} ${flags}</th>${cells(r)}</tr>`;
+      return `<tr data-month="${esc(r.key)}"><th scope="row">${esc(fmtMonth(r.key))} ${flags}</th>${cells(r)}${realCell(r)}${diffCell(r)}</tr>`;
     });
     const tot = monthTotals(rows);
-    el.innerHTML = `<h2 class="card-title">${esc(t('bill.table.title'))}</h2><div class="table-scroll"><table class="table">
+    el.innerHTML = `<h2 class="card-title">${esc(t('bill.table.title'))}</h2><p class="hint">${esc(t('bill.table.realHint'))}</p><div class="table-scroll"><table class="table">
       <thead><tr>${head.map((h, i) => `<th scope="col"${i ? ' class="num"' : ''}>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body.join('')}</tbody>
-      <tfoot><tr><th scope="row">${esc(t('bill.table.total'))}</th>${cells(tot)}</tr></tfoot></table></div>`;
+      <tfoot><tr><th scope="row">${esc(t('bill.table.total'))}</th>${cells(tot)}<td></td>${money ? '<td></td>' : ''}</tr></tfoot></table></div>`;
+    // saved when the field is left; checked here first so a wrong amount never reaches the server
+    el.onchange = async (e) => {
+      const input = e.target.closest('.bill-real');
+      if (!input) return;
+      const msg = el.querySelector(`#${input.id}-msg`);
+      const month = input.dataset.month;
+      const parsed = parseAmount(input.value);
+      if (parsed.error) {
+        input.setAttribute('aria-invalid', 'true');
+        msg.textContent = t(`bill.table.realError.${parsed.error}`);
+        input.focus();
+        return;
+      }
+      input.removeAttribute('aria-invalid');
+      msg.textContent = t('bill.table.realSaving');
+      try {
+        const saved = await putBill(month, parsed.value, { signal });
+        Object.keys(bills).forEach((k) => delete bills[k]);
+        Object.assign(bills, saved);
+        input.value = bills[month] == null ? '' : nf(2).format(bills[month]);
+        msg.textContent = t('bill.table.realSaved');
+        const r = rows.find((x) => x.key === month);
+        const diff = input.closest('tr').querySelector('.bill-diff');
+        if (diff) diff.textContent = signed(billDelta(bills[month], r?.money?.bill));
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+        input.setAttribute('aria-invalid', 'true');
+        msg.textContent = t(err instanceof ApiError && err.status === 400 ? 'bill.table.realError.format' : 'bill.table.realError.save');
+      }
+    };
   }
 
   const blocks = [];
@@ -251,14 +277,14 @@ export async function render(root, ctx) {
   run(q('.bill-tiles'), 120, tiles);
   if (priced) run(q('.bill-monthly'), 360, monthly);
   run(q('.bill-period'), 360, period);
+  run(q('.bill-table'), 200, table);
   // the detail blocks load when first opened: no readings are fetched for a section nobody looks at
   const more = q('.bill-more');
   more.addEventListener('toggle', () => {
     if (!more.open || more.dataset.loaded) return;
     more.dataset.loaded = '1';
     run(q('.bill-peak'), 360, peak);
-    run(q('.bill-phases'), 360, phases);
-    run(q('.bill-table'), 200, table);
+    phases(q('.bill-phases')).catch(() => {}); // only a link: nothing to show when it fails
   });
 
   if (range.to === status.today) {

@@ -4,3 +4,9 @@
 .bill-explain-list { display: flex; flex-direction: column; gap: var(--sp-xs); margin: 0 0 var(--sp-sm); padding-left: var(--sp-base); color: var(--body); font-size: var(--fs-caption); }
 .bill-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-xs); margin: 0; }
 .bill-noprices, .bill-incomplete { max-width: 70ch; }
+.bill-table { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.bill-real { width: 9ch; min-height: 36px; padding-block: 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.bill-real[aria-invalid="true"] { border-color: var(--status-alarm); }
+.bill-real-msg { display: block; max-width: 18ch; margin-left: auto; white-space: normal; }
+.bill-real-msg:empty { display: none; }
+.bill-phases { margin: 0; }

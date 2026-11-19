@@ -55,3 +55,19 @@ export function monthTotals(rows) {
     : null;
   return { bought: add(rows.map((r) => r.bought)), sold: add(rows.map((r) => r.sold)), byPeriod: [0, 1, 2].map((i) => add(rows.map((r) => r.byPeriod[i]))), money };
 }
+
+// A real bill amount as typed: "61,23", "61.23", "1.234,56", "61 €"; empty clears it.
+// { value: number | null } or { error: 'negative' | 'format' | 'range' }. The server checks the same rules again.
+export function parseAmount(text) {
+  const s = String(text ?? '').replace(/[\s €]/g, '');
+  if (s === '') return { value: null };
+  if (s.startsWith('-')) return { error: 'negative' };
+  // a comma followed by 1 or 2 digits at the end is the decimal mark; other dots and commas group thousands
+  const norm = /,\d{1,2}$/.test(s) ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+  if (!/^\d+(\.\d{1,2})?$/.test(norm)) return { error: 'format' };
+  const value = Number(norm);
+  return value > 1e6 ? { error: 'range' } : { value };
+}
+
+// Real bill minus the estimate, in euros; null when either is unknown.
+export const billDelta = (real, estimate) => (real == null || estimate == null ? null : Math.round((real - estimate) * 100) / 100);
