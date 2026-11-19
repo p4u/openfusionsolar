@@ -48,3 +48,4 @@
   .login-orb-a { width: 400px; left: -220px; }
   .login-orb-b { width: 360px; right: -220px; }
 }
+.offline-actions { margin-top: var(--sp-xl); }

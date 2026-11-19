@@ -129,6 +129,11 @@
   --content-max: 1200px;
   --nav-h: 64px;
   --tabbar-h: 56px;
+  /* installed app (viewport-fit=cover): bars and content keep clear of the notch, the corners and the home indicator */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --gutter-x: max(var(--gutter), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+  --top-h: calc(var(--nav-h) + var(--safe-top));
 }
 
 @media (prefers-color-scheme: dark) {

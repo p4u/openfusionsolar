@@ -65,3 +65,4 @@
 .settings-glossary { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: var(--sp-base) var(--sp-lg); margin: 0; }
 .settings-glossary dt { color: var(--ink); font-weight: 500; }
 .settings-glossary dd { margin: var(--sp-xxs) 0 0; }
+@media (pointer: coarse) { .settings-inline { height: 44px; } }

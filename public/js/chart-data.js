@@ -289,7 +289,8 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
         },
     // one y axis only: a second unit gets its own strip, synced through `group`
     yaxis: {
-      ...yExtent(spec), forceNiceScale: true,
+      // a phone plot of about 200 px reads four steps; the desktop keeps ApexCharts' own count
+      ...yExtent(spec), forceNiceScale: true, ...(mobile && { tickAmount: 4 }),
       title: { text: spec.unit, style: { ...text, fontWeight: 400 } },
       labels: { style: text, minWidth: 48, maxWidth: 48, formatter: (v) => (v == null ? '' : nfAxis(spec.y?.decimals ?? 1).format(v)) },
     },

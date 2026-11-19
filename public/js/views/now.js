@@ -8,7 +8,7 @@ import { eventItem, groupNetwork, groupEpisodes, summarize } from '../incidents.
 import { addDays } from '../buckets.js';
 import { figure, chart } from '../charts.js';
 import { gapBands, eventBands } from '../chart-data.js';
-import { recentEvents, headline, flow, autonomyHours, reserveNote, todayTiles } from './now-model.js';
+import { recentEvents, headline, flow, autonomyHours, reserveNote, todayTiles, offlineNote } from './now-model.js';
 
 register(dict);
 
@@ -147,13 +147,20 @@ function heroFacts(status, month, year) {
 async function fillTop(el, ctx, shared) {
   const { signal } = ctx;
   const today = shared.status?.today ?? dayOf(Date.now());
-  const [status, events, month, year] = await Promise.all([
+  const settled = (p) => p.then((v) => ({ v }), (e) => ({ e }));
+  const [st, ...rest] = await Promise.all([
     getStatus({ signal }),
     getEvents({ from: addDays(today, -30), to: today }, { signal }),
     getEnergy({ from: `${today.slice(0, 7)}-01`, to: today, bucket: '1mo' }, { signal }),
     getEnergy({ from: `${today.slice(0, 4)}-01-01`, to: today, bucket: '1mo' }, { signal }),
-  ]);
+  ].map(settled));
+  if (st.e) throw st.e;
+  const status = st.v;
+  // offline the worker has only the last status: show it with what it says, without the rest
+  if (!status.offline) for (const r of rest) if (r.e) throw r.e;
+  const [events = [], month, year] = rest.map((r) => r.v);
   shared.status = status;
+  const offline = offlineNote(status);
   const now = Date.now();
   const h = headline(status, events, now);
   const recent = recentEvents(events, now);
@@ -167,7 +174,8 @@ async function fillTop(el, ctx, shared) {
   const link = recent.length ? { href: '#/incidents', label: t('now.head.seeIncidents') } : null;
   // beside the tall flow card the limits are open on wide screens; a refresh keeps what the user chose
   const batOpen = el.querySelector('.now-bat-more')?.open ?? matchMedia('(min-width: 1024px)').matches;
-  el.innerHTML = `${statusLine({ state: h.state, title: t(`${h.key}.title`), details, link })}${heroFacts(status, month.total, year.total)}
+  el.innerHTML = `${offline ? `<p class="now-offline" role="status">${icon('wifi-off')}<span>${esc(offline)}</span></p>` : ''}
+    ${statusLine({ state: h.state, title: t(`${h.key}.title`), details, link })}${heroFacts(status, month?.total, year?.total)}
     <div class="grid now-grid">${flowCard(status)}${batteryCard(status, batOpen)}</div>`;
   ctx.fresh.textContent = status.lastSampleTs ? t('now.dataFrom', { time: fmtTime(status.lastSampleTs) }) : '';
 }
@@ -242,7 +250,9 @@ export async function render(root, ctx) {
   const shared = { status: ctx.status };
   const chartState = {};
   const section = (id, title, extra = '') => `<section class="band"><div class="band-head"><h2 class="section-title">${esc(title)}</h2>${extra}</div><div id="${id}"></div></section>`;
-  root.innerHTML = `<header class="view-head"><h1 class="view-title">${esc(t('now.title'))}</h1><p class="hint" id="now-fresh"></p></header>
+  // the refresh button shows only in the installed app (now.css), which has no browser reload
+  root.innerHTML = `<header class="view-head"><h1 class="view-title">${esc(t('now.title'))}</h1><p class="hint" id="now-fresh"></p>
+    <button type="button" class="pill pill-outline pill-icon now-refresh" aria-label="${esc(t('now.refresh'))}" title="${esc(t('now.refresh'))}">${icon('refresh-cw')}</button></header>
     <div id="now-top"></div>
     ${section('now-tiles', t('now.tiles.title'))}
     <section class="band"><div class="card" id="now-chart"></div>
@@ -265,5 +275,12 @@ export async function render(root, ctx) {
       fn(el).catch((err) => err?.name !== 'AbortError' && console.error(err));
     }
   }, ctx.signal);
+  // by hand: every block again, a failed one with its skeleton and retry, an up-to-date one in place
+  const refresh = root.querySelector('.now-refresh');
+  refresh.addEventListener('click', async () => {
+    refresh.disabled = true;
+    await Promise.all(blocks.map(([el, h, fn]) => (el.querySelector('.error') ? loadBlock(el, h, fn) : fn(el).catch((err) => err?.name !== 'AbortError' && console.error(err)))));
+    refresh.disabled = false;
+  });
   return () => chartState.chart?.destroy();
 }

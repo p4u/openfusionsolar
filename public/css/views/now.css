@@ -61,3 +61,33 @@
 .now-more a { display: inline-flex; align-items: center; gap: var(--sp-xxs); color: var(--ink); font-weight: 500; }
 .now-grid { margin-top: var(--sp-xl); }
 .now-hero-facts { margin-top: var(--sp-lg); }
+
+/* the installed app has no browser reload: a refresh button (hidden in a browser tab) */
+.now-refresh { display: none; margin-left: auto; }
+@media (display-mode: standalone) { .now-refresh { display: inline-flex; } }
+.now-refresh:disabled .icon { animation: now-spin 1s linear infinite; }
+@keyframes now-spin { to { rotate: 360deg; } }
+
+/* offline: the last saved status, said once above the headline */
+.now-offline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--sp-xs) var(--sp-base);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface-card);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* phones: the diagram takes the card's padding too, and its text grows to stay legible once scaled down */
+@media (max-width: 639px) {
+  .now-flow-svg { width: calc(100% + 2 * var(--sp-base)); max-width: none; margin-inline: calc(-1 * var(--sp-base)); }
+  .now-node-label { font-size: 18px; }
+  .now-node-value { font-size: 22px; }
+  .now-node-sub { font-size: 16px; }
+}

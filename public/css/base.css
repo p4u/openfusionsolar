@@ -8,6 +8,7 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: clip; /* orbs bleed past the viewport edge without a horizontal scroll */
+  background: var(--canvas); /* what an overscroll or pull-to-refresh reveals */
 }
 body {
   margin: 0;
@@ -24,6 +25,8 @@ ul[class], ol[class] { list-style: none; margin: 0; padding: 0; }
 a { color: inherit; }
 button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
 button { cursor: pointer; }
+/* no double-tap zoom wait on what is tapped; pinch zoom stays */
+a, button, input, select, textarea, label, summary { touch-action: manipulation; }
 p, li, dd { text-wrap: pretty; }
 [hidden] { display: none !important; }
 
@@ -96,7 +99,7 @@ p, li, dd { text-wrap: pretty; }
 .icon-24 { width: 24px; height: 24px; }
 
 /* ---------- layout ---------- */
-.container { width: min(100% - 2 * var(--gutter), var(--content-max)); margin-inline: auto; }
+.container { width: min(100% - 2 * var(--gutter-x), var(--content-max)); margin-inline: auto; }
 main.container { padding-block: var(--sp-xl) var(--sp-section); }
 main:focus { outline: none; }
 
@@ -154,6 +157,7 @@ main:focus { outline: none; }
   position: sticky;
   top: 0;
   z-index: 30;
+  padding-top: var(--safe-top);
   background: var(--canvas);
   border-bottom: 1px solid var(--hairline);
 }
@@ -161,7 +165,7 @@ main:focus { outline: none; }
   display: flex;
   align-items: center;
   gap: var(--sp-lg);
-  width: min(100% - 2 * var(--gutter), var(--content-max));
+  width: min(100% - 2 * var(--gutter-x), var(--content-max));
   height: var(--nav-h);
   margin-inline: auto;
 }
@@ -253,8 +257,8 @@ main:focus { outline: none; }
 .menu {
   position: fixed;
   inset: auto;
-  top: calc(var(--nav-h) - var(--sp-xxs));
-  right: max(var(--gutter), (100vw - var(--content-max)) / 2);
+  top: calc(var(--top-h) - var(--sp-xxs));
+  right: max(var(--gutter-x), (100vw - var(--content-max)) / 2);
   margin: 0;
   min-width: 248px;
   padding: 6px;
@@ -293,8 +297,8 @@ main:focus { outline: none; }
   inset-inline: 0;
   bottom: 0;
   z-index: 30;
-  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
-  padding: 0 var(--sp-xxs) env(safe-area-inset-bottom);
+  height: calc(var(--tabbar-h) + var(--safe-bottom));
+  padding: 0 max(var(--sp-xxs), env(safe-area-inset-right, 0px)) var(--safe-bottom) max(var(--sp-xxs), env(safe-area-inset-left, 0px));
   background: var(--surface-card);
   border-top: 1px solid var(--hairline);
 }
@@ -310,7 +314,7 @@ main:focus { outline: none; }
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--fs-caption); /* 14 px: the smallest text on a phone */
   font-weight: 500;
   line-height: 1.2;
   letter-spacing: 0;
@@ -347,7 +351,7 @@ main:focus { outline: none; }
   .nav-links, .more-btn, .nav-wide { display: none; }
   .brand { max-width: none; flex: 1 1 auto; font-size: var(--fs-title-md); }
   .tabbar { display: flex; }
-  main.container { padding-block: var(--sp-lg) calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--sp-xl)); }
+  main.container { padding-block: var(--sp-lg) calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-xl)); }
 }
 
 /* sheet: bottom sheet on phones, centred dialog elsewhere; dialogs return focus to their opener */
@@ -733,7 +737,38 @@ a.card:hover, .card-link:hover { border-color: var(--hairline-strong); box-shado
 @media (pointer: coarse) {
   .pill { height: 44px; }
   .icon-btn:not(.field-affix-btn) { width: 44px; height: 44px; }
-  .segmented > button, .segmented > a, .segmented > label { height: 40px; }
+  .segmented > button, .segmented > a, .segmented > label { height: 44px; }
+  /* iOS zooms into a field whose text is under 16 px */
+  input, select, textarea { font-size: max(16px, 1em); }
+  /* the 24 px switch is reached on a 46 px band */
+  .switch::after { content: ''; position: absolute; inset: -11px -1px; }
+}
+
+/* toast: one short message with its action, above the tab bar on phones */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-lg) + var(--safe-bottom));
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-base);
+  width: max-content;
+  max-width: calc(100% - 2 * var(--gutter-x));
+  padding: var(--sp-xs) var(--sp-xs) var(--sp-xs) var(--sp-lg);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface-card);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: var(--shadow-float);
+  translate: -50% 0;
+  animation: toast-in 200ms var(--ease);
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(var(--sp-xs)); } }
+@media (max-width: 639px) {
+  .toast { bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-sm)); }
 }
 
 /* ---------- lists, tables, disclosures ---------- */

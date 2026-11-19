@@ -1,6 +1,6 @@
 // Pure helpers of the Now view (no DOM): the status headline, the flow links and the battery autonomy.
 import { t } from '../i18n.js';
-import { fmtTime, duration, kwh, pct, eur } from '../format.js';
+import { fmtTime, fmtDate, dayOf, duration, kwh, pct, eur } from '../format.js';
 import { eventTitle } from '../incidents.js';
 
 export const STALE_MS = 20 * 60e3;
@@ -108,3 +108,12 @@ export function todayTiles(total, st) {
 // the Incidents list); anything else by when it ended.
 export const recentEvents = (events, now = Date.now()) =>
   events.filter((e) => !e.ongoing && (e.kind === 'network' ? e.start : e.end) > now - DAY);
+
+// The banner when the service worker answered with its last copy of the status (sw.js): null when online.
+// The time is the last reading's; its day is named when it is not today.
+export function offlineNote(status, now = Date.now()) {
+  if (!status?.offline) return null;
+  const ts = status.lastSampleTs;
+  if (!ts) return t('now.offlineNoData');
+  return dayOf(ts) === dayOf(now) ? t('now.offline', { time: fmtTime(ts) }) : t('now.offlineDay', { date: fmtDate(ts), time: fmtTime(ts) });
+}
