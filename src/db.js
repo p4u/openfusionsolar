@@ -54,6 +54,13 @@ create table if not exists daily (
   import_p1 real, import_p2 real, import_p3 real,
   load_p1 real, load_p2 real, load_p3 real
 );
+-- Alert engine (src/alerts.js): per-rule state and every alert it raised, sent or not.
+create table if not exists alert_state (key text primary key, value text not null);
+create table if not exists alert_log (
+  id integer primary key, ts integer not null, rule text not null, event text not null,
+  title text, body text, delivery text not null, reason text, error text
+);
+create index if not exists alert_log_ts on alert_log(ts);
 `;
 
 const DAILY_COLS = ['pv_kwh', 'load_kwh', 'import_kwh', 'export_kwh', 'self_use_kwh', 'charge_kwh', 'discharge_kwh',
@@ -99,6 +106,14 @@ export class Store {
       sigFirst: q('select ts from signal_history where device_dn = ? and signal_id = ? order by ts limit 1'),
       sigLast: q('select ts from signal_history where device_dn = ? and signal_id = ? order by ts desc limit 1'),
       syncedWithoutDaily: q('select day from day_sync where day not in (select day from daily) order by day desc'),
+      alertState: q('select key, value from alert_state'),
+      clearAlertState: q('delete from alert_state'),
+      putAlertState: q('insert into alert_state (key, value) values (?, ?)'),
+      logAlert: q(`insert into alert_log (ts, rule, event, title, body, delivery, reason, error)
+                   values (?, ?, ?, ?, ?, ?, ?, ?)`),
+      updateAlertLog: q('update alert_log set delivery = ?, error = ? where id = ?'),
+      alertLog: q('select * from alert_log where id < ? order by id desc limit ?'),
+      failedAlerts: q("select * from alert_log where delivery = 'failed' and ts >= ? order by id"),
     };
   }
 
@@ -234,5 +249,33 @@ export class Store {
 
   alarms(from, to) {
     return this.st.alarms.all(to, from);
+  }
+
+  getAlertState() {
+    return new Map(this.st.alertState.all().map((r) => [r.key, JSON.parse(r.value)]));
+  }
+
+  saveAlertState(map) {
+    this.tx(() => {
+      this.st.clearAlertState.run();
+      for (const [k, v] of map) this.st.putAlertState.run(k, JSON.stringify(v));
+    });
+  }
+
+  logAlert(r) {
+    const res = this.st.logAlert.run(r.ts, r.rule, r.event, r.title ?? null, r.body ?? null, r.delivery, r.reason ?? null, r.error ?? null);
+    return Number(res.lastInsertRowid);
+  }
+
+  updateAlertLog(id, { delivery, error = null }) {
+    this.st.updateAlertLog.run(delivery, error, id);
+  }
+
+  alertLog({ limit = 50, before } = {}) {
+    return this.st.alertLog.all(before ?? Number.MAX_SAFE_INTEGER, limit);
+  }
+
+  failedAlerts(since) {
+    return this.st.failedAlerts.all(since);
   }
 }
