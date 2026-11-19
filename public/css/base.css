@@ -749,6 +749,7 @@ a.card:hover, .card-link:hover { border-color: var(--hairline-strong); box-shado
 }
 .table td { padding: 10px var(--sp-sm); border-bottom: 1px solid var(--hairline); color: var(--body); }
 .table .num { text-align: right; }
+.table tfoot th, .table tfoot td { border-top: 1px solid var(--hairline-strong); border-bottom: 0; color: var(--ink); font-weight: 500; }
 
 .disclosure > summary {
   display: flex;

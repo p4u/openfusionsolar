@@ -68,3 +68,13 @@ test('the money sentence names the .env keys in both languages', () => {
     assert.ok(billDict[lang]['bill.noPrices'].includes('PRICE_P1') && billDict[lang]['bill.noPrices'].includes('PRICE_P3'), lang);
   }
 });
+
+test('the month table totals each column and keeps unknown columns empty', async () => {
+  const { monthTotals } = await import('../public/js/views/bill-model.js');
+  const rows = [
+    { bought: 10, sold: 1, byPeriod: [2, 3, 5], money: { energy: 3, fixed: 10, bill: 13, savings: 4 } },
+    { bought: 20, sold: null, byPeriod: [4, null, 16], money: { energy: 6, fixed: 10, bill: 16, savings: 5 } },
+  ];
+  assert.deepEqual(monthTotals(rows), { bought: 30, sold: 1, byPeriod: [6, 3, 21], money: { energy: 9, fixed: 20, bill: 29, savings: 9 } });
+  assert.equal(monthTotals([{ bought: null, sold: null, byPeriod: [null, null, null], money: null }]).money, null);
+});

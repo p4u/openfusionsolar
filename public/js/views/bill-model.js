@@ -46,3 +46,12 @@ export function phaseSignals(devices) {
   }
   return null;
 }
+
+// The totals row of the month table: sums per column; a column with no known value stays null.
+export function monthTotals(rows) {
+  const add = (vals) => (vals.some((v) => v != null) ? vals.reduce((a, v) => a + (v ?? 0), 0) : null);
+  const money = rows.some((r) => r.money)
+    ? Object.fromEntries(['energy', 'fixed', 'bill', 'savings'].map((k) => [k, add(rows.map((r) => r.money?.[k]))]))
+    : null;
+  return { bought: add(rows.map((r) => r.bought)), sold: add(rows.map((r) => r.sold)), byPeriod: [0, 1, 2].map((i) => add(rows.map((r) => r.byPeriod[i]))), money };
+}

@@ -52,6 +52,7 @@ export default {
     'bill.table.bill': 'Bill',
     'bill.table.savings': 'Saved',
     'bill.table.partial': 'Incomplete',
+    'bill.table.total': 'Total',
   },
   ca: {
     'bill.title': 'Factura',
@@ -105,5 +106,6 @@ export default {
     'bill.table.bill': 'Factura',
     'bill.table.savings': 'Estalviat',
     'bill.table.partial': 'Incomplet',
+    'bill.table.total': 'Total',
   },
 };

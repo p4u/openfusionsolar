@@ -1,5 +1,5 @@
 // Bill view: what the bill will be, what the panels saved, how much was bought in each tariff period.
-import { register, t } from '../i18n.js';
+import { register, t, locale } from '../i18n.js';
 import dict from '../i18n/bill.js';
 import { esc, icon, emptyState, loadBlock, ledger, badge, every } from '../ui.js';
 import { getEnergy, getSeries, getSignals, getSignalHistory } from '../api.js';
@@ -7,8 +7,9 @@ import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
 import { addDays, spanDays, autoSeriesBucket } from '../buckets.js';
-import { eur, kwh, kw, nf, fmtDate, fmtDateTime, fmtMonth, dayOf } from '../format.js';
-import { monthRows, peakVsContracted, phaseSignals } from './bill-model.js';
+import { eur, kwh, kw, nf, fmtDate, fmtDateTime, fmtMonth, fmtMonthShort, dayOf, isoLocal } from '../format.js';
+import { monthRows, peakVsContracted, phaseSignals, monthTotals } from './bill-model.js';
+import { deltaText, compareLabel } from './energy-model.js';
 
 register(dict);
 
@@ -23,10 +24,10 @@ function reset(el) {
 }
 
 // A figure with caption, table and CSV, plus the chart; destroyed with the block.
-function addChart(el, { id, title, caption, columns, rows }, spec) {
-  const fig = figure(el, { title, csvName: id });
+function addChart(el, { id, title, caption, columns, rows, iso, csv }, spec) {
+  const fig = figure(el, { title, csvName: csv ?? id });
   fig.setCaption(caption);
-  fig.setTable(columns, rows);
+  fig.setTable(columns, rows, iso);
   const c = chart(fig.host, { id, ...spec });
   handles.get(el).push({ destroy: () => { c.destroy(); fig.destroy(); } });
 }
@@ -41,7 +42,9 @@ export async function render(root, ctx) {
   const rctx = { today: status.today, firstDay: status.firstDay };
   const range = parseRange(ctx.params, rctx, 'year');
   const priced = Boolean(status.pricesConfigured);
-  const monthLabel = (key) => fmtDate(`${key}-01`, { month: 'short', year: '2-digit' });
+  const monthLabel = (key) => fmtMonthShort(key);
+  const csvName = (id) => `${id}-${range.from}_${range.to}`;
+  const cmp = range.cmp !== 'none' ? range.cmp : undefined;
 
   root.innerHTML = `<header class="view-head"><h1 class="view-title">${esc(t('bill.title'))}</h1></header>
     <div class="bill-range"></div>
@@ -57,10 +60,10 @@ export async function render(root, ctx) {
         <div class="card bill-table"></div>
       </div></details>`;
   const q = (s) => root.querySelector(s);
-  const bar = renderRangeBar(q('.bill-range'), { range, ctx: rctx, compare: false, onChange: (p) => ctx.setParams(p) });
+  const bar = renderRangeBar(q('.bill-range'), { range, ctx: rctx, onChange: (p) => ctx.setParams(p) });
 
   let energyP = null;
-  const energy = () => (energyP ??= getEnergy({ from: range.from, to: range.to, bucket: '1mo' }, { signal }).catch((e) => {
+  const energy = () => (energyP ??= getEnergy({ from: range.from, to: range.to, bucket: '1mo', compare: cmp }, { signal }).catch((e) => {
     energyP = null;
     throw e;
   }));
@@ -72,18 +75,22 @@ export async function render(root, ctx) {
   };
 
   async function tiles(el) {
-    const { total } = await energy();
+    const { total, compare: c } = await energy();
     reset(el);
     if (!total.days) return empty(el);
     const m = total.money;
+    // comparison with the chosen period, as on Energy: a delta per tile or the reason it is not comparable
+    const label = c ? compareLabel(c, locale()) : '';
+    const vs = (cur, prev) => (c ? deltaText(cur, { value: prev, comparable: c.comparable, reason: c.reason, label }) : null);
+    const cm = c?.total?.money;
     let list;
     let extra = '';
     if (priced && m) {
       list = [
-        { icon: 'euro', label: t('bill.tile.cost'), value: eur(m.energy), title: t('bill.tile.costHint') },
-        { icon: 'calendar', label: t('bill.tile.bill'), value: eur(m.bill), title: t('bill.tile.billHint') },
-        { icon: 'sun', label: t('bill.tile.savings'), value: eur(m.savings), title: t('bill.tile.savingsHint'), hint: m.savings < 0 ? t('bill.tile.savingsNegative') : null },
-        { icon: 'utility-pole', label: t('bill.tile.income'), value: eur(m.exportIncome), title: t('bill.tile.incomeHint') },
+        { icon: 'euro', label: t('bill.tile.cost'), value: eur(m.energy), title: t('bill.tile.costHint'), delta: vs(m.energy, cm?.energy) },
+        { icon: 'calendar', label: t('bill.tile.bill'), value: eur(m.bill), title: t('bill.tile.billHint'), delta: vs(m.bill, cm?.bill) },
+        { icon: 'sun', label: t('bill.tile.savings'), value: eur(m.savings), title: t('bill.tile.savingsHint'), delta: vs(m.savings, cm?.savings), hint: m.savings < 0 ? t('bill.tile.savingsNegative') : null },
+        { icon: 'utility-pole', label: t('bill.tile.income'), value: eur(m.exportIncome), title: t('bill.tile.incomeHint'), delta: vs(m.exportIncome, cm?.exportIncome) },
       ];
       const p = status.prices;
       const how = t('bill.how', {
@@ -95,10 +102,10 @@ export async function render(root, ctx) {
         <p class="hint">${esc(how)}</p>`;
     } else {
       list = [
-        { icon: 'sun', label: t('bill.tile.produced'), value: kwh(total.pv_kwh) },
-        { icon: 'house', label: t('bill.tile.consumed'), value: kwh(total.load_kwh) },
-        { icon: 'utility-pole', label: t('bill.tile.bought'), value: kwh(total.import_kwh) },
-        { icon: 'zap', label: t('bill.tile.sold'), value: kwh(total.export_kwh) },
+        { icon: 'sun', label: t('bill.tile.produced'), value: kwh(total.pv_kwh), delta: vs(total.pv_kwh, c?.total.pv_kwh) },
+        { icon: 'house', label: t('bill.tile.consumed'), value: kwh(total.load_kwh), delta: vs(total.load_kwh, c?.total.load_kwh) },
+        { icon: 'utility-pole', label: t('bill.tile.bought'), value: kwh(total.import_kwh), delta: vs(total.import_kwh, c?.total.import_kwh) },
+        { icon: 'zap', label: t('bill.tile.sold'), value: kwh(total.export_kwh), delta: vs(total.export_kwh, c?.total.export_kwh) },
       ];
       extra = `<p class="hint bill-noprices">${esc(t('bill.noPrices'))}</p>`;
     }
@@ -123,14 +130,15 @@ export async function render(root, ctx) {
       title: t('bill.monthly.title'),
       caption: t('bill.monthly.caption', { total: eur(total.money?.bill), n: rows.length }),
       columns: [t('bill.table.month'), { label: t('bill.monthly.energy'), unit: '€' }, { label: t('bill.monthly.fixed'), unit: '€' }, { label: t('bill.monthly.without'), unit: '€' }],
-      rows: rows.map((r, i) => [r.key, energyCol[i], fixedCol[i], without[i]]),
+      rows: rows.map((r, i) => [monthLabel(r.key), energyCol[i], fixedCol[i], without[i]]),
+      iso: rows.map((r) => r.key), csv: csvName('bill-monthly'),
     }, {
       kind: 'category', unit: '€', stacked: true, y: { min: 0, decimals: 0 },
       x: { categories: rows.map((r) => monthLabel(r.key)) },
       coverage: rows.map((r) => r.coverage), provisional: rows.map((r) => r.provisional),
       series: [
         { key: 'energy', name: t('bill.monthly.energy'), type: 'bar', entity: 'grid', data: energyCol },
-        { key: 'fixed', name: t('bill.monthly.fixed'), type: 'bar', entity: 'p3', data: fixedCol },
+        { key: 'fixed', name: t('bill.monthly.fixed'), type: 'bar', entity: 'fixed', data: fixedCol },
         { key: 'without', name: t('bill.monthly.without'), type: 'line', entity: 'home', dashed: true, data: without },
       ],
     });
@@ -147,7 +155,8 @@ export async function render(root, ctx) {
       title: t('bill.period.title'),
       caption: t('bill.period.caption', { total: kwh(sum(['import_p1', 'import_p2', 'import_p3'].map((k) => total[k]))) }),
       columns: [t('bill.table.month'), ...names.map((n) => ({ label: n, unit: 'kWh' }))],
-      rows: rows.map((r) => [r.key, ...r.byPeriod]),
+      rows: rows.map((r) => [monthLabel(r.key), ...r.byPeriod]),
+      iso: rows.map((r) => r.key), csv: csvName('bill-period'),
     }, {
       kind: 'category', unit: 'kWh', stacked: true, y: { min: 0, decimals: 0 },
       x: { categories: rows.map((r) => monthLabel(r.key)) },
@@ -172,7 +181,8 @@ export async function render(root, ctx) {
       caption: res.contracted == null ? t('bill.peak.caption.none')
         : t(res.overCount ? 'bill.peak.caption.over' : 'bill.peak.caption.ok', { kw: kw(res.contracted), n: res.overCount }),
       columns: [t('bill.table.day'), { label: t('bill.peak.title'), unit: 'kW', decimals: 2 }],
-      rows: res.rows.map((r) => [r.day, r.peak]),
+      rows: res.rows.map((r) => [fmtDate(r.day), r.peak]),
+      iso: res.rows.map((r) => r.day), csv: csvName('bill-peak'),
     }, {
       kind: 'time', unit: 'kW', stacked: true,
       y: { min: 0, max: Math.max(res.max, res.contracted ?? 0) * 1.1 || undefined, decimals: 1 },
@@ -204,6 +214,7 @@ export async function render(root, ctx) {
       caption: t('bill.phases.caption'),
       columns: [t('bill.table.time'), ...lines.map((l) => ({ label: l.s.phase, unit: 'kW', decimals: 2 }))],
       rows: h.t.map((ms, i) => [fmtDateTime(ms), ...lines.map((l) => val(l, i))]),
+      iso: h.t.map((ms) => isoLocal(ms, h.bucket)), csv: csvName('bill-phases'),
     }, {
       kind: 'time', unit: 'kW', y: { decimals: 2 },
       x: { min: h.t[0], max: h.t.at(-1), label: (i) => (h.bucket === '1d' ? fmtDate(h.t[i]) : fmtDateTime(h.t[i])) },
@@ -218,14 +229,18 @@ export async function render(root, ctx) {
     reset(el);
     if (!rows.length) return empty(el);
     const money = rows.some((r) => r.money);
-    const head = [t('bill.table.month'), t('bill.table.bought'), t('bill.table.sold'), ...(money ? ['energy', 'fixed', 'bill', 'savings'].map((k) => t(`bill.table.${k}`)) : [])];
+    const head = [t('bill.table.month'), t('bill.table.bought'), ...['p1', 'p2', 'p3'].map((p) => t(`bill.period.${p}`)), t('bill.table.sold'),
+      ...(money ? ['energy', 'fixed', 'bill', 'savings'].map((k) => t(`bill.table.${k}`)) : [])];
     const num = (s) => `<td class="num">${esc(s)}</td>`;
+    const cells = (r) => `${num(kwh(r.bought))}${r.byPeriod.map((v) => num(kwh(v))).join('')}${num(kwh(r.sold))}${money ? [r.money?.energy, r.money?.fixed, r.money?.bill, r.money?.savings].map((v) => num(eur(v))).join('') : ''}`;
     const body = rows.map((r) => {
       const flags = [r.provisional ? badge(t('core.badge.provisional'), 'provisional') : '', r.daysExpected > r.days ? badge(t('bill.table.partial'), 'warn') : ''].join(' ');
-      return `<tr><th scope="row">${esc(fmtMonth(r.key))} ${flags}</th>${num(kwh(r.bought))}${num(kwh(r.sold))}${money ? [r.money?.energy, r.money?.fixed, r.money?.bill, r.money?.savings].map((v) => num(eur(v))).join('') : ''}</tr>`;
+      return `<tr><th scope="row">${esc(fmtMonth(r.key))} ${flags}</th>${cells(r)}</tr>`;
     });
+    const tot = monthTotals(rows);
     el.innerHTML = `<h2 class="card-title">${esc(t('bill.table.title'))}</h2><div class="table-scroll"><table class="table">
-      <thead><tr>${head.map((h, i) => `<th scope="col"${i ? ' class="num"' : ''}>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body.join('')}</tbody></table></div>`;
+      <thead><tr>${head.map((h, i) => `<th scope="col"${i ? ' class="num"' : ''}>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body.join('')}</tbody>
+      <tfoot><tr><th scope="row">${esc(t('bill.table.total'))}</th>${cells(tot)}</tr></tfoot></table></div>`;
   }
 
   const blocks = [];
