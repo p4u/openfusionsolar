@@ -6,10 +6,11 @@
 .battery-bar > span { display: block; height: 100%; border-radius: var(--r-pill); background: var(--chart-battery); }
 .battery-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); }
 .battery-now-text p { margin: 0; }
-.battery-limits { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: var(--sp-base) var(--sp-lg); margin: 0; }
-.battery-limit { display: flex; flex-direction: column; gap: var(--sp-xxs); min-width: 0; }
-.battery-limit dt { color: var(--muted); font-size: var(--fs-caption); }
-.battery-limit dd { display: flex; flex-direction: column; margin: 0; }
-.battery-limit .num { color: var(--ink); font-size: var(--fs-title-md); font-weight: 500; }
+/* limits: label left, value and its source right, one row each (the same pattern as the Now battery card) */
+.battery-limits { margin: var(--sp-xs) 0 0; }
+.battery-limit { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 var(--sp-base); padding-block: var(--sp-xs); border-top: 1px solid var(--hairline); }
+.battery-limit dt { color: var(--body); }
+.battery-limit dd { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0 var(--sp-xs); margin: 0; text-align: right; }
+.battery-limit .num { color: var(--ink); font-weight: 500; }
 .battery-details > .card { margin-top: var(--sp-base); }
 .battery-details > summary { min-height: 44px; }

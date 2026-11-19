@@ -41,3 +41,18 @@ test('bucket choice honours a legal request and falls back to auto', () => {
   assert.equal(seriesBucket({ days: 3, b: '1h' }), '1h');
   assert.equal(energyBucket({ days: 400, b: 'auto' }), '1mo');
 });
+
+test('the reserve only counts and draws from the day it was set', async () => {
+  const { reserveMarks } = await import('../public/js/views/battery-model.js');
+  const H = 3600e3;
+  const t = [0, H, 2 * H, 3 * H];
+  const soc = [10, 10, 10, 90];
+  assert.equal(hoursBelow(soc, 50, H), 3);
+  assert.equal(hoursBelow(soc, 50, H, t, 2 * H), 1, 'buckets before the reserve existed are not time below it');
+  assert.equal(hoursBelow(soc, 50, H, t, 10 * H), null, 'a range before the reserve has nothing to count');
+  assert.deepEqual(reserveMarks(50, null, t), { mode: 'all' });
+  assert.deepEqual(reserveMarks(50, 0, t), { mode: 'all' });
+  assert.deepEqual(reserveMarks(50, 10 * H, t), { mode: 'none' });
+  assert.deepEqual(reserveMarks(50, 2 * H, t), { mode: 'part', data: [[0, null], [H, null], [2 * H, 50], [3 * H, 50]] });
+  assert.deepEqual(reserveMarks(null, 0, t), { mode: 'none' });
+});

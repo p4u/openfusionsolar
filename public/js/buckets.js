@@ -47,7 +47,8 @@ export function legalEnergyBuckets(n) {
 }
 
 export const autoSeriesBucket = (n) => (n <= 2 ? '5m' : n <= 7 ? '15m' : '1d');
-export const autoEnergyBucket = (n) => (n <= 120 ? '1d' : n <= 1826 ? '1mo' : '1y');
+// lifetime ("All"): yearly bars once it spans more than two years, months before that
+export const autoEnergyBucket = (n, lifetime = false) => (n <= 120 ? '1d' : n <= (lifetime ? 731 : 1826) ? '1mo' : '1y');
 export const defaultMode = (n) => (n <= 7 ? 'power' : 'energy');
 
 export function compareDays(from, to, cmp) {

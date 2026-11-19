@@ -15,6 +15,10 @@ test('bucket rules follow the span table and the 750 cap', () => {
   assert.equal(autoEnergyBucket(121), '1mo');
   assert.equal(autoEnergyBucket(1826), '1mo');
   assert.equal(autoEnergyBucket(1827), '1y');
+  // lifetime: yearly bars beyond two years, months up to two years
+  assert.equal(autoEnergyBucket(731, true), '1mo');
+  assert.equal(autoEnergyBucket(732, true), '1y');
+  assert.equal(autoEnergyBucket(100, true), '1d');
   assert.deepEqual(legalEnergyBuckets(751), ['1mo', '1y']);
   assert.equal(spanDays('2026-03-28', '2026-03-30'), 3);
   assert.equal(bucketCount('2026-01-15', '2026-03-02', '1mo'), 3);

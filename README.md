@@ -55,7 +55,7 @@ or disabled.
 | `APP_URL` | no | Public address of the app, used for the link in alert emails. |
 | `PLANT_NAME`, `PLANT_TZ` | no | Friendlier name and time zone; default to FusionSolar's. |
 | `BACKFILL_DAYS` | no | Days of history to fetch on start. |
-| `BATTERY_KWH`, `BATTERY_MIN_PCT` | no | Battery capacity and end-of-discharge level, if FusionSolar's are wrong or missing. |
+| `BATTERY_KWH`, `BATTERY_MIN_PCT` | no | Battery capacity and minimum charge, if FusionSolar's are wrong or missing. |
 | `BATTERY_RESERVE_PCT`, `BATTERY_RESERVE_SINCE` | no | Power-cut reserve ("Backup power SOC" in the FusionSolar app). The API does not expose it, so it is only shown when set. |
 | `PRICE_*`, `POWER_P*_KW`, `TAX_*` | no | Tariff (2.0TD, Península). Without `PRICE_P1..P3` the app shows kWh only. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | no | Outgoing mail for alerts. Never shown in the app. |

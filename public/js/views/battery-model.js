@@ -14,7 +14,7 @@ export function clampFrom(from, to, firstSampleDay, maxDays = 750) {
 
 // The bucket the user asked for if it is legal for the span, else the automatic one.
 export const seriesBucket = (range) => (legalSeriesBuckets(range.days).includes(range.b) ? range.b : autoSeriesBucket(range.days));
-export const energyBucket = (range) => (legalEnergyBuckets(range.days).includes(range.b) ? range.b : autoEnergyBucket(range.days));
+export const energyBucket = (range) => (legalEnergyBuckets(range.days).includes(range.b) ? range.b : autoEnergyBucket(range.days, range.r === 'all'));
 
 // Equivalent full cycles: discharged energy over capacity. null without both.
 export const cycles = (dischargeKwh, capacity) => (dischargeKwh == null || !(capacity > 0) ? null : dischargeKwh / capacity);
@@ -22,7 +22,7 @@ export const cycles = (dischargeKwh, capacity) => (dischargeKwh == null || !(cap
 // Discharged over charged, as a percentage. Only meaningful from a week on: a short range mostly reflects the state of charge at its ends.
 export const roundTrip = (charge, discharge, days) => (days < 7 || charge == null || discharge == null || !(charge > 0) ? null : (discharge / charge) * 100);
 
-// Days whose lowest reading came within one point of the end-of-discharge level; null when nothing is known.
+// Days whose lowest reading came within one point of the minimum charge; null when nothing is known.
 export function daysAtMin(socMin, minPct) {
   if (minPct == null) return null;
   const known = socMin.filter((v) => v != null);
@@ -30,8 +30,18 @@ export function daysAtMin(socMin, minPct) {
 }
 
 // Hours spent below the reserve: only buckets that hold a reading count (a gap is not time below).
-export function hoursBelow(series, reserve, bucketMs) {
+// times/sinceMs: the reserve exists from sinceMs on; buckets before it are not counted.
+export function hoursBelow(series, reserve, bucketMs, times = null, sinceMs = null) {
   if (reserve == null) return null;
-  const known = series.filter((v) => v != null);
+  const known = series.filter((v, i) => v != null && (sinceMs == null || times[i] >= sinceMs));
   return known.length ? (known.filter((v) => v < reserve).length * bucketMs) / 3600e3 : null;
+}
+
+// How to draw the reserve on a time chart whose buckets start at `times`: the reserve exists from sinceMs on.
+// 'all': a reference line; 'none': the range is before it; 'part': a line that starts at sinceMs (data: [ms, pct|null]).
+export function reserveMarks(pct, sinceMs, times) {
+  if (pct == null || !times.length) return { mode: 'none' };
+  if (sinceMs == null || times[0] >= sinceMs) return { mode: 'all' };
+  if (times.at(-1) < sinceMs) return { mode: 'none' };
+  return { mode: 'part', data: times.map((ms) => [ms, ms >= sinceMs ? pct : null]) };
 }

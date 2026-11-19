@@ -3,13 +3,13 @@ import { register, t } from '../i18n.js';
 import dict from '../i18n/battery.js';
 import { esc, icon, ledger, loadBlock, emptyState } from '../ui.js';
 import { getSeries, getEnergy, getSignals, getSignalHistory } from '../api.js';
-import { kw, kwh, pct, nf, fmtDate, fmtDateTime, fmtMonth } from '../format.js';
+import { kw, kwh, pct, nf, fmtDate, fmtDateTime, fmtMonthShort, isoLocal, dayStart } from '../format.js';
 import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { defaultMode } from '../buckets.js';
 import { figure, chart } from '../charts.js';
 import { gapBands } from '../chart-data.js';
-import { BUCKET_MS, clampFrom, seriesBucket, energyBucket, cycles, roundTrip, daysAtMin, hoursBelow } from './battery-model.js';
+import { BUCKET_MS, clampFrom, seriesBucket, energyBucket, cycles, roundTrip, daysAtMin, hoursBelow, reserveMarks } from './battery-model.js';
 
 register(dict);
 
@@ -29,7 +29,7 @@ const xOf = (r) => ({
 });
 const stamp = (r, i) => (r.bucket === '1d' ? fmtDate(r.t[i]) : fmtDateTime(r.t[i]));
 // Energy buckets: category labels per bucket kind.
-const bucketLabel = (bucket, key) => (bucket === '1d' ? fmtDate(key) : bucket === '1mo' ? fmtMonth(key) : key);
+const bucketLabel = (bucket, key) => (bucket === '1d' ? fmtDate(key) : bucket === '1mo' ? fmtMonthShort(key) : key);
 
 function nowCard(status) {
   const b = status.battery ?? {};
@@ -77,6 +77,7 @@ export async function render(root, ctx) {
   const mode = defaultMode(range.days);
   const b = status.battery ?? {};
   const kept = []; // figures and charts to tear down
+  const sinceMs = b.reserveSince ? dayStart(b.reserveSince) : null; // the reserve applies from the day it was set
   const cl = clampFrom(range.from, range.to, status.firstSampleDay);
   const note = cl.clamped && !cl.empty ? `<p class="hint">${esc(t('core.clamped', { date: fmtDate(cl.from) }))}</p>` : '';
 
@@ -106,11 +107,11 @@ export async function render(root, ctx) {
     body: cl.from > range.to && status.firstSampleDay ? t('battery.noReadingsBefore', { date: fmtDate(status.firstSampleDay) }) : t('battery.noReadings'),
   });
 
-  const draw = (el, { title, caption, csv, spec, columns, rows }) => {
+  const draw = (el, { title, caption, csv, spec, columns, rows, iso }) => {
     el.replaceChildren();
-    const f = figure(el, { title, csvName: csv });
+    const f = figure(el, { title, csvName: `${csv}-${range.from}_${range.to}` });
     f.setCaption(caption);
-    f.setTable(columns, rows);
+    f.setTable(columns, rows, iso);
     kept.push(f, chart(f.host, spec));
     if (note) el.insertAdjacentHTML('beforeend', note);
   };
@@ -123,15 +124,21 @@ export async function render(root, ctx) {
     const socMin = d ? d.series.soc_min : [];
     const atMin = daysAtMin(socMin, b.minPct);
     const bucketMs = BUCKET_MS[sBucket];
-    const below = fine && bucketMs <= BUCKET_MS['15m'] ? hoursBelow(fine.series.soc, b.reservePct, bucketMs) : null;
+    const below = fine && bucketMs <= BUCKET_MS['15m'] ? hoursBelow(fine.series.soc, b.reservePct, bucketMs, fine.t, sinceMs) : null;
     const one = (v, digits) => (v == null ? null : nf(digits).format(v));
+    const since = b.reserveSince ? fmtDate(b.reserveSince, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+    const belowHint = (v) => {
+      if (sinceMs != null && dayStart(range.to) + 86400e3 <= sinceMs) return t('battery.tile.belowBefore', { date: since });
+      if (v == null) return t('battery.tile.belowNone');
+      return sinceMs != null && dayStart(cl.from) < sinceMs ? t('battery.tile.belowSince', { pct: b.reservePct, date: since }) : t('battery.tile.belowHint', { pct: b.reservePct });
+    };
     el.innerHTML = ledger([
       { icon: 'rotate-ccw', label: t('battery.tile.cycles'), value: one(cyc, 2), hint: cyc == null ? t('battery.tile.cyclesNone') : t('battery.tile.cyclesHint') },
       { icon: 'activity', label: t('battery.tile.rt'), value: rtv == null ? null : pct(rtv), hint: rtv == null && range.days < 7 ? t('battery.tile.rtShort') : t('battery.tile.rtHint') },
       { icon: 'battery-warning', label: t('battery.tile.min'), value: atMin == null ? null : String(atMin),
         hint: atMin == null ? t('battery.tile.minNone') : t('battery.tile.minHint', { n: known(socMin).length }) },
       { icon: 'clock', label: t('battery.tile.below'), value: below == null ? null : t('core.duration.hours', { n: nf(1).format(below) }),
-        hint: below == null ? t('battery.tile.belowNone') : t('battery.tile.belowHint', { pct: b.reservePct }) },
+        hint: belowHint(below) },
     ]);
   });
 
@@ -142,8 +149,9 @@ export async function render(root, ctx) {
     const x = xOf(r);
     const lo = Math.min(...known(power ? r.series.soc : r.series.soc_min));
     const hi = Math.max(...known(power ? r.series.soc : r.series.soc_max));
+    const reserve = reserveMarks(b.reservePct, sinceMs, r.t);
     const refLines = [
-      b.reservePct != null && { y: b.reservePct, entity: 'warn', label: t('battery.ref.reserve', { v: b.reservePct }) },
+      reserve.mode === 'all' && { y: b.reservePct, entity: 'warn', label: t('battery.ref.reserve', { v: b.reservePct }) },
       b.minPct != null && { y: b.minPct, entity: 'alarm', label: t('battery.ref.min', { v: b.minPct }) },
       b.gridChargeCutoffPct != null && { y: b.gridChargeCutoffPct, entity: 'muted', label: t('battery.ref.cutoff', { v: b.gridChargeCutoffPct }) },
     ].filter(Boolean);
@@ -156,11 +164,13 @@ export async function render(root, ctx) {
       title: t('battery.soc.title'), caption: t('battery.soc.caption', { min: pct(lo), max: pct(hi) }), csv: 'battery-soc',
       spec: {
         id: 'battery-soc', kind: 'time', unit: '%', x, y: { min: 0, max: 100, decimals: 0 }, refLines, coverage: r.coverage, provisional: r.provisional,
-        series: power ? [mean] : [band, mean],
+        series: [...(power ? [mean] : [band, mean]),
+          ...(reserve.mode === 'part' ? [{ key: 'reserve', name: t('battery.ref.reserve', { v: b.reservePct }), type: 'line', entity: 'warn', dashed: true, data: reserve.data }] : [])],
         bands: power ? gapBands({ t: r.t, coverage: r.coverage, bucketMs: BUCKET_MS[r.bucket], now: Date.now() }) : [],
       },
       columns: [t('battery.col.time'), { label: t('battery.col.soc'), unit: '%', decimals: 0 }, { label: t('battery.col.socMin'), unit: '%', decimals: 0 }, { label: t('battery.col.socMax'), unit: '%', decimals: 0 }],
       rows: r.t.map((_, i) => [stamp(r, i), r.series.soc[i], r.series.soc_min[i], r.series.soc_max[i]]),
+      iso: r.t.map((ms) => isoLocal(ms, r.bucket)),
     });
   });
 
@@ -176,12 +186,13 @@ export async function render(root, ctx) {
           id: 'battery-flow', kind: 'time', unit: 'kW', x: xOf(r), y: { decimals: 2 }, coverage: r.coverage, provisional: r.provisional,
           series: [
             { key: 'charge', name: t('battery.flow.charged'), type: 'area', entity: 'battery', data: pairs(r, r.series.charge_kw) },
-            { key: 'discharge', name: t('battery.flow.discharged'), type: 'area', entity: 'battery', dashed: true, below: true, data: pairs(r, r.series.discharge_kw, (v) => -v) },
+            { key: 'discharge', name: t('battery.flow.discharged'), type: 'area', entity: 'discharge', dashed: true, below: true, data: pairs(r, r.series.discharge_kw, (v) => -v) },
           ],
           bands: gapBands({ t: r.t, coverage: r.coverage, bucketMs: BUCKET_MS[r.bucket], now: Date.now() }),
         },
         columns: [t('battery.col.time'), { label: t('battery.flow.charged'), unit: 'kW' }, { label: t('battery.flow.discharged'), unit: 'kW' }],
         rows: r.t.map((_, i) => [stamp(r, i), r.series.charge_kw[i], r.series.discharge_kw[i]]),
+        iso: r.t.map((ms) => isoLocal(ms, r.bucket)),
       });
       return;
     }
@@ -193,11 +204,12 @@ export async function render(root, ctx) {
         coverage: e.buckets.map((k) => k.coverage), provisional: e.buckets.map((k) => k.provisional),
         series: [
           { key: 'charge', name: t('battery.flow.charged'), type: 'bar', entity: 'battery', data: e.buckets.map((k) => k.charge_kwh) },
-          { key: 'discharge', name: t('battery.flow.discharged'), type: 'bar', entity: 'battery', below: true, data: e.buckets.map((k) => (k.discharge_kwh == null ? null : -k.discharge_kwh)) },
+          { key: 'discharge', name: t('battery.flow.discharged'), type: 'bar', entity: 'discharge', below: true, data: e.buckets.map((k) => (k.discharge_kwh == null ? null : -k.discharge_kwh)) },
         ],
       },
       columns: [t('battery.col.period'), { label: t('battery.flow.charged'), unit: 'kWh' }, { label: t('battery.flow.discharged'), unit: 'kWh' }],
       rows: e.buckets.map((k, i) => [cats[i], k.charge_kwh, k.discharge_kwh]),
+      iso: e.buckets.map((k) => k.key),
     });
   });
 
@@ -224,6 +236,7 @@ export async function render(root, ctx) {
         },
         columns: [t('battery.col.time'), { label: t('battery.col.volt'), unit: 'V', decimals: 1 }, { label: t('battery.col.voltMin'), unit: 'V', decimals: 1 }, { label: t('battery.col.voltMax'), unit: 'V', decimals: 1 }],
         rows: h.t.map((_, i) => [stamp(r, i), s.avg[i], s.min[i], s.max[i]]),
+        iso: h.t.map((ms) => isoLocal(ms, h.bucket)),
       });
     });
   });
