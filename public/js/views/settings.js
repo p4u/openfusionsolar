@@ -22,7 +22,7 @@ export async function render(root, ctx) {
       <div class="card" data-block="alerts"></div>
       <div class="card" data-block="history"></div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.plant.title'))}</h2><div class="card">${plantHtml(status)}</div></section>
-    <section class="band"><h2 class="section-title">${esc(t('settings.ai.title'))}</h2><div class="card settings-ai" data-block="ai"></div></section>
+    <section class="band" id="settings-ai"><h2 class="section-title">${esc(t('settings.ai.title'))}</h2><div class="card settings-ai" data-block="ai"></div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.appearance.title'))}</h2><div class="card">${appearanceHtml()}</div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.glossary.title'))}</h2><div class="card">${glossaryHtml()}</div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.about.title'))}</h2><div class="card">
@@ -66,14 +66,19 @@ export async function render(root, ctx) {
     drawHistory(el, rows, () => more, () => loadRows(rows.at(-1).id));
   });
 
-  loadBlock(q('ai'), 160, async (el) => drawAi(el, Boolean(status.ai?.enabled), signal));
+  // #/settings?card=ai (the assistant's privacy line links here): bring the card into view once it is drawn
+  loadBlock(q('ai'), 160, async (el) => {
+    await drawAi(el, Boolean(status.ai?.enabled), signal);
+    if (ctx.params?.get('card') === 'ai') root.querySelector('#settings-ai').scrollIntoView({ block: 'start' });
+  });
 }
 
 async function drawAi(el, on, signal) {
   const usage = on ? await getAiUsage({ signal }) : null;
   const full = usage && usage.budgetUsd > 0 && usage.spentUsd >= usage.budgetUsd;
   el.innerHTML = `${usage ? `<p class="settings-ai-usage">${esc(usageText(usage, getLang()))}</p>
-      <p class="hint">${esc(t(full ? 'settings.ai.limit' : 'settings.ai.usageHint'))}</p>` : `<p>${esc(t('settings.ai.off'))}</p>`}
+      <p class="hint">${esc(t(full ? 'settings.ai.limit' : 'settings.ai.usageHint'))}</p>
+      <p class="hint">${esc(t('settings.admin.aiBudget'))}</p>` : `<p>${esc(t('settings.ai.off'))}</p>`}
     <div class="settings-ai-notice">${aiNoticeHtml()}</div>
     <p><a class="link" href="#/invoices">${esc(t('settings.ai.manual'))}</a></p>
     <div class="actions settings-ai-actions">
