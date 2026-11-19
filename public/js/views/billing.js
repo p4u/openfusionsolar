@@ -49,7 +49,7 @@ export async function render(root, ctx) {
     const shown = shareLabels(segs.map((s) => ({ ...s, v: s.pct, label: `billing.seg.${s.key}` })));
     const labels = shown.map((p) => esc(t(p.label, { pct: p.v })));
     const aside = shown.map((p, i) => (p.inline ? '' : `<span><i class="billing-seg-key billing-seg-${p.entity}"></i>${labels[i]}</span>`)).join('');
-    const fixed = fixedShare(summary.invoices);
+    const fixed = summary.fixedPart?.pct ?? fixedShare(summary.invoices); // server: taxed fixed part over the taxed total
     return `<section class="card billing-seg-card"><h2 class="card-title">${esc(t('billing.seg.title'))}</h2>
       <div class="billing-seg" role="img" aria-label="${labels.join(', ')}">${shown.map((p) => `<span class="billing-seg-${p.entity}" style="flex-grow:${p.v}"></span>`).join('')}</div>
       <div class="billing-seg-labels" aria-hidden="true">${shown.map((p, i) => `<span style="flex-grow:${p.v}">${p.inline ? labels[i] : ''}</span>`).join('')}</div>
