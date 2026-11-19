@@ -3,6 +3,10 @@ export default {
   en: {
     'now.title': 'Now',
     'now.dataFrom': 'Data from {time}',
+    'now.offline': 'Offline, data from {time}',
+    'now.offlineDay': 'Offline, data from {date} at {time}',
+    'now.offlineNoData': 'Offline, no saved data yet',
+    'now.refresh': 'Refresh',
 
     'now.head.ok': 'You do not need to do anything.',
     'now.head.ok.title': 'Everything is fine',
@@ -116,6 +120,10 @@ export default {
   ca: {
     'now.title': 'Ara',
     'now.dataFrom': 'Dades de les {time}',
+    'now.offline': 'Sense connexió, dades de les {time}',
+    'now.offlineDay': 'Sense connexió, dades del {date} a les {time}',
+    'now.offlineNoData': 'Sense connexió, encara no hi ha dades desades',
+    'now.refresh': 'Actualitza',
 
     'now.head.ok': 'No cal que facis res.',
     'now.head.ok.title': 'Tot correcte',

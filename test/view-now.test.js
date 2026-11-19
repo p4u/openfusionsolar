@@ -1,9 +1,9 @@
 process.env.TZ = 'Europe/Madrid';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { headline, flow, autonomyHours, reserveNote, STALE_MS } from '../public/js/views/now-model.js';
+import { headline, flow, autonomyHours, reserveNote, offlineNote, STALE_MS } from '../public/js/views/now-model.js';
 import nowDict from '../public/js/i18n/now.js';
-import { fmtTime, duration } from '../public/js/format.js';
+import { fmtTime, fmtDate, duration } from '../public/js/format.js';
 
 const NOW = Date.UTC(2026, 10, 19, 12, 0);
 const rt = { pv_kw: 2, load_kw: 1, grid_kw: 0, battery_kw: 0, soc: 80 };
@@ -117,4 +117,19 @@ test('before any sun today there is no savings tile, and a negative figure never
   assert.equal(neg.status, undefined);
   const pos = todayTiles({ ...day, money: { energy: 0.2, savings: 0.8 } }, { pricesConfigured: true }).at(-1);
   assert.deepEqual([pos.icon, pos.status], ['check', 'ok']);
+});
+
+test('offline banner: nothing online, the last reading time offline, its day when not today', async () => {
+  const { register, setLang } = await import('../public/js/i18n.js');
+  register(nowDict);
+  setLang('en');
+  assert.equal(offlineNote(status(), NOW), null);
+  assert.equal(offlineNote(null, NOW), null);
+  const last = NOW - 30 * 60e3;
+  assert.equal(offlineNote(status({ offline: true, lastSampleTs: last }), NOW), `Offline, data from ${fmtTime(last)}`);
+  const old = NOW - 2 * 24 * 3600e3;
+  assert.equal(offlineNote(status({ offline: true, lastSampleTs: old }), NOW), `Offline, data from ${fmtDate(old)} at ${fmtTime(old)}`);
+  assert.equal(offlineNote(status({ offline: true, lastSampleTs: null }), NOW), 'Offline, no saved data yet');
+  setLang('ca');
+  assert.equal(offlineNote(status({ offline: true, lastSampleTs: last }), NOW), `Sense connexió, dades de les ${fmtTime(last)}`);
 });
