@@ -81,3 +81,32 @@ test('every tick syncs current alarms and fetches history when an active alarm d
   await c.tick();
   assert.deepEqual(calls, ['CURRENT:1:100']);
 });
+
+test('a failing current-alarms request does not stop sample collection', async () => {
+  const { Collector } = await import('../src/collector.js');
+  const store = new Store(':memory:');
+  const calls = [];
+  let failAlarms = false;
+  const client = {
+    energyFlow: async () => ({}),
+    energyBalance: async () => { calls.push('energyBalance'); return { data: { xAxis: [] } }; },
+    alarms: async () => {
+      calls.push('alarms');
+      if (failAlarms) return { success: false, failCode: 500 };
+      return { data: { hits: [], totalCount: 0 } };
+    },
+  };
+  const logs = [];
+  const c = new Collector({ client, store, log: (m) => logs.push(m) });
+  c.station = { dn: 'st' };
+  c.devices = [];
+  await c.tick(); // full sync with working alarms
+  failAlarms = true;
+  calls.length = 0;
+  c.status.lastTick = null;
+  await c.tick();
+  assert.ok(calls.includes('energyBalance'), 'samples were synced');
+  assert.ok(calls.includes('alarms'), 'current alarms were attempted');
+  assert.ok(c.status.lastTick, 'tick completed');
+  assert.ok(logs.some((m) => m.includes('current alarms')), 'the failure is logged');
+});

@@ -344,9 +344,11 @@ export class Collector {
     await this.#serial(async () => {
       await this.realtime();
       const full = !this.lastDaily || now - this.lastDaily >= 6 * HOUR;
-      if (!full) await this.syncCurrentAlarms(); // the full sync below already fetches CURRENT
       const today = localDay(now);
       await this.syncDay(today);
+      // after the samples and never fatal: a failing alarms endpoint must not stop data collection
+      // (the full sync below already fetches CURRENT)
+      if (!full) await this.syncCurrentAlarms().catch((err) => this.log(`error: current alarms: ${err.message}`));
       const hourly = !this.lastHourly || now - this.lastHourly >= HOUR;
       if (hourly) {
         this.lastHourly = now;
