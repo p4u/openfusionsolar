@@ -1,20 +1,36 @@
-// Read-only JSON API over the store, plus the static frontend.
+// JSON API over the store plus the frontend, behind a password login (stateless signed cookie, see auth.js).
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { dayMoney } from './tariff.js';
 import { buildEvents } from './events.js';
 import { dayBounds } from './collector.js';
+import {
+  passwordMatches, sessionKey, signSession, verifySession, createLimiter, clientIp, isHttps, cookieHeader,
+} from './auth.js';
+import { resolveStatic, MIME, FONTS, buildSprite } from './static.js';
 
-const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const STATIC = {
-  '/': ['../public/index.html', 'text/html'],
-  '/app.js': ['../public/app.js', 'text/javascript'],
-  '/i18n.js': ['../public/i18n.js', 'text/javascript'],
-  '/style.css': ['../public/style.css', 'text/css'],
-  '/vendor/apexcharts.js': ['../node_modules/apexcharts/dist/apexcharts.min.js', 'text/javascript'],
+const PUBLIC = fileURLToPath(new URL('../public', import.meta.url));
+const APEXCHARTS = fileURLToPath(new URL('../node_modules/apexcharts/dist/apexcharts.min.js', import.meta.url));
+// Served without a session (the login page and what it loads). Missing ones just 404.
+const PUBLIC_PATHS = new Set([
+  '/js/login.js', '/js/i18n.js', '/js/i18n/core.js', '/js/theme.js', '/css/tokens.css', '/css/base.css', '/css/login.css',
+  '/favicon.svg',
+]);
+const SECURITY_HEADERS = {
+  'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:",
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'same-origin',
 };
+const DAY_MS = 24 * 60 * 60e3;
+const SESSION_MS = 30 * DAY_MS;
+const RENEW_MS = 15 * DAY_MS;
+const MAX_BODY = 16 * 1024;
+const LOGIN_REQUIRED = { error: 'login required' };
 const MAX_RANGE_MS = 400 * 24 * 60 * 60 * 1000;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -34,8 +50,49 @@ export function batteryInfo(store, cfg) {
   };
 }
 
-// config: { prices (see tariff.js) | null, battery: { capacityKwh, reservePct, minPct } }
-export function startServer({ store, collector, config = {}, port = 8080, host = '127.0.0.1', log = console.log }) {
+// Resolves null when the body exceeds MAX_BODY (the rest is left unread; the caller closes the connection).
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    if (Number(req.headers['content-length']) > MAX_BODY) return resolve(null);
+    const chunks = [];
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size <= MAX_BODY) return chunks.push(c);
+      req.removeAllListeners('data').pause();
+      resolve(null);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+function sameOrigin(origin, host) {
+  try {
+    return Boolean(host) && new URL(origin).host === host;
+  } catch {
+    return false; // missing or opaque ("null") origin
+  }
+}
+
+const readCookie = (header) => /(?:^|;\s*)ofs_session=([^;]*)/.exec(header ?? '')?.[1];
+
+// config: { password (required), trustProxy, prices (see tariff.js) | null, battery: { capacityKwh, reservePct, minPct } }
+export function startServer({
+  store, collector, config = {}, port = 8080, host = '127.0.0.1', log = console.log, alerts = null, failDelayMs = 300,
+}) {
+  if (!config.password) throw new Error('config.password is required');
+  const startedAt = Date.now();
+  const trustProxy = Boolean(config.trustProxy);
+  let secret = store.getKv('sessionSecret');
+  if (!secret) {
+    secret = crypto.randomBytes(32).toString('hex');
+    store.setKv('sessionSecret', secret);
+  }
+  const key = sessionKey(secret, config.password);
+  const limiter = createLimiter();
+  const sprite = buildSprite();
+
   const withMoney = (d) => {
     const [from, to] = dayBounds(d.day);
     // share of the day's 5-minute slots with data; below 1 the day's totals may be low
@@ -43,68 +100,153 @@ export function startServer({ store, collector, config = {}, port = 8080, host =
     const coverage = until <= from ? 1 : Math.min(1, store.countSamples(from, until) / ((until - from) / 300e3));
     return { ...d, coverage, money: dayMoney(d, config.prices) };
   };
-  const server = http.createServer((req, res) => {
-    const json = (status, body) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(body));
+  const range = (query) => {
+    const from = Number(query.get('from'));
+    const to = Number(query.get('to'));
+    return Number.isFinite(from) && Number.isFinite(to) && from < to && to - from <= MAX_RANGE_MS ? [from, to] : null;
+  };
+  const RANGE_ERROR = [400, { error: 'from/to (unix ms, from < to, max 400 days) required' }];
+
+  // Handler: (ctx) => [status, body, headers?], may be async. ctx = { req, url, query, body }.
+  const routes = {
+    'GET /api/status': () => [200, {
+      station: store.getKv('station') ?? null,
+      realtime: store.latestRealtime() ?? null,
+      lastSampleTs: store.lastSampleTs(),
+      collector: collector?.status ?? null,
+      activeAlarms: store.activeAlarms?.() ?? [],
+      battery: batteryInfo(store, config.battery ?? {}),
+      pricesConfigured: Boolean(config.prices),
+      plantName: config.plantName ?? null,
+      prices: config.prices
+        ? (({ p1, p2, p3, export: exp, adjust, iee, vat }) => ({ p1, p2, p3, export: exp, adjust, iee, vat }))(config.prices)
+        : null,
+    }],
+    'GET /api/days': ({ query }) => {
+      const from = query.get('from');
+      const to = query.get('to');
+      if (!DAY_RE.test(from ?? '') || !DAY_RE.test(to ?? '') || from > to) {
+        return [400, { error: 'from/to (YYYY-MM-DD, from <= to) required' }];
+      }
+      return [200, store.days(from, to).map(withMoney)];
+    },
+    'GET /api/events': ({ query }) => {
+      const r = range(query);
+      return r ? [200, buildEvents(store.alarms(...r), store.samples(...r))] : RANGE_ERROR;
+    },
+    'GET /api/samples': ({ query }) => {
+      const r = range(query);
+      return r ? [200, store.samples(...r)] : RANGE_ERROR;
+    },
+    'GET /api/alarms': ({ query }) => {
+      const r = range(query);
+      return r ? [200, store.alarms(...r)] : RANGE_ERROR;
+    },
+    'POST /api/logout': ({ req }) => [204, null, { 'set-cookie': cookieHeader('', { maxAgeS: 0, secure: isHttps(req, trustProxy) }) }],
+  };
+  const routePaths = new Set(Object.keys(routes).map((k) => k.slice(k.indexOf(' ') + 1)));
+
+  const server = http.createServer(async (req, res) => {
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
+    const json = (status, body, headers = {}) => {
+      res.writeHead(status, { ...(status !== 204 && { 'content-type': 'application/json' }), 'cache-control': 'no-store', ...headers });
+      res.end(status === 204 ? undefined : JSON.stringify(body));
     };
+    const sendFile = (abs, cacheControl = 'no-cache') => {
+      if (!abs) return json(404, { error: 'not found' });
+      res.writeHead(200, { 'content-type': MIME[path.extname(abs)], 'cache-control': cacheControl });
+      fs.createReadStream(abs).on('error', () => res.end()).pipe(res);
+    };
+    const newCookie = () =>
+      cookieHeader(signSession(key, Date.now() + SESSION_MS), { maxAgeS: SESSION_MS / 1000, secure: isHttps(req, trustProxy) });
+
     let url;
     try {
       url = new URL(req.url, 'http://localhost');
     } catch {
       return json(400, { error: 'bad request' });
     }
-    const range = () => {
-      const from = Number(url.searchParams.get('from'));
-      const to = Number(url.searchParams.get('to'));
-      return Number.isFinite(from) && Number.isFinite(to) && from < to && to - from <= MAX_RANGE_MS ? [from, to] : null;
+    const { pathname } = url;
+    const route = `${req.method} ${pathname}`;
+    const ctx = { req, url, query: url.searchParams, body: undefined };
+    // CSRF: JSON content type (not sendable cross-site without a preflight) and an Origin matching the Host.
+    const bodyError = async () => {
+      if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) return [415, 'json content type required'];
+      const reqHost = (trustProxy && req.headers['x-forwarded-host']) || req.headers.host;
+      if (!sameOrigin(req.headers.origin, reqHost)) return [403, 'origin not allowed'];
+      const raw = await readBody(req);
+      if (raw == null) return [413, 'body too large'];
+      try {
+        ctx.body = raw === '' ? {} : JSON.parse(raw);
+      } catch {
+        return [400, 'invalid json'];
+      }
+      return null;
     };
+    const failBody = ([status, error]) => json(status, { error }, status === 413 ? { connection: 'close' } : {});
 
     try {
-      if (req.method !== 'GET') return json(405, { error: 'method not allowed' });
-      if (url.pathname === '/api/status') {
-        return json(200, {
-          station: store.getKv('station') ?? null,
-          realtime: store.latestRealtime() ?? null,
-          lastSampleTs: store.lastSampleTs(),
-          collector: collector?.status ?? null,
-          activeAlarms: store.activeAlarms?.() ?? [],
-          battery: batteryInfo(store, config.battery ?? {}),
-          pricesConfigured: Boolean(config.prices),
-          plantName: config.plantName ?? null,
-          prices: config.prices
-            ? (({ p1, p2, p3, export: exp, adjust, iee, vat }) => ({ p1, p2, p3, export: exp, adjust, iee, vat }))(config.prices)
-            : null,
-        });
+      if (route === 'GET /healthz') {
+        const ok = !collector || Date.now() - (collector.status.lastTick ?? startedAt) < 20 * 60e3;
+        return json(ok ? 200 : 503, { ok });
       }
-      if (url.pathname === '/api/days') {
-        const from = url.searchParams.get('from');
-        const to = url.searchParams.get('to');
-        if (!DAY_RE.test(from ?? '') || !DAY_RE.test(to ?? '') || from > to) {
-          return json(400, { error: 'from/to (YYYY-MM-DD, from <= to) required' });
+      if (req.method === 'GET') {
+        if (pathname === '/login') return sendFile(resolveStatic(PUBLIC, '/login.html'));
+        if (pathname === '/icons.svg') {
+          res.writeHead(200, { 'content-type': MIME['.svg'], 'cache-control': 'no-cache' });
+          return res.end(sprite);
         }
-        return json(200, store.days(from, to).map(withMoney));
+        if (pathname.startsWith('/fonts/')) return sendFile(FONTS[pathname], 'max-age=86400');
+        if (PUBLIC_PATHS.has(pathname)) return sendFile(resolveStatic(PUBLIC, pathname));
       }
-      if (url.pathname === '/api/events') {
-        const r = range();
-        if (!r) return json(400, { error: 'from/to (unix ms, from < to, max 400 days) required' });
-        return json(200, buildEvents(store.alarms(...r), store.samples(...r)));
+
+      if (route === 'POST /api/login') {
+        const err = await bodyError();
+        if (err) return failBody(err);
+        // check, compare and count in one synchronous step, so parallel guesses are all counted
+        const ip = clientIp(req, trustProxy);
+        const retryAfter = limiter.retryAfter(ip);
+        if (retryAfter > 0) return json(429, { error: 'too many attempts', retryAfter }, { 'retry-after': String(retryAfter) });
+        if (!passwordMatches(ctx.body?.password, config.password)) {
+          limiter.fail(ip);
+          await sleep(failDelayMs);
+          return json(401, { error: 'wrong password' });
+        }
+        limiter.reset(ip);
+        return json(204, null, { 'set-cookie': newCookie() });
       }
-      if (url.pathname === '/api/samples' || url.pathname === '/api/alarms') {
-        const r = range();
-        if (!r) return json(400, { error: 'from/to (unix ms, from < to, max 400 days) required' });
-        return json(200, url.pathname === '/api/samples' ? store.samples(...r) : store.alarms(...r));
+
+      const expiry = verifySession(key, readCookie(req.headers.cookie), Date.now());
+      if (expiry == null) {
+        if (req.method === 'GET' && !pathname.startsWith('/api/') && (pathname === '/' || pathname.endsWith('.html'))) {
+          res.writeHead(302, { location: `/login?next=${encodeURIComponent(pathname + url.search)}` });
+          return res.end();
+        }
+        return json(401, LOGIN_REQUIRED);
       }
-      if (url.pathname === '/favicon.ico') {
+      if (expiry - Date.now() < RENEW_MS) res.setHeader('set-cookie', newCookie());
+
+      if (req.method === 'POST' || req.method === 'PUT') {
+        const err = await bodyError();
+        if (err) return failBody(err);
+      }
+      const handler = routes[route];
+      if (handler) {
+        const [status, body, headers] = await handler(ctx);
+        return json(status, body, headers);
+      }
+      if (routePaths.has(pathname)) return json(405, { error: 'method not allowed' });
+      if (pathname.startsWith('/api/')) return json(404, { error: 'not found' });
+      if (req.method !== 'GET') return json(405, { error: 'method not allowed' });
+      if (pathname === '/favicon.ico') {
         res.writeHead(204);
         return res.end();
       }
-      const file = STATIC[url.pathname];
-      if (!file) return json(404, { error: 'not found' });
-      res.writeHead(200, { 'content-type': file[1] });
-      fs.createReadStream(path.join(ROOT, file[0])).on('error', () => res.end()).pipe(res);
+      if (pathname === '/vendor/apexcharts.js') return sendFile(APEXCHARTS);
+      return sendFile(resolveStatic(PUBLIC, pathname === '/' ? '/index.html' : pathname));
     } catch (err) {
       log(`http error: ${err.message}`);
+      if (res.headersSent) return res.end();
       json(500, { error: 'internal error' });
     }
   });
