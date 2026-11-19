@@ -5,6 +5,7 @@ import { eventTitle } from '../incidents.js';
 
 export const STALE_MS = 20 * 60e3;
 const DAY = 24 * 3600e3;
+const SLOT_MS = 5 * 60e3; // a reading covers its 5 minutes: no data starts after them, as the incident does
 const ACTIVE_KW = 0.05; // below this a battery counts as idle
 const LEVEL = { ok: 0, info: 1, waiting: 2, warn: 2, alarm: 3 };
 
@@ -31,7 +32,7 @@ export function headline(status, events = [], now = Date.now()) {
   if (ongoing.some((e) => e.kind === 'gridCut')) found.push({ state: 'alarm', key: 'now.head.cut', vars: {} });
   else if (ongoing.length) found.push({ state: 'alarm', key: 'now.head.alarm', vars: { names: [...new Set(ongoing.map(eventTitle))].join(', ') } });
   if (!last) found.push({ state: 'waiting', key: 'now.head.waiting', vars: {} });
-  else if (now - last > STALE_MS) found.push({ state: 'warn', key: 'now.head.stale', vars: { time: fmtTime(last), ago: duration(now - last) } });
+  else if (now - last > STALE_MS) found.push({ state: 'warn', key: 'now.head.stale', vars: { time: fmtTime(last), ago: duration(now - last - SLOT_MS) } });
   const stops = events.filter((e) => e.kind === 'noProduction');
   const stopped = stops.filter((e) => e.end > now - DAY).reduce((a, e) => a + e.end - e.start, 0);
   if (stopped) found.push({ state: 'warn', key: stops.length > 1 ? 'now.head.stoppedRepeat' : 'now.head.stopped', vars: { d: duration(stopped), n: stops.length } });
@@ -102,3 +103,8 @@ export function todayTiles(total, st) {
   }
   return out;
 }
+
+// Past events of the last 24 hours for the headline summary. An internet loss counts by the day it started (the rule of
+// the Incidents list); anything else by when it ended.
+export const recentEvents = (events, now = Date.now()) =>
+  events.filter((e) => !e.ongoing && (e.kind === 'network' ? e.start : e.end) > now - DAY);

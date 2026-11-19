@@ -8,7 +8,7 @@ import { eventItem, groupNetwork, groupEpisodes, summarize } from '../incidents.
 import { addDays } from '../buckets.js';
 import { figure, chart } from '../charts.js';
 import { gapBands, eventBands } from '../chart-data.js';
-import { headline, flow, autonomyHours, reserveNote, todayTiles } from './now-model.js';
+import { recentEvents, headline, flow, autonomyHours, reserveNote, todayTiles } from './now-model.js';
 
 register(dict);
 
@@ -156,7 +156,7 @@ async function fillTop(el, ctx, shared) {
   shared.status = status;
   const now = Date.now();
   const h = headline(status, events, now);
-  const recent = events.filter((e) => e.end > now - DAY && !e.ongoing);
+  const recent = recentEvents(events, now);
   const col = status.collector;
   const details = [
     t(h.key, h.vars),

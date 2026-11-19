@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { headline, flow, autonomyHours, reserveNote, STALE_MS } from '../public/js/views/now-model.js';
 import nowDict from '../public/js/i18n/now.js';
-import { fmtTime } from '../public/js/format.js';
+import { fmtTime, duration } from '../public/js/format.js';
 
 const NOW = Date.UTC(2026, 10, 19, 12, 0);
 const rt = { pv_kw: 2, load_kw: 1, grid_kw: 0, battery_kw: 0, soc: 80 };
@@ -23,6 +23,19 @@ test('stale after 20 minutes names the time', () => {
   assert.deepEqual([h.state, h.key], ['warn', 'now.head.stale']);
   assert.equal(h.vars.time, fmtTime(last));
   assert.equal(headline(status({ lastSampleTs: NOW - STALE_MS }), [], NOW).state, 'ok');
+});
+
+test('the stale line counts from the end of the last reading, like the incident', () => {
+  const last = NOW - 3 * 3600e3;
+  assert.equal(headline(status({ lastSampleTs: last }), [], NOW).vars.ago, duration(3 * 3600e3 - 5 * 60e3));
+});
+
+test('the 24 hour summary counts an internet loss by its start, other events by their end', async () => {
+  const { recentEvents } = await import('../public/js/views/now-model.js');
+  const H = 3600e3;
+  const ev = (kind, start, end) => ({ kind, start: NOW - start * H, end: NOW - end * H, ongoing: false });
+  const list = [ev('network', 30, 2), ev('network', 5, 4), ev('gridCut', 30, 2), ev('gridCut', 30, 26)];
+  assert.deepEqual(recentEvents(list, NOW), [list[1], list[2]]);
 });
 
 test('waiting when there has never been data', () => {

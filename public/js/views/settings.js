@@ -32,6 +32,11 @@ export async function render(root, ctx) {
     else if (e.target.id === 'settings-lang') setLang(e.target.value);
   });
 
+  // the header toggle changes the theme too: keep the radios in step
+  const syncTheme = () => root.querySelectorAll('input[name="theme"]').forEach((r) => { r.checked = r.value === getTheme(); });
+  document.addEventListener('themechange', syncTheme);
+  signal?.addEventListener('abort', () => document.removeEventListener('themechange', syncTheme));
+
   // history rows are shared by "last fired" and the history list
   const rows = [];
   let more = true;
