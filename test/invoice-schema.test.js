@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   SCHEMA_V, BILL_SCHEMA, SYSTEM_PROMPT, normalise, toRow, checks, retryText, fieldStates, maskCups, validCups,
-  coverageMonths, missingMonths, RETRY_PATHS,
+  coverageMonths, missingMonths, measuredMonths, RETRY_PATHS,
 } from '../src/invoice-schema.js';
 
 const today = '2026-11-19';
@@ -260,22 +260,31 @@ test('the previous bill flags breaks, gaps and jumps as soft warnings', () => {
 
 const bill = (period_from, period_to, extra = {}) => ({ period_from, period_to, status: 'confirmed', superseded_by: null, cups: 'A', ...extra });
 
-test('missing months list the gaps per supply and stop 45 days ago', () => {
+// the first 28 days of each month, as measured days
+const daysOf = (...months) => months.flatMap((m) => Array.from({ length: 28 }, (_, i) => `${m}-${String(i + 1).padStart(2, '0')}`));
+
+test('missing months: measured on 15 days or more, no confirmed bill on any of its days, ended over 45 days ago', () => {
+  const measured = daysOf('2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10');
   const invoices = [
     bill('2026-03-01', '2026-03-31'), bill('2026-04-01', '2026-04-30'), bill('2026-07-01', '2026-07-31'),
     bill('2026-05-01', '2026-05-31', { status: 'draft' }), // drafts do not fill a gap
     bill('2026-06-01', '2026-06-30', { superseded_by: 9 }),
-    // supply B is complete; its bills do not cover supply A's gaps
-    ...['05', '06', '07', '08', '09'].map((m) => bill(`2026-${m}-01`, `2026-${m}-${m === '06' || m === '09' ? 30 : 31}`, { cups: 'B' })),
-    bill('2026-10-01', '2026-10-31', { cups: 'B' }),
   ];
-  // today - 45 days = 2026-10-05: A misses Aug and Sep, but October is not due yet
-  assert.deepEqual(missingMonths(invoices, today), ['2026-05', '2026-06', '2026-08', '2026-09']);
-  // mid-month periods: a gap from 05-15 to 07-14 misses May and June
-  assert.deepEqual(missingMonths([bill('2026-04-15', '2026-05-14'), bill('2026-07-15', '2026-08-14'), bill('2026-08-15', '2026-09-14'), bill('2026-09-15', '2026-10-14')], today), ['2026-05', '2026-06']);
+  // today - 45 days = 2026-10-05: Aug and Sep are missing, October is not due yet
+  assert.deepEqual(missingMonths(invoices, today, measured), ['2026-05', '2026-06', '2026-08', '2026-09']);
+  // a bill on any day of a month covers it, whatever its supply: 04-15..05-14 covers May; nothing touches March or June
+  const mid = [bill('2026-04-15', '2026-05-14'), bill('2026-07-15', '2026-08-14', { cups: 'B' }), bill('2026-08-15', '2026-09-14'), bill('2026-09-15', '2026-10-14')];
+  assert.deepEqual(missingMonths(mid, today, measured), ['2026-03', '2026-06']);
   // a one-day gap between reading dates is not a missing month
-  assert.deepEqual(missingMonths([bill('2026-08-01', '2026-08-30'), bill('2026-09-01', '2026-09-30')], '2026-11-10'), []);
-  assert.deepEqual(missingMonths([], today), []);
+  assert.deepEqual(missingMonths([bill('2026-08-01', '2026-08-30'), bill('2026-09-01', '2026-09-30')], '2026-11-10', daysOf('2026-08', '2026-09')), []);
+  // fewer than 15 measured days: never missing
+  const short = [...daysOf('2026-08'), ...daysOf('2026-09').slice(0, 14), '2026-10-01'];
+  assert.deepEqual(measuredMonths(short), ['2026-08']);
+  assert.deepEqual(missingMonths([], today, short), ['2026-08']);
+  // the month must have ended more than 45 days ago
+  assert.deepEqual(missingMonths([], '2026-11-14', daysOf('2026-09')), []);
+  assert.deepEqual(missingMonths([], '2026-11-15', daysOf('2026-09')), ['2026-09']);
+  assert.deepEqual(missingMonths([], today, []), []);
 });
 
 test('coverage marks months under review', () => {

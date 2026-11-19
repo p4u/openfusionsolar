@@ -193,6 +193,7 @@ export class Store {
       daily: q(`insert or replace into daily (day, ${DAILY_COLS}) values (?, ${DAILY_COLS.map(() => '?')})`),
       days: q('select * from daily where day >= ? and day <= ? order by day'),
       firstDay: q('select min(day) as v from daily'),
+      measuredDays: q('select day from daily where import_kwh is not null order by day'),
       firstSample: q('select min(ts) as v from samples'),
       daySyncs: q('select * from day_sync where day >= ? and day <= ?'),
       sigHistory: q(`select signal_id, ts, value from signal_history where device_dn = ? and signal_id = ? and ts >= ? and ts < ?
@@ -351,6 +352,11 @@ export class Store {
 
   firstDay() {
     return this.st.firstDay.get().v;
+  }
+
+  // Days with measured grid import, oldest first (missing months, advice).
+  measuredDays() {
+    return this.st.measuredDays.all().map((r) => r.day);
   }
 
   firstSampleTs() {

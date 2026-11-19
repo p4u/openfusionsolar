@@ -130,6 +130,13 @@ test('the sample pdf is stored, extracted and auto-confirmed', async (t) => {
   assert.equal(up.status, 'done');
   assert.equal(up.invoiceId, inv.id);
   assert.equal(s.store.usageCostSince(0) > 0, true);
+
+  // only months measured on 15 days or more can be missing: August (31 days) is, July (10 days) is not
+  for (let i = 1; i <= 31; i++) s.store.saveDaily(`2026-08-${String(i).padStart(2, '0')}`, { import_kwh: 1 });
+  for (let i = 1; i <= 10; i++) s.store.saveDaily(`2026-07-${String(i).padStart(2, '0')}`, { import_kwh: 1 });
+  const after = await s.get('/api/invoices');
+  assert.deepEqual(after.measuredMonths, ['2026-08']);
+  assert.deepEqual(after.missing, ['2026-08']);
 });
 
 test('photos of one bill are one group; a failed check is retried once with the checks named and then confirmed', async (t) => {

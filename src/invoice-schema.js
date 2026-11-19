@@ -396,34 +396,20 @@ export function coverageMonths(invoices, today, n = 24) {
   });
 }
 
-// Months more than half uncovered by confirmed bills, per supply, from its first bill to today - 45 days.
-export function missingMonths(invoices, today) {
+// Months with measured data on at least 15 of their days, oldest first: the only months a bill can be missing for.
+export function measuredMonths(days) {
+  const n = new Map();
+  for (const d of days) n.set(d.slice(0, 7), (n.get(d.slice(0, 7)) ?? 0) + 1);
+  return [...n].filter(([, c]) => c >= 15).map(([m]) => m).sort();
+}
+
+// Measured months (`days`: the days with measured data) that no confirmed live bill touches on any day and that
+// ended more than 45 days ago (bills arrive late).
+export function missingMonths(invoices, today, days) {
   const limit = addDays(today, -45);
-  const bySupply = new Map();
+  const billed = new Set();
   for (const inv of invoices.filter((i) => live(i) && i.status === 'confirmed')) {
-    const k = inv.cups ?? '';
-    bySupply.set(k, [...(bySupply.get(k) ?? []), inv]);
+    for (let m = `${inv.period_from.slice(0, 7)}-01`; m <= inv.period_to; m = addMonths(m, 1)) billed.add(m.slice(0, 7));
   }
-  const gapDays = new Map(); // `${cups}|${month}` → uncovered days
-  const addGap = (cups, a, b) => {
-    for (let d = a; d <= b; d = addDays(d, 1)) {
-      const k = `${cups}|${d.slice(0, 7)}`;
-      gapDays.set(k, (gapDays.get(k) ?? 0) + 1);
-    }
-  };
-  for (const [cups, list] of bySupply) {
-    list.sort((x, y) => (x.period_from < y.period_from ? -1 : 1));
-    let end = list[0].period_to;
-    for (const inv of list.slice(1)) {
-      if (inv.period_from > addDays(end, 1)) addGap(cups, addDays(end, 1), addDays(inv.period_from, -1));
-      if (inv.period_to > end) end = inv.period_to;
-    }
-    if (end < limit) addGap(cups, addDays(end, 1), limit);
-  }
-  const months = new Set();
-  for (const [k, n] of gapDays) {
-    const month = k.split('|')[1];
-    if (2 * n > spanDays(`${month}-01`, addDays(addMonths(`${month}-01`, 1), -1))) months.add(month);
-  }
-  return [...months].sort();
+  return measuredMonths(days).filter((m) => !billed.has(m) && addDays(addMonths(`${m}-01`, 1), -1) < limit);
 }

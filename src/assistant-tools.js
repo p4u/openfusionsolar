@@ -178,7 +178,7 @@ const TOOL_FNS = {
     const live = (i) => !i.superseded_by;
     const confirmed = store.listInvoices({ status: 'confirmed', from, to }).filter(live);
     const sum = (inv, cols) => (cols.some((c) => inv[c] != null) ? cols.reduce((s, c) => s + (inv[c] ?? 0), 0) : null);
-    const missing = missingMonths(store.listInvoices({ status: 'confirmed' }).filter(live), localDay(now()))
+    const missing = missingMonths(store.listInvoices({ status: 'confirmed' }).filter(live), localDay(now()), store.measuredDays())
       .filter((m) => (!from || m >= from.slice(0, 7)) && (!to || m <= to.slice(0, 7)));
     return {
       invoices: confirmed.map((i) => ({

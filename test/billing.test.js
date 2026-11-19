@@ -48,7 +48,10 @@ test('kwh verdicts at 4, 7 and 12 percent', () => {
   for (const [k, verdict] of [[1.04, 'ok'], [1.07, 'small'], [1.12, 'check']]) {
     // measured stays put; the bill says k times as much
     const inv = { ...bill, kwh_p1: bill.kwh_p1 * k, kwh_p2: bill.kwh_p2 * k, kwh_p3: bill.kwh_p3 * k };
-    assert.equal(compareInvoice(store, inv, { prices: ENV }).verdict, verdict, String(k));
+    const c = compareInvoice(store, inv, { prices: ENV });
+    assert.equal(c.verdict, verdict, String(k));
+    assert.ok(Math.abs(c.diffKwh - 159.08 * (k - 1)) < 0.011, `${c.diffKwh}`); // billed - measured, in kWh
+    assert.equal(c.coverage, 1);
   }
 });
 
@@ -123,8 +126,10 @@ test('savings separate avoided purchases from the surplus discount', () => {
   const s = compareInvoice(store, bill, { prices: ENV }).savings;
   assert.ok(s.avoided > 0 && s.surplusDiscount > 0);
   assert.ok(Math.abs(s.surplusDiscount - 0.72 * 1.0511269 * 1.21) < 0.011);
-  assert.ok(Math.abs(s.withoutSolar - bill.total_eur - s.avoided - s.surplusDiscount - s.other) < 0.011);
-  assert.ok(Math.abs(s.other + 1.59) < 0.05, 'only the donation and rounding stay in other');
+  // the two parts add up to the saving to the cent, with no unexplained remainder
+  assert.equal(Math.round((s.avoided + s.surplusDiscount) * 100), Math.round((s.withoutSolar - bill.total_eur) * 100));
+  assert.equal(s.surplusDiscountPrinted, 0.72);
+  assert.equal('other' in s, false);
   assert.equal(compareInvoice(store, bill).surplus.lostEur, 0);
   assert.equal(compareInvoice(store, { ...bill, surplus_lost_eur: 3.1 }).surplus.lostEur, 3.1);
   assert.equal(compareInvoice(store, { ...bill, surplus_lost_eur: null, surplus_eur: 40 }).surplus.lostEur, 8.41);
@@ -159,7 +164,9 @@ function year({ peakKw = 3, over = 0 } = {}) {
   for (let i = 0; i < 365; i++) {
     store.saveDaily(day(2025, 11, i), { import_p1: 1, import_p2: 1, import_p3: 3, import_kwh: 5, export_kwh: 3, load_p1: 1, load_kwh: 5 });
   }
-  for (let i = 0; i < 3; i++) confirmed(store, { invoice_number: `N${i}`, period_from: `2026-0${8 + i}-01`, period_to: `2026-0${8 + i}-30`, days: 30 });
+  for (let i = 0; i < 3; i++) {
+    confirmed(store, { invoice_number: `N${i}`, period_from: `2026-0${8 + i}-01`, period_to: `2026-0${8 + i}-30`, days: 30, max_demand_p1_kw: null, max_demand_p2_kw: null });
+  }
   for (let d = 0; d < 20; d++) store.saveSample(Date.UTC(2026, 3, 1, 12) - d * 86400e3, { grid_kw: d < over ? 6 : peakKw, load_kw: 1 });
   return store;
 }
@@ -192,6 +199,7 @@ test('each advice rule turns on and off', () => {
   assert.ok(card(low, 'tariff').numbers.allInPerKwh > 0);
 
   const gap = year();
+  gap.db.prepare("delete from daily where day < '2026-08-01'").run(); // measured only where the three bills are (92 days)
   assert.equal(card(sum2(gap), 'data').state, 'ok');
   gap.updateInvoice(2, { period_from: '2026-09-05' });
   gap.insertInvoice({ ...bill, status: 'draft', invoice_number: 'D', period_from: '2026-05-01', period_to: '2026-05-31' });
@@ -203,7 +211,7 @@ test('each advice rule turns on and off', () => {
 test('no advice with fewer than 3 bills or 90 days of data', () => {
   const store = year();
   store.db.prepare('delete from invoices where id = 3').run();
-  assert.deepEqual(sum2(store).advice.map((c) => c.id), ['data']);
+  assert.deepEqual(sum2(store).advice.map((c) => c.id), ['power', 'data'], 'only the power card, which needs measured days alone');
   const few = new Store(':memory:');
   fill(few, 31);
   for (let i = 0; i < 3; i++) confirmed(few, { invoice_number: `F${i}` });
@@ -232,4 +240,58 @@ test('api returns 400 for bad ranges and 401 without a session', async () => {
   } finally {
     await t.close();
   }
+});
+
+test('the fixed part is power, social bonus and meter rent with taxes, never the donation', () => {
+  const store = setup();
+  confirmed(store);
+  const s = billingSummary(store, { from: '2026-10-01', to: '2026-10-31', today: TODAY });
+  assert.deepEqual(s.fixedPart, { eur: 18.29, pct: 30.9 }); // ((12.29 + 0.77) x 1.0511269 + 1.39) x 1.21 of 59.15
+  const none = billingSummary(store, { from: '2025-10-01', to: '2025-10-31', today: TODAY });
+  assert.deepEqual(none.fixedPart, { eur: 0, pct: null });
+});
+
+test('the power card needs only measured days: one bill and 40 days', () => {
+  const store = new Store(':memory:');
+  for (let i = 0; i < 40; i++) store.saveDaily(day(2026, 9, i), { import_p1: 1, import_p2: 1, import_p3: 3, import_kwh: 5, export_kwh: 3, load_p1: 1, load_kwh: 5 });
+  for (let d = 0; d < 20; d++) store.saveSample(Date.UTC(2026, 9, 1, 12) + d * 86400e3, { grid_kw: 3, load_kw: 1 });
+  const id = confirmed(store, { max_demand_p1_kw: null, max_demand_p2_kw: null });
+  const run = (prices = ENV) => card(billingSummary(store, { from: '2026-10-01', to: '2026-10-31', today: TODAY, prices }), 'power');
+  const s = billingSummary(store, { from: '2026-10-01', to: '2026-10-31', today: TODAY, prices: ENV });
+  assert.deepEqual(s.advice.map((c) => c.id), ['power', 'data']);
+  const p = run();
+  assert.equal(p.state, 'lower');
+  assert.equal(p.basis, 'measured_peaks');
+  assert.equal(p.caveat, 'billing.advice.power.caveat');
+  assert.deepEqual([p.numbers.contractedKw, p.numbers.maxKw, p.numbers.measuredDays, p.numbers.suggestedKw], [4.4, 3, 40, 3.8]);
+  assert.ok(p.numbers.savingsYear > 0);
+
+  // the sample bill printed 4.952 kW against 4.4 contracted: keep, whatever the 5-minute samples say
+  store.updateInvoice(id, { max_demand_p1_kw: 4.952, max_demand_p2_kw: 3.572 });
+  const keep = run();
+  assert.equal(keep.state, 'keep');
+  assert.deepEqual([keep.numbers.billMaxP1Kw, keep.numbers.daysOver, keep.numbers.suggestedKw, keep.numbers.savingsYear], [4.952, 0, null, null]);
+
+  // no bill: contracted power and power prices from the configuration; none configured, no card
+  store.deleteInvoice(id);
+  const env = run({ ...ENV, contractedP1: 5.5, contractedP2: 5.5 });
+  assert.deepEqual([env.state, env.numbers.contractedKw, env.numbers.billMaxP1Kw], ['lower', 5.5, null]);
+  assert.equal(run(null), undefined);
+
+  // under 30 measured days, no card
+  const few = new Store(':memory:');
+  for (let i = 0; i < 29; i++) few.saveDaily(day(2026, 9, i), { import_p1: 1, import_p2: 1, import_p3: 3, import_kwh: 5, load_kwh: 5 });
+  few.saveSample(Date.UTC(2026, 9, 1, 12), { grid_kw: 3, load_kw: 1 });
+  assert.equal(card(billingSummary(few, { from: '2026-10-01', to: '2026-10-31', today: TODAY, prices: ENV }), 'power'), undefined);
+});
+
+test('missing months need measured days and agree with the data card', () => {
+  const store = setup(); // October measured, no bill
+  for (let i = 0; i < 10; i++) store.saveDaily(day(2026, 8, i), { import_kwh: 1 }); // August: 10 days, never missing
+  const s = billingSummary(store, { from: '2026-01-01', to: TODAY, today: '2026-12-20' });
+  assert.deepEqual(s.missing, ['2026-10']);
+  assert.deepEqual(card(s, 'data').numbers.missing, s.missing);
+  assert.deepEqual(billingSummary(store, { from: '2026-01-01', to: TODAY, today: TODAY }).missing, [], 'within 45 days of its end');
+  confirmed(store);
+  assert.deepEqual(billingSummary(store, { from: '2026-01-01', to: TODAY, today: '2026-12-20' }).missing, []);
 });

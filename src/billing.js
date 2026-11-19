@@ -13,10 +13,13 @@ const sum = (list) => list.reduce((s, v) => s + v, 0);
 const COVERAGE_MIN = 0.9;
 const MIN_BILLS = 3;
 const MIN_DATA_DAYS = 90;
+const MIN_POWER_DAYS = 30;
 const PEAK_SHARE = 0.2; // shortcut: fixed threshold for "a lot of P1", tune when real bills disagree
 const taxFactor = (inv) => (1 + num(inv.elec_tax_pct) / 100) * (1 + num(inv.vat_pct) / 100);
 const monthIndex = (m) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7));
 const billDays = (inv) => inv.days ?? spanDays(inv.period_from, inv.period_to);
+// What a bill charges whatever the use, taxes included: power, social bonus and meter rent (no donation, no other lines).
+const fixedTaxed = (inv) => ((num(inv.power_eur) + num(inv.social_bonus_eur)) * (1 + num(inv.elec_tax_pct) / 100) + num(inv.meter_rent_eur)) * (1 + num(inv.vat_pct) / 100);
 
 // A tariff.js price object rebuilt from one bill; null when a price the estimate needs is missing.
 export function pricesFromInvoice(inv) {
@@ -60,7 +63,7 @@ export function compareInvoice(store, inv, { prices = null } = {}) {
   // the bill's own zero cap: reported, or computed when the discount is larger than the energy term
   const lostEur = inv.surplus_lost_eur ?? (num(inv.surplus_eur) > num(inv.energy_eur) ? cents(num(inv.surplus_eur) - num(inv.energy_eur)) : 0);
   const out = {
-    days, daysWithData, coverage, verdict: 'nodata', kwh: { billed, measured: null },
+    days, daysWithData, coverage, verdict: 'nodata', kwh: { billed, measured: null }, diffKwh: null,
     surplus: { billed: surplusBilled, measured: null, eur: inv.surplus_eur ?? null, lostEur },
     estimateEnv: null, estimateBill: null, real, diff: null, savings: null, loadKwh: null,
   };
@@ -72,6 +75,7 @@ export function compareInvoice(store, inv, { prices = null } = {}) {
   out.surplus.measured = sum(rows.map((r) => num(r.export_kwh)));
   out.loadKwh = sum(rows.map((r) => num(r.load_kwh)));
   out.verdict = kwhVerdict(billed.total, measured.total);
+  out.diffKwh = billed.total != null ? cents(billed.total - measured.total) : null;
 
   const billPrices = pricesFromInvoice(inv);
   out.estimateEnv = cents(estimate(rows, prices));
@@ -85,14 +89,11 @@ export function compareInvoice(store, inv, { prices = null } = {}) {
 
   const m = billPrices && periodMoney(rows, billPrices);
   if (m && real != null) {
-    const tf = taxFactor(inv);
-    const fixed = ((num(inv.power_eur) + num(inv.social_bonus_eur)) * (1 + num(inv.elec_tax_pct) / 100) + num(inv.meter_rent_eur)) * (1 + num(inv.vat_pct) / 100);
-    const withoutSolar = m.withoutSolar + fixed;
-    const avoided = withoutSolar - num(inv.energy_eur) * tf - fixed;
-    const surplusDiscount = num(inv.surplus_eur) * tf;
+    const withoutSolar = cents(m.withoutSolar + fixedTaxed(inv));
+    const surplusDiscount = cents(num(inv.surplus_eur) * taxFactor(inv));
+    // the two parts add up to the saving (withoutSolar - real) exactly; the discount is the bill's line with its taxes
     out.savings = {
-      withoutSolar: cents(withoutSolar), avoided: cents(avoided), surplusDiscount: cents(surplusDiscount),
-      other: cents(withoutSolar - real - avoided - surplusDiscount), // what neither part explains, never hidden
+      withoutSolar, avoided: cents(withoutSolar - real - surplusDiscount), surplusDiscount, surplusDiscountPrinted: inv.surplus_eur ?? null,
     };
   }
   return out;
@@ -113,6 +114,36 @@ const invoiceView = (inv, compare) => {
   };
 };
 
+// Contracted power from the measured daily peaks alone (>= 30 measured days in the year); contracted kW and power prices
+// from the latest confirmed bill, else the configured ones. A printed bill maximum above the contracted power means keep.
+function powerCard(store, { prices, yearFrom, today, dataDays }) {
+  const latest = store.listInvoices({ status: 'confirmed' }).filter((i) => !i.superseded_by).at(-1);
+  const fromBill = latest && (latest.contracted_p1_kw != null || latest.contracted_p2_kw != null);
+  if (dataDays < MIN_POWER_DAYS || (!fromBill && !prices)) return null;
+  const contracted = fromBill ? [num(latest.contracted_p1_kw), num(latest.contracted_p2_kw)] : [num(prices.contractedP1), num(prices.contractedP2)];
+  const price = fromBill ? [num(latest.power_price_p1), num(latest.power_price_p2)] : [num(prices.powerP1), num(prices.powerP2)];
+  const tf = fromBill ? taxFactor(latest) : (1 + prices.iee) * (1 + prices.vat);
+  const maxes = aggregate.series(store, { from: yearFrom, to: today, bucket: '1d' }).series.imp_kw_max.filter((v) => v != null);
+  const c = Math.max(...contracted);
+  if (!maxes.length || !(c > 0)) return null;
+  const maxKw = Math.max(...maxes);
+  const daysOver = maxes.filter((v) => v > c).length;
+  const billMax = [latest?.max_demand_p1_kw, latest?.max_demand_p2_kw].filter((v) => v != null);
+  const billOver = billMax.some((v) => v > c); // the meter's 15-minute maximum saw more than the 5-minute samples
+  const target = Math.ceil((maxKw / 0.8) * 10) / 10;
+  const saves = !billOver && daysOver === 0 && maxKw < 0.8 * c;
+  return {
+    id: 'power', state: billOver || daysOver > 0 ? 'keep' : saves ? 'lower' : 'ok', period: { from: yearFrom, to: today },
+    basis: 'measured_peaks', caveat: 'billing.advice.power.caveat',
+    numbers: {
+      contractedKw: c, maxKw: Math.round(maxKw * 1000) / 1000, daysOver, measuredDays: dataDays,
+      billMaxP1Kw: latest?.max_demand_p1_kw ?? null, billMaxP2Kw: latest?.max_demand_p2_kw ?? null,
+      suggestedKw: saves ? target : null,
+      savingsYear: saves ? cents(sum(contracted.map((k, i) => Math.max(k - target, 0) * price[i])) * tf) : null,
+    },
+  };
+}
+
 function advice(store, { invoices, bills, prices, from, to, today, missing, review }) {
   const data = {
     id: 'data', state: missing.length || review.length || bills.some((b) => b.compare.verdict === 'check') ? 'attention' : 'ok',
@@ -121,31 +152,12 @@ function advice(store, { invoices, bills, prices, from, to, today, missing, revi
   };
   const yearFrom = addDays(addMonths(today, -12), 1);
   const dataDays = store.days(yearFrom, today).filter((r) => r.import_kwh != null).length;
-  if (bills.length < MIN_BILLS || dataDays < MIN_DATA_DAYS) return [data];
+  const power = powerCard(store, { prices, yearFrom, today, dataDays });
+  const cards = power ? [power] : [];
+  if (bills.length < MIN_BILLS || dataDays < MIN_DATA_DAYS) return [...cards, data];
   const period = { from: yearFrom, to: today };
   const last = invoices[invoices.length - 1];
   const tf = taxFactor(last);
-  const cards = [];
-
-  // power: the measured daily maximum against what is contracted (the bill's own maximum is as printed)
-  const maxes = aggregate.series(store, { from: yearFrom, to: today, bucket: '1d' }).series.imp_kw_max.filter((v) => v != null);
-  const contracted = [num(last.contracted_p1_kw), num(last.contracted_p2_kw)];
-  const c = Math.max(...contracted);
-  const maxKw = maxes.length ? Math.max(...maxes) : null;
-  const daysOver = maxes.filter((v) => v > c).length;
-  if (maxKw != null && c > 0) {
-    const target = Math.ceil((maxKw / 0.8) * 10) / 10;
-    const saves = daysOver === 0 && maxKw < 0.8 * c;
-    const price = [num(last.power_price_p1), num(last.power_price_p2)];
-    cards.push({
-      id: 'power', state: daysOver > 0 ? 'keep' : saves ? 'lower' : 'ok', period,
-      numbers: {
-        contractedKw: c, maxKw: Math.round(maxKw * 1000) / 1000, daysOver, billMaxP1Kw: last.max_demand_p1_kw ?? null, billMaxP2Kw: last.max_demand_p2_kw ?? null,
-        suggestedKw: saves ? target : null,
-        savingsYear: saves ? cents(sum(contracted.map((k, i) => Math.max(k - target, 0) * price[i])) * tf) : null,
-      },
-    });
-  }
 
   // prices: configured prices against the last bill's; the .env lines come back as data
   const bp = pricesFromInvoice(last);
@@ -209,9 +221,10 @@ export function billingSummary(store, { from, to, prices = null, today = localDa
     other: sum(invoices.map((i) => num(i.meter_rent_eur))) + part('other'),
   };
   const all = Object.values(segments).reduce((s, v) => s + v, 0);
+  const fixedEur = sum(invoices.map(fixedTaxed));
   const breakdown = Object.fromEntries(Object.entries(segments).map(([k, v]) => [k, { eur: cents(v), pct: all ? Math.round((v / all) * 1000) / 10 : 0 }]));
   const monthKeys = [from.slice(0, 7), to.slice(0, 7)];
-  const missing = missingMonths(store.listInvoices({ status: 'confirmed' }).filter(live), today).filter((m) => m >= monthKeys[0] && m <= monthKeys[1]);
+  const missing = missingMonths(store.listInvoices({ status: 'confirmed' }).filter(live), today, store.measuredDays()).filter((m) => m >= monthKeys[0] && m <= monthKeys[1]);
   const review = store.listInvoices({ status: 'draft', from, to }).filter(live)
     .map((i) => ({ id: i.id, month: i.period_from && i.period_to ? billMonth(i.period_from, i.period_to) : null }));
   return {
@@ -225,6 +238,8 @@ export function billingSummary(store, { from, to, prices = null, today = localDa
       coveredPct: load > 0 ? Math.round((1 - sum(compared.map((b) => num(b.compare.kwh.measured.total))) / load) * 1000) / 10 : null,
     },
     breakdown, missing, review,
+    // what zero use would still cost: power, social bonus and meter rent with their taxes, against the total paid
+    fixedPart: { eur: cents(fixedEur), pct: total > 0 ? Math.round((fixedEur / total) * 1000) / 10 : null },
     advice: advice(store, { invoices, bills, prices, from, to, today, missing, review }),
   };
 }

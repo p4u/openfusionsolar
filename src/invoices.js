@@ -11,7 +11,7 @@ import { localDay } from './collector.js';
 import { LlmError } from './llm.js';
 import {
   BILL_SCHEMA, SYSTEM_PROMPT, normalise, toRow, checks, retryText, fieldStates, maskCups, isDate, RETRY_PATHS,
-  coverageMonths, missingMonths,
+  coverageMonths, missingMonths, measuredMonths,
 } from './invoice-schema.js';
 import { billMonth } from '../public/js/buckets.js';
 
@@ -399,6 +399,7 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
     'GET /api/invoices': () => {
       const all = store.listInvoices();
       const day = today();
+      const measured = store.measuredDays();
       return [200, {
         invoices: all.map((i) => ({
           id: i.id, status: i.status, auto_confirmed: i.auto_confirmed, period_from: i.period_from, period_to: i.period_to,
@@ -408,7 +409,8 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
           duplicate_of: i.duplicate_of, superseded_by: i.superseded_by, badge: badge(i),
         })),
         coverage: coverageMonths(all, day),
-        missing: missingMonths(all, day),
+        missing: missingMonths(all, day, measured),
+        measuredMonths: measuredMonths(measured),
       }];
     },
 
