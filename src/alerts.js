@@ -195,7 +195,7 @@ export function evaluate(snapshot, config, prev, now) {
     for (const inc of incidents) {
       // a late alarm moved a merged event's start: same incident, keep its state under the new key
       if (!state[inc.key] && MERGED.includes(rule.id)) {
-        const old = Object.keys(state).find((k) => own(k) && !keys.has(k) && state[k].status === 'firing'
+        const old = Object.keys(state).find((k) => own(k) && !keys.has(k) && state[k].status !== 'pending'
           && state[k].facts?.start >= inc.since && state[k].facts?.start <= (inc.end ?? now));
         if (old) {
           state[inc.key] = state[old];
@@ -286,7 +286,14 @@ export function createAlertEngine({ store, collector = null, appConfig = {}, tra
     chain = p.catch(() => {});
     return p;
   };
-  const save = () => store.saveAlertState(new Map(Object.entries(state)));
+  let saved = JSON.stringify(state);
+  // only write when something changed: runOnce runs every minute and on every collector tick
+  const save = () => {
+    const next = JSON.stringify(state);
+    if (next === saved) return;
+    store.saveAlertState(new Map(Object.entries(state)));
+    saved = next;
+  };
   const meta = () => (state._meta ??= {});
 
   const defaults = () => ({

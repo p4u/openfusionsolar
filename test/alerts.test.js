@@ -179,6 +179,29 @@ test('a late alarm that moves a cut start earlier does not send a false resolve'
   assert.equal(later.state[`gridCut:${T0 - 20 * MIN}`].status, 'firing');
 });
 
+test('a resolved cut whose start moves earlier with a late alarm is not emailed again', () => {
+  const cut = (start, ongoing) => ({ kind: 'gridCut', start, end: T0, ongoing, names: [] });
+  const first = evaluate(snap({ events: [cut(T0 - 10 * MIN, true)] }), DEFAULT_CONFIG, {}, T0);
+  assert.deepEqual(first.actions.map((a) => a.event), ['fired']);
+  const over = evaluate(snap({ events: [cut(T0 - 10 * MIN, false)] }), DEFAULT_CONFIG, first.state, T0 + 5 * MIN);
+  assert.deepEqual(over.actions.map((a) => a.event), ['resolved']);
+  const late = evaluate(snap({ events: [cut(T0 - 20 * MIN, false)] }), DEFAULT_CONFIG, over.state, T0 + 10 * MIN);
+  assert.deepEqual(late.actions, []);
+});
+
+test('alert state is written only when it changed', async () => {
+  const store = new Store(':memory:');
+  let writes = 0;
+  const orig = store.saveAlertState.bind(store);
+  store.saveAlertState = (m) => { writes++; return orig(m); };
+  const s = setup({ store });
+  await s.run(T0);
+  const afterFirst = writes;
+  await s.run(T0 + 30e3);
+  await s.run(T0 + 60e3);
+  assert.equal(writes, afterFirst);
+});
+
 test('deviceAlarm skips internet losses and severities above the threshold', () => {
   const alarms = [
     row(1, 'Network connection abnormal', T0 - HOUR),
