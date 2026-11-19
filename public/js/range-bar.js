@@ -1,4 +1,4 @@
-// Range bar: preset radio group, previous/next, custom dialog, compare and (advanced) bucket selects.
+// Range bar: preset radio group (a preset select on phones), previous/next, custom dialog, compare and (advanced) bucket selects.
 // onChange(patch) receives URL params (null deletes a key); views pass (p) => ctx.setParams(p).
 import { register, t, locale } from './i18n.js';
 import dict from './i18n/charts.js';
@@ -19,6 +19,8 @@ export function renderRangeBar(container, { range, ctx, mode = null, compare = t
   container.innerHTML = `<div class="range-bar">
     <div class="segmented range-presets" role="radiogroup" aria-label="${esc(t('charts.range.label'))}">${PRESETS.map((p) =>
       `<label><input type="radio" name="${id}" value="${p}"${p === range.r ? ' checked' : ''}>${esc(t(`charts.range.${p}`))}</label>`).join('')}</div>
+    <div class="field range-field range-preset"><label class="sr-only" for="${id}-preset">${esc(t('charts.range.label'))}</label>
+      <select id="${id}-preset">${PRESETS.map((p) => opt(p, t(`charts.range.${p}`), range.r)).join('')}</select></div>
     <div class="range-step">
       <button type="button" class="pill pill-outline pill-icon" data-step="-1" aria-label="${esc(t('charts.range.prev'))}"${prev ? '' : ' disabled'}>${icon('chevron-left')}</button>
       <span class="range-label num" aria-live="polite">${esc(rangeLabel(range, locale()))}</span>
@@ -26,7 +28,7 @@ export function renderRangeBar(container, { range, ctx, mode = null, compare = t
     </div>
     ${compare ? `<div class="field range-field"><label class="sr-only" for="${id}-cmp">${esc(t('charts.compare.label'))}</label>
       <select id="${id}-cmp">${COMPARES.map((c) => opt(c, t(`charts.compare.${c}`), range.cmp)).join('')}</select></div>` : ''}
-    ${mode ? `<details class="disclosure range-advanced"><summary aria-label="${esc(t('charts.advanced'))}"><span class="range-advanced-icon">${icon('sliders-horizontal', { size: 20 })}</span><span class="range-advanced-text">${esc(t('charts.advanced'))}</span><span class="range-advanced-chevron">${icon('chevron-down', { size: 16 })}</span></summary>
+    ${mode ? `<details class="disclosure range-advanced"><summary aria-label="${esc(t('charts.advanced'))}" title="${esc(t('charts.advanced'))}"><span class="range-advanced-icon">${icon('sliders-horizontal', { size: 20 })}</span><span class="range-advanced-text">${esc(t('charts.advanced'))}</span><span class="range-advanced-chevron">${icon('chevron-down', { size: 16 })}</span></summary>
       <div class="field range-field"><label for="${id}-b">${esc(t('charts.bucket.label'))}</label>
         <select id="${id}-b">${opt('auto', t('charts.bucket.auto'), range.b)}${buckets.map((b) => opt(b, t(`charts.bucket.${b}`), range.b)).join('')}</select></div></details>` : ''}
     <dialog class="range-dialog" aria-labelledby="${id}-title"><form method="dialog">
@@ -43,17 +45,16 @@ export function renderRangeBar(container, { range, ctx, mode = null, compare = t
 
   const q = (s) => container.querySelector(s);
   const dialog = q('dialog');
-  // on a phone the presets scroll sideways: keep the chosen one in view
-  const presets = q('.range-presets');
-  const chosen = q(`input[name="${id}"]:checked`)?.parentElement;
-  if (chosen && presets.scrollWidth > presets.clientWidth) presets.scrollLeft = chosen.offsetLeft - (presets.clientWidth - chosen.offsetWidth) / 2;
   const emit = (r) => onChange(rangeParams(r));
   // a new period resets the bucket: a legal one for the old span may be illegal for the new one
   const keep = { cmp: range.cmp, b: 'auto' };
-  const restore = () => { q(`input[name="${id}"][value="${range.r}"]`).checked = true; };
+  const restore = () => {
+    q(`input[name="${id}"][value="${range.r}"]`).checked = true;
+    q(`#${id}-preset`).value = range.r;
+  };
 
   const onPreset = (e) => {
-    if (e.target.name !== id) return;
+    if (e.target.name !== id && e.target.id !== `${id}-preset`) return;
     if (e.target.value === 'custom') dialog.showModal();
     else emit(parseRange({ r: e.target.value, ...keep }, ctx));
   };

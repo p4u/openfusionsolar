@@ -68,6 +68,11 @@
 .range-field > select { width: auto; }
 .range-advanced { flex: 0 0 auto; }
 .range-advanced[open] { flex: 1 1 100%; }
+/* the options button is an icon (named by its label and tooltip), so the bar keeps one row at 1440 with long labels */
+.range-advanced > summary { width: 44px; justify-content: center; }
+.range-advanced > summary .range-advanced-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.range-advanced > summary .range-advanced-chevron { display: none; }
+.range-preset { display: none; }
 @media (min-width: 1024px) {
   /* one row at desktop width: presets, previous/next, compare and advanced */
   .range-presets > label { padding-inline: 10px; }
@@ -78,24 +83,20 @@
 .range-dialog form { display: flex; flex-direction: column; gap: var(--sp-base); }
 .range-dialog-actions { display: flex; justify-content: flex-end; gap: var(--sp-xs); }
 @media (max-width: 639px) {
-  /* two rows, about 100 px: presets with the options button, then previous/next with the comparison */
-  .range-bar { gap: var(--sp-xs); }
-  .range-presets {
-    flex: 1 1 0;
-    min-width: 0;
-    padding-right: var(--sp-xl);
-    mask-image: linear-gradient(to right, #000 calc(100% - var(--sp-xl)), transparent);
-  }
-  .range-advanced { order: 1; }
-  .range-advanced > summary { width: 44px; justify-content: center; }
-  .range-advanced > summary .range-advanced-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .range-advanced > summary .range-advanced-icon { display: inline-flex; }
-  .range-advanced > summary .range-advanced-chevron { display: none; }
-  .range-step { order: 2; flex: 0 1 auto; min-width: 0; }
-  .range-label { min-width: 0; }
-  .range-bar > .range-field { order: 3; flex: 1 1 0; min-width: 0; }
+  /* two rows: the preset select and previous/next, then the comparison and the options button. The select keeps
+     room for its longest preset; the period label wraps instead of being cut. */
+  .range-bar { display: grid; grid-template-columns: minmax(9.5rem, 1fr) minmax(0, auto); gap: var(--sp-xs); }
+  .range-presets { display: none; }
+  .range-preset { display: flex; }
+  .range-preset > select { padding-left: 12px; padding-right: 36px; }
+  .range-step { gap: var(--sp-xxs); min-width: 0; }
+  .range-label { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.25; text-wrap: balance; }
+  .range-bar > .range-field { min-width: 0; }
+  .range-bar > .range-field:not(.range-preset) { grid-column: 1 / -1; }
+  .range-bar:has(.range-advanced) > .range-field:not(.range-preset) { grid-column: 1; }
   .range-field > select { width: 100%; min-width: 0; }
-  .range-advanced[open] { order: 4; }
+  .range-advanced { grid-column: 2; justify-self: end; }
+  .range-advanced[open] { grid-column: 1 / -1; justify-self: stretch; }
   .range-advanced .range-field { flex-direction: column; align-items: stretch; }
 }
-.range-advanced-icon { display: none; }
+.range-advanced > summary .range-advanced-icon { display: inline-flex; }
