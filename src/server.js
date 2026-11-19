@@ -225,6 +225,20 @@ export function startServer({
       const r = range(query);
       return r ? [200, store.alarms(...r)] : RANGE_ERROR;
     },
+    // The real amount of each monthly bill, typed in by the user to compare with the estimate: { 'YYYY-MM': euros }.
+    'GET /api/bills': () => [200, store.getKv('realBills') ?? {}],
+    'PUT /api/bills': ({ body }) => {
+      const { month, amount } = body ?? {};
+      const fields = {};
+      if (typeof month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) fields.month = 'month must be YYYY-MM';
+      if (amount !== null && !(typeof amount === 'number' && Number.isFinite(amount) && amount >= 0 && amount <= 1e6)) fields.amount = 'amount must be a number from 0 to 1000000, or null to clear it';
+      if (Object.keys(fields).length) return [400, { error: 'invalid', fields }];
+      const bills = { ...(store.getKv('realBills') ?? {}) };
+      if (amount === null) delete bills[month];
+      else bills[month] = Math.round(amount * 100) / 100;
+      store.setKv('realBills', bills);
+      return [200, bills];
+    },
     'GET /api/alerts/config': needAlerts(() => [200, alerts.getConfig()]),
     'PUT /api/alerts/config': needAlerts(({ body }) => {
       const r = alerts.setConfig(body);

@@ -39,6 +39,8 @@ export const getEvents = ({ from, to, kinds }, opts) => api(`/api/events${q({ fr
 export const getSignals = (opts) => api('/api/signals', opts);
 export const getSignalHistory = ({ dn, ids, from, to, bucket }, opts) =>
   api(`/api/signals/history${q({ dn, ids, from, to, bucket })}`, opts);
+export const getBills = (opts) => api('/api/bills', opts);
+export const putBill = (month, amount, opts) => api('/api/bills', { ...opts, method: 'PUT', body: { month, amount } });
 export const getAlertsConfig = (opts) => api('/api/alerts/config', opts);
 export const putAlertsConfig = (cfg, opts) => api('/api/alerts/config', { ...opts, method: 'PUT', body: cfg });
 export const sendTestEmail = (to, opts) => api('/api/alerts/test', { ...opts, method: 'POST', body: to ? { to } : {} });
