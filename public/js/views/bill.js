@@ -255,7 +255,7 @@ export async function render(root, ctx) {
       return `${td(realLabel, `${rt.real == null ? '' : esc(eur(rt.real))}${count}`, 'bill-foot-real')}${money ? td(diffLabel, esc(signed(rt.delta)), 'bill-foot-diff') : ''}`;
     };
     const tot = monthTotals(rows);
-    el.innerHTML = `<h2 class="card-title">${esc(t('bill.table.title'))}</h2><p class="hint">${esc(t('bill.table.realHint'))}</p><div class="table-scroll"><table class="table bill-months">
+    el.innerHTML = `<h2 class="card-title">${esc(t('bill.table.title'))}</h2><p class="hint">${esc(t('bill.table.realHint'))}</p><div class="table-scroll"><table class="table bill-months"><caption class="sr-only">${esc(t('bill.table.title'))}</caption>
       <thead><tr><th scope="col">${esc(t('bill.table.month'))}</th>${cols.map((c) => `<th scope="col" class="num${c.cls ? ` ${c.cls}` : ''}">${esc(c.label)}</th>`).join('')}<th scope="col" class="num">${esc(realLabel)}</th>${money ? `<th scope="col" class="num">${esc(diffLabel)}</th>` : ''}</tr></thead>
       <tbody>${body.join('')}</tbody>
       <tfoot><tr><th scope="row">${esc(t('bill.table.total'))}</th>${cells(tot)}${footReal()}</tr></tfoot></table></div>

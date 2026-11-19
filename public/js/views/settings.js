@@ -240,6 +240,7 @@ function drawAlerts(el, config, rows, signal) {
       saved = cfg.recipients.length;
       draw();
       el.querySelector('[data-save]').textContent = t('settings.saved');
+      el.querySelector('[type="submit"]').focus(); // the redraw replaced the button: keep the keyboard where it was
     } catch (err) {
       if (err?.name === 'AbortError') return;
       btn.disabled = false;

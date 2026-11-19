@@ -62,7 +62,7 @@ export function figure(parent, { title, caption = '', csvName = 'data' } = {}) {
       data = iso ? { columns: [{ label: t('charts.csv.iso') }, ...columns], rows: rows.map((r, i) => [iso[i], ...r]) } : { columns, rows };
       const cols = columns.map((c) => (typeof c === 'string' ? { label: c } : c));
       const show = (v, c) => (v == null ? t('core.unknown') : typeof v === 'number' ? nf(c.decimals ?? 2).format(v) : String(v));
-      q('.table-scroll').innerHTML = `<table class="table"><thead><tr>${cols.map((c) => `<th scope="col">${esc(c.unit ? `${c.label} (${c.unit})` : c.label)}</th>`).join('')}</tr></thead>
+      q('.table-scroll').innerHTML = `<table class="table"><caption class="sr-only">${esc(title)}</caption><thead><tr>${cols.map((c) => `<th scope="col">${esc(c.unit ? `${c.label} (${c.unit})` : c.label)}</th>`).join('')}</tr></thead>
         <tbody>${rows.map((r) => `<tr>${r.map((v, i) => `<${i ? 'td' : 'th scope="row"'}${typeof v === 'number' ? ' class="num"' : ''}>${esc(show(v, cols[i]))}</${i ? 'td' : 'th'}>`).join('')}</tr>`).join('')}</tbody></table>`;
       q('.chart-extra').hidden = false;
     },
@@ -79,6 +79,9 @@ export function chart(host, initial) {
   const mobile = () => matchMedia('(max-width: 639px)').matches;
   if (!legendState.has(spec.id)) legendState.set(spec.id, new Set(spec.series.filter((s) => s.hidden).map((s) => s.key)));
   const hidden = legendState.get(spec.id);
+  const live = Object.assign(document.createElement('p'), { className: 'sr-only' });
+  live.setAttribute('role', 'status');
+  host.before(live);
   const zoomOn = () => typeof spec.onZoom === 'function' && matchMedia('(pointer: fine)').matches;
 
   const build = () => {
@@ -94,6 +97,8 @@ export function chart(host, initial) {
         const k = spec.series[i].key;
         if (!hidden.delete(k)) hidden.add(k);
         setTimeout(pressedState); // after ApexCharts has redrawn the legend
+        // said politely, so a keyboard or screen-reader user hears what the toggle did
+        live.textContent = t('charts.a11y.toggled', { name: spec.series[i].name, state: t(hidden.has(k) ? 'charts.a11y.hidden' : 'charts.a11y.visible') });
       },
       // the view decides what a zoom means (usually a custom range); the chart itself keeps its extent
       beforeZoom: (c, { xaxis }) => {
@@ -145,6 +150,7 @@ export function chart(host, initial) {
       document.removeEventListener('langchange', restyle);
       apex.destroy();
       key?.remove();
+      live.remove();
     },
   };
 }
