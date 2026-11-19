@@ -2,93 +2,97 @@
 <html lang="ca">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0a09" media="(prefers-color-scheme: dark)">
   <title>OpenFusionSolar</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☀</text></svg>">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/charts.css">
+  <link rel="stylesheet" href="/css/views/now.css">
+  <link rel="stylesheet" href="/css/views/energy.css">
+  <link rel="stylesheet" href="/css/views/battery.css">
+  <link rel="stylesheet" href="/css/views/panels.css">
+  <link rel="stylesheet" href="/css/views/bill.css">
+  <link rel="stylesheet" href="/css/views/incidents.css">
+  <link rel="stylesheet" href="/css/views/signals.css">
+  <link rel="stylesheet" href="/css/views/settings.css">
+  <script src="/js/theme.js"></script>
+  <script src="/vendor/apexcharts.js" defer></script>
+  <script type="module" src="/js/app.js"></script>
 </head>
 <body>
-  <header>
-    <div>
-      <h1 id="plant">OpenFusionSolar</h1>
-      <p id="freshness"></p>
+  <a class="skip-link" href="#main" data-i18n="core.skip">Salta al contingut</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#/" id="brand"><span class="brand-name" id="plant-name">OpenFusionSolar</span></a>
+
+      <nav class="nav-links" data-i18n-aria="core.nav.label">
+        <a href="#/" data-route="now" data-i18n="core.nav.now">Ara</a>
+        <a href="#/energy" data-route="energy" data-i18n="core.nav.energy">Energia</a>
+        <a href="#/battery" data-route="battery" data-i18n="core.nav.battery">Bateria</a>
+        <a href="#/panels" data-route="panels" data-i18n="core.nav.panels">Plaques</a>
+        <a href="#/money" data-route="bill" data-i18n="core.nav.bill">Factura</a>
+        <a href="#/incidents" data-route="incidents" data-i18n="core.nav.incidents">Incidències</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a class="icon-btn nav-wide" href="#/signals" data-route="signals" data-i18n-aria="core.nav.signals" data-i18n-title="core.nav.signals">
+          <svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#cpu"/></svg>
+        </a>
+        <a class="icon-btn nav-wide" href="#/settings" data-route="settings" data-i18n-aria="core.nav.settings" data-i18n-title="core.nav.settings">
+          <svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#settings"/></svg>
+        </a>
+        <button type="button" class="icon-btn" data-action="theme">
+          <svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#moon"/></svg>
+        </button>
+        <button type="button" class="icon-btn" data-action="lang">
+          <svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#languages"/></svg>
+        </button>
+        <button type="button" class="icon-btn nav-wide" data-action="logout" data-i18n-aria="core.logout" data-i18n-title="core.logout">
+          <svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#log-out"/></svg>
+        </button>
+      </div>
+
+      <button type="button" class="icon-btn more-btn" popovertarget="more-menu" data-i18n-aria="core.nav.more" data-i18n-title="core.nav.more">
+        <svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#ellipsis"/></svg>
+      </button>
+      <div class="menu" id="more-menu" popover>
+        <a class="menu-item" href="#/signals" data-route="signals"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#cpu"/></svg><span data-i18n="core.nav.signals">Dades tècniques</span></a>
+        <a class="menu-item" href="#/settings" data-route="settings"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#settings"/></svg><span data-i18n="core.nav.settings">Configuració</span></a>
+        <hr class="menu-rule">
+        <button type="button" class="menu-item" data-action="theme"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#moon"/></svg><span class="action-label"></span></button>
+        <button type="button" class="menu-item" data-action="lang"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#languages"/></svg><span class="action-label"></span></button>
+        <button type="button" class="menu-item" data-action="logout"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#log-out"/></svg><span data-i18n="core.logout">Surt</span></button>
+      </div>
     </div>
-    <label class="lang"><span data-i18n="language"></span> <select id="lang"></select></label>
   </header>
-  <p id="status" class="status" role="status"></p>
 
-  <main>
-    <section class="row" aria-labelledby="now-title">
-      <article class="card">
-        <h2 id="now-title" data-i18n="nowTitle"></h2>
-        <svg id="flow" viewBox="0 -18 400 440" role="img" data-i18n-aria="flowAria"></svg>
-        <p id="now-sentence" class="sentence"></p>
-      </article>
-      <article class="card" aria-labelledby="bat-title">
-        <h2 id="bat-title" data-i18n="batteryTitle"></h2>
-        <div class="soc"><span id="soc-value" class="big"></span> <span data-i18n="batteryCharged"></span></div>
-        <div id="soc-bar" class="socbar" aria-hidden="true"><div class="fill"></div><div class="reserve"></div></div>
-        <p id="reserve-label" class="hint"></p>
-        <p id="bat-state" class="sentence"></p>
-        <p id="bat-autonomy" class="sentence"></p>
-      </article>
-    </section>
+  <main id="main" class="container" tabindex="-1"></main>
 
-    <article class="card" aria-labelledby="day-title">
-      <div class="titlebar">
-        <h2 id="day-title" data-i18n="dayTitle"></h2>
-        <nav class="pager" aria-labelledby="day-title">
-          <button id="prev-day" data-i18n-aria="prevDay">←</button>
-          <input id="day" type="date" data-i18n-aria="pickDay">
-          <button id="next-day" data-i18n-aria="nextDay">→</button>
-          <button id="today" data-i18n="today"></button>
-        </nav>
-      </div>
-      <p id="day-warning" class="warning"></p>
-      <div id="day-tiles" class="tiles"></div>
-      <h3 data-i18n="dayPower"></h3>
-      <p class="hint" data-i18n="dayPowerHint"></p>
-      <p class="hint" data-i18n="bandsHint"></p>
-      <p id="day-starting" class="hint"></p>
-      <div id="chart-day"></div>
-      <h3 data-i18n="cumulative"></h3>
-      <div id="chart-cum"></div>
-    </article>
+  <nav class="tabbar" data-i18n-aria="core.nav.label">
+    <a class="tab" href="#/" data-route="now"><span class="tab-icon"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#gauge"/></svg></span><span class="tab-label" data-i18n="core.nav.now">Ara</span></a>
+    <a class="tab" href="#/energy" data-route="energy"><span class="tab-icon"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#zap"/></svg></span><span class="tab-label" data-i18n="core.nav.energy">Energia</span></a>
+    <a class="tab" href="#/battery" data-route="battery"><span class="tab-icon"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#battery-medium"/></svg></span><span class="tab-label" data-i18n="core.nav.battery">Bateria</span></a>
+    <a class="tab" href="#/money" data-route="bill"><span class="tab-icon"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#euro"/></svg></span><span class="tab-label" data-i18n="core.nav.bill">Factura</span></a>
+    <button type="button" class="tab" data-action="sheet" aria-haspopup="dialog"><span class="tab-icon"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#ellipsis"/></svg></span><span class="tab-label" data-i18n="core.nav.more">Més</span></button>
+  </nav>
 
-    <article class="card" aria-labelledby="month-title">
-      <div class="titlebar">
-        <h2 id="month-title" data-i18n="monthTitle"></h2>
-        <nav class="pager" aria-labelledby="month-title">
-          <button id="prev-month" data-i18n-aria="prevMonth">←</button>
-          <select id="month" data-i18n-aria="pickMonth"></select>
-          <button id="next-month" data-i18n-aria="nextMonth">→</button>
-        </nav>
-      </div>
-      <p id="month-warning" class="warning"></p>
-      <div id="month-tiles" class="tiles"></div>
-      <h3 data-i18n="monthChart"></h3>
-      <div id="chart-month"></div>
-      <p id="prices-used" class="hint"></p>
-    </article>
-
-    <details class="card">
-      <summary data-i18n="glossaryTitle"></summary>
-      <dl id="glossary" class="glossary"></dl>
-    </details>
-
-    <article class="card" aria-labelledby="events-title">
-      <h2 id="events-title" data-i18n="eventsTitle"></h2>
-      <p id="events-summary" class="sentence"></p>
-      <ul id="events" class="events"></ul>
-      <details id="events-more" hidden>
-        <summary id="events-more-label"></summary>
-        <ul id="events-rest" class="events"></ul>
-      </details>
-    </article>
-  </main>
-
-  <script src="/vendor/apexcharts.js"></script>
-  <script src="/i18n.js"></script>
-  <script src="/app.js"></script>
+  <dialog class="sheet" id="more-sheet" data-i18n-aria="core.nav.more">
+    <span class="sheet-handle" aria-hidden="true"></span>
+    <nav class="sheet-list" data-i18n-aria="core.nav.more">
+      <a class="menu-item" href="#/panels" data-route="panels"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#sun"/></svg><span data-i18n="core.nav.panels">Plaques</span></a>
+      <a class="menu-item" href="#/incidents" data-route="incidents"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#triangle-alert"/></svg><span data-i18n="core.nav.incidents">Incidències</span></a>
+      <a class="menu-item" href="#/signals" data-route="signals"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#cpu"/></svg><span data-i18n="core.nav.signals">Dades tècniques</span></a>
+      <a class="menu-item" href="#/settings" data-route="settings"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#settings"/></svg><span data-i18n="core.nav.settings">Configuració</span></a>
+      <hr class="menu-rule">
+      <button type="button" class="menu-item" data-action="logout"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#log-out"/></svg><span data-i18n="core.logout">Surt</span></button>
+    </nav>
+    <button type="button" class="pill pill-outline sheet-close" data-action="close-sheet" data-i18n="core.close">Tanca</button>
+  </dialog>
 </body>
 </html>

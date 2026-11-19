@@ -7,4 +7,5 @@ services:
     volumes:
       - ./data:/app/data          # SQLite DB and portal session; owned by uid 1000 (node)
     ports:
-      - "127.0.0.1:8080:8080"     # the dashboard has no login: keep it on localhost
+      - "127.0.0.1:8080:8080"     # password protected (APP_PASSWORD); expose through a TLS reverse proxy if needed
+    # health: the image checks /healthz every minute (Dockerfile HEALTHCHECK)

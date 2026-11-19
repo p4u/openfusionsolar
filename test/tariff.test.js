@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { period, dayMoney } from '../src/tariff.js';
+import { period, dayMoney, periodMoney } from '../src/tariff.js';
 
 const at = (y, m, d, h) => new Date(y, m - 1, d, h, 30).getTime();
 
@@ -36,4 +36,17 @@ test('fixed term matches the October 2026 Som Energia bill', () => {
   const month = dayMoney({ import_p1: 0 }, p).fixed * 31;
   const expected = ((12.29 + 0.77) * 1.0511269 + 1.39) * 1.21;
   assert.ok(Math.abs(month - expected) < 0.05, `${month} vs ${expected}`);
+});
+
+test('periodMoney caps the energy term at zero per calendar month', () => {
+  const p = { p1: 1, p2: 1, p3: 1, export: 1, adjust: 0, powerP1: 0, powerP2: 0, contractedP1: 0, contractedP2: 0, socialDay: 0, meterDay: 0, iee: 0, vat: 0 };
+  const days = [
+    { day: '2026-09-01', import_p1: 0, load_p1: 0, export_kwh: 5 }, // net -5
+    { day: '2026-10-01', import_p1: 3, load_p1: 3, export_kwh: 0 }, // net +3
+  ];
+  const m = periodMoney(days, p);
+  assert.equal(m.energy, 3);
+  assert.equal(m.bill, 3);
+  assert.equal(m.savings, m.withoutSolar - 3);
+  assert.equal(periodMoney(days, null), null);
 });

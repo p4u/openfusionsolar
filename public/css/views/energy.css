@@ -1,0 +1,24 @@
+/* Energy view (task 6). Every class here starts with 'energy-'. */
+.energy-bar { min-width: 0; }
+.energy-body { display: flex; flex-direction: column; gap: var(--band-gap-y); }
+.energy-tools { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--sp-sm); margin-bottom: var(--sp-sm); }
+.energy-tools:empty { display: none; }
+.energy-figs { display: flex; flex-direction: column; gap: var(--sp-lg); }
+.energy-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-xs); margin: var(--sp-xs) 0 0; }
+.energy-seg, .energy-seg-labels { display: flex; gap: 2px; }
+.energy-seg { height: 16px; margin-top: var(--sp-xs); overflow: hidden; border-radius: var(--r-pill); }
+.energy-seg > span { flex-basis: 0; min-width: 4px; }
+.energy-seg-sun { background: var(--chart-sun); }
+.energy-seg-grid { background: var(--chart-grid); }
+.energy-seg-home { background: var(--chart-home); }
+.energy-seg-battery { background: var(--chart-battery); }
+.energy-seg-sold { background: var(--chart-sold); }
+.energy-seg-discharge { background: var(--chart-discharge); }
+.energy-seg-labels { margin-top: var(--sp-xs); color: var(--ink); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
+.energy-seg-labels { column-gap: var(--sp-sm); }
+.energy-seg-labels > span { flex-basis: 0; min-width: min-content; white-space: nowrap; }
+.energy-seg-labels > span:last-child:not(:first-child) { text-align: right; }
+.energy-seg-labels > span:empty { min-width: 0; }
+.energy-seg-aside { display: flex; flex-wrap: wrap; gap: var(--sp-xxs) var(--sp-base); margin: var(--sp-xs) 0 0; color: var(--ink); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
+.energy-seg-aside > span { display: inline-flex; align-items: center; gap: var(--sp-xs); }
+.energy-seg-key { width: 10px; height: 10px; border-radius: 2px; }

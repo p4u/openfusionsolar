@@ -1,0 +1,101 @@
+/* Charts, figures and the range bar (task 4). Chart colours come from the --chart-* and --band-* tokens. */
+
+/* figure */
+.chart-figure { margin: 0; }
+.chart-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-xxs) var(--sp-base); margin-bottom: var(--sp-xs); }
+.chart-title { color: var(--ink); font-size: var(--fs-title-sm); font-weight: 500; }
+.chart-caption { color: var(--muted); font-size: var(--fs-caption); }
+.chart-caption:empty { display: none; }
+.chart-host { min-height: 120px; }
+.chart-host .apexcharts-canvas { max-width: 100%; }
+.chart-host .apexcharts-text, .chart-host .apexcharts-legend-text { font-family: var(--font-sans); }
+.chart-extra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-xs) var(--sp-base); margin-top: var(--sp-xs); }
+.chart-extra[hidden] { display: none; }
+.chart-table { flex: 1 1 100%; order: 2; }
+.chart-table > summary { display: inline-flex; min-height: 44px; }
+.chart-csv { margin-left: auto; }
+/* a long table scrolls inside its card, with the header kept in view */
+.chart-table .table-scroll { max-height: 360px; overflow: auto; }
+.chart-table thead th { position: sticky; top: 0; background: var(--surface-card); }
+/* ApexCharts' keyboard focus ring follows the design (2 px ink), not its default blue */
+.chart-host .apexcharts-canvas { --apexcharts-focus-color: var(--ink); }
+
+/* on a phone the legend wraps onto several lines, every item visible (ApexCharts sets an inline max-height and overflow) */
+@media (max-width: 639px) {
+  .chart-host .apexcharts-legend.apx-legend-position-top {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    max-height: none !important;
+    overflow: visible !important;
+    gap: 0 var(--sp-xs);
+  }
+  .chart-host .apexcharts-legend-series { flex: 0 1 auto; max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+}
+
+/* coverage and band legend */
+.chart-key { display: flex; flex-wrap: wrap; gap: var(--sp-xxs) var(--sp-base); margin: var(--sp-xs) 0 0; padding: 0; list-style: none; color: var(--muted); font-size: var(--fs-caption); }
+.chart-key li { display: inline-flex; align-items: center; gap: var(--sp-xs); }
+.chart-swatch { width: 16px; height: 12px; border-radius: var(--r-xs); border: 1px solid var(--hairline-strong); }
+.chart-swatch-gap { background: var(--band-gap); }
+.chart-swatch-cut { background: var(--band-cut); }
+.chart-swatch-stopped { background: var(--band-stopped); }
+.chart-swatch-partial { background: var(--chart-home); opacity: 0.45; border-color: transparent; }
+
+/* tooltip: a floating layer */
+.chart-host .apexcharts-tooltip {
+  border: 1px solid var(--hairline-strong) !important;
+  border-radius: var(--r-md) !important;
+  background: var(--surface-card) !important;
+  box-shadow: var(--shadow-float) !important;
+  color: var(--body) !important;
+}
+.chart-tip { min-width: 180px; max-width: 280px; padding: var(--sp-sm); font-family: var(--font-sans); font-size: var(--fs-caption); line-height: 1.4; }
+.chart-tip-head { margin-bottom: var(--sp-xxs); color: var(--ink); font-weight: 500; }
+.chart-tip-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: var(--sp-xs); padding-block: 2px; }
+.chart-tip-dot { width: 10px; height: 10px; border-radius: 50%; }
+.chart-tip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-tip-value { color: var(--ink); font-weight: 500; text-align: right; }
+.chart-tip-note { margin-top: var(--sp-xxs); color: var(--muted); }
+
+/* range bar */
+.range-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-sm) var(--sp-base); }
+.range-presets { max-width: 100%; }
+.range-step { display: inline-flex; align-items: center; gap: var(--sp-xs); }
+.range-label { min-width: 8ch; color: var(--ink); font-size: var(--fs-caption); font-weight: 500; text-align: center; }
+.pill-icon { flex: none; width: 44px; min-width: 44px; min-height: 44px; padding: 0; }
+.range-field { flex-direction: row; align-items: center; gap: var(--sp-xs); }
+.range-field > select { width: auto; }
+.range-advanced { flex: 0 0 auto; }
+.range-advanced[open] { flex: 1 1 100%; }
+/* the options button is an icon (named by its label and tooltip), so the bar keeps one row at 1440 with long labels */
+.range-advanced > summary { width: 44px; justify-content: center; }
+.range-advanced > summary .range-advanced-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.range-advanced > summary .range-advanced-chevron { display: none; }
+.range-preset { display: none; }
+@media (min-width: 1024px) {
+  /* one row at desktop width: presets, previous/next, compare and advanced */
+  .range-presets > label { padding-inline: 10px; }
+  .range-bar { gap: var(--sp-sm); }
+}
+.range-dialog { width: min(92vw, 360px); padding: var(--sp-lg); border: 1px solid var(--hairline-strong); border-radius: var(--r-xl); background: var(--surface-card); color: var(--body); box-shadow: var(--shadow-float); }
+.range-dialog::backdrop { background: rgba(12, 10, 9, 0.5); }
+.range-dialog form { display: flex; flex-direction: column; gap: var(--sp-base); }
+.range-dialog-actions { display: flex; justify-content: flex-end; gap: var(--sp-xs); }
+@media (max-width: 639px) {
+  /* two rows: the preset select and previous/next, then the comparison and the options button. The select keeps
+     room for its longest preset; the period label wraps instead of being cut. */
+  .range-bar { display: grid; grid-template-columns: minmax(9.5rem, 1fr) minmax(0, auto) 44px; gap: var(--sp-xs); }
+  .range-presets { display: none; }
+  .range-preset { display: flex; }
+  .range-preset > select { padding-left: 12px; padding-right: 36px; }
+  .range-step { grid-column: 2 / -1; gap: var(--sp-xxs); min-width: 0; }
+  .range-label { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.25; text-wrap: balance; }
+  .range-bar > .range-field { min-width: 0; }
+  .range-bar > .range-field:not(.range-preset) { grid-column: 1 / -1; }
+  .range-bar:has(.range-advanced) > .range-field:not(.range-preset) { grid-column: 1 / 3; } /* full width but the options button */
+  .range-field > select { width: 100%; min-width: 0; }
+  .range-advanced { grid-column: 3; justify-self: end; }
+  .range-advanced[open] { grid-column: 1 / -1; justify-self: stretch; }
+  .range-advanced .range-field { flex-direction: column; align-items: stretch; }
+}
+.range-advanced > summary .range-advanced-icon { display: inline-flex; }

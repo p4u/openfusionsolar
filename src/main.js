@@ -5,11 +5,20 @@ import { Store } from './db.js';
 import { Collector } from './collector.js';
 import { startServer } from './server.js';
 import { pricesFromEnv } from './tariff.js';
+import { createAlertEngine } from './alerts.js';
+import { createTransport, smtpInfo } from './mailer.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const env = process.env;
 const SESSION = env.SESSION_PATH ?? '.session.json';
 const log = (m) => console.log(new Date().toISOString(), m);
+
+// Fail closed: the web UI is never served without a password.
+if (!env.APP_PASSWORD) {
+  console.error('APP_PASSWORD is required: set it in .env');
+  process.exit(1);
+}
+if (env.APP_PASSWORD.length < 8) log('warning: APP_PASSWORD is shorter than 8 characters');
 
 function readSession() {
   try {
@@ -36,11 +45,13 @@ const client = new FusionSolarClient({
   session: readSession(),
   log,
 });
+let engine = null; // created below, once the config exists
 const collector = new Collector({
   client,
   store,
   log,
   onSession: () => writeSession(client.exportSession()),
+  onTick: () => engine?.run(),
 });
 
 // Battery values left empty are taken from FusionSolar (station and battery settings).
@@ -54,6 +65,18 @@ const config = {
   prices: pricesFromEnv(env),
   battery: { capacityKwh: optNum(env.BATTERY_KWH), minPct: optNum(env.BATTERY_MIN_PCT), reservePct },
   plantName: env.PLANT_NAME || null,
+  password: env.APP_PASSWORD,
+  trustProxy: env.TRUST_PROXY === '1',
 };
-startServer({ store, collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log });
+// SMTP is optional: without SMTP_HOST alerts are only listed in the app. Credentials stay in mailer.js.
+const transport = await createTransport(env);
+engine = createAlertEngine({
+  store, collector, transport, log,
+  appConfig: {
+    plantName: config.plantName, prices: config.prices, battery: config.battery,
+    alertTo: env.ALERT_TO, appUrl: env.APP_URL, smtp: smtpInfo(env),
+  },
+});
+engine.start();
+startServer({ store, collector: env.COLLECT === '0' ? null : collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log, alerts: engine });
 if (env.COLLECT !== '0') collector.run({ backfillDays: Number(env.BACKFILL_DAYS ?? 30) });

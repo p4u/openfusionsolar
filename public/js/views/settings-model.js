@@ -1,0 +1,98 @@
+// Pure helpers of the Settings view.
+import { t } from '../i18n.js';
+
+const LIMITS = { minutes: [5, 1440], soc: [1, 100], maxSeverity: [1, 4] };
+
+// The inputs inside a rule's sentence, one per param, in the order the sentence template uses them.
+export const ruleSentenceParts = (rule) =>
+  Object.keys(rule.params ?? {}).map((name) => (name === 'time'
+    ? { name, type: 'time', path: `rules.${rule.id}.params.time` }
+    : { name, type: 'number', min: LIMITS[name]?.[0], max: LIMITS[name]?.[1], path: `rules.${rule.id}.params.${name}` }));
+
+// The rule's sentence in the current language with its {placeholders} kept (t() alone fills missing vars with '').
+export const ruleTemplate = (rule) =>
+  t(`settings.rule.${rule.id}`, Object.fromEntries(Object.keys(rule.params ?? {}).map((k) => [k, `{${k}}`])));
+
+// "Tell me when no data arrives for {minutes} minutes" -> [{ text }, { input: 'minutes' }, { text }]
+export function splitSentence(template) {
+  return String(template).split(/\{(\w+)\}/).map((s, i) => (i % 2 ? { input: s } : { text: s })).filter((p) => p.input || p.text);
+}
+
+// The server's own checks (alerts.js validateConfig), run before saving so a wrong value never leaves the page.
+// Returns { path: message } in the server's words (errorText translates them); empty when everything is valid.
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const EMAIL = /^[^\s@<>()[\],;:"\\]+@[^\s@<>()[\],;:"\\]+\.[^\s@<>()[\],;:"\\]+$/;
+export function validateAlerts(cfg) {
+  const fields = {};
+  const int = (path, v, [min, max]) => {
+    if (!(Number.isInteger(v) && v >= min && v <= max)) fields[path] = `integer from ${min} to ${max}`;
+  };
+  const time = (path, v) => {
+    if (!(typeof v === 'string' && HHMM.test(v))) fields[path] = 'HH:MM';
+  };
+  if ((cfg.recipients ?? []).length > 10) fields.recipients = 'up to 10 email addresses';
+  (cfg.recipients ?? []).forEach((r, i) => {
+    if (!(typeof r === 'string' && r.length <= 254 && EMAIL.test(r))) fields[`recipients.${i}`] = 'invalid email address';
+  });
+  for (const k of ['from', 'to']) time(`quiet.${k}`, cfg.quiet?.[k]);
+  for (const rule of cfg.rules ?? []) {
+    for (const [name, v] of Object.entries(rule.params ?? {})) {
+      const path = `rules.${rule.id}.params.${name}`;
+      if (name === 'time') time(path, v);
+      else if (LIMITS[name]) int(path, v, LIMITS[name]);
+    }
+    if (rule.repeatHours !== undefined) int(`rules.${rule.id}.repeatHours`, rule.repeatHours, [0, 720]);
+  }
+  return fields;
+}
+
+// Server field paths ('rules.noData.params.minutes', 'recipients.2', 'quiet.from', 'lang') -> where the message goes.
+// The path is the data-field of the input; an unknown path (or '') lands in the form-level list (area 'form').
+// The server explains a rejected field in English (alerts.js validateConfig); show it in the app language.
+export function errorText(message) {
+  const m = /^integer from (\d+) to (\d+)$/.exec(message ?? '');
+  if (m) return t('settings.err.range', { min: m[1], max: m[2] });
+  const key = { 'invalid email address': 'email', 'up to 10 email addresses': 'recipients', 'HH:MM': 'time' }[message];
+  return t(`settings.err.${key ?? 'invalid'}`);
+}
+
+export function fieldErrorsByInput(fields) {
+  return Object.entries(fields ?? {}).map(([path, raw]) => {
+    const message = errorText(raw);
+    const [head, a, b, c] = path.split('.');
+    const area = head === 'recipients' && a != null ? 'recipient' : head === 'quiet' ? 'quiet' : head === 'lang' ? 'lang'
+      : head === 'rules' && a && b ? 'rule' : 'form';
+    return { path, message, area, ...(area === 'rule' && { rule: a, input: c ?? b }), ...(area === 'recipient' && { index: Number(a) }) };
+  });
+}
+
+// Latest time each rule fired (or sent a report), from history rows (newest first).
+export function lastFired(rows) {
+  const out = {};
+  for (const r of rows) if ((r.event === 'fired' || r.event === 'report') && out[r.rule] == null) out[r.rule] = r.ts;
+  return out;
+}
+
+// i18n key for the delivery state of a history row, plus the extra text to append (SMTP error or raw reason).
+export function deliveryWords(row) {
+  if (row.delivery === 'skipped') return { key: `settings.delivery.skipped.${row.reason ?? 'unknown'}`, fallback: 'settings.delivery.skipped.unknown' };
+  return { key: `settings.delivery.${row.delivery}`, fallback: 'settings.delivery.unknown', detail: row.delivery === 'failed' ? row.error : null };
+}
+
+// Writes one form value into a config by field path (the paths validateConfig reports). Unknown paths are ignored.
+export function setField(cfg, path, value) {
+  const [head, a, b, c] = path.split('.');
+  if (head === 'recipients') cfg.recipients[Number(a)] = value;
+  else if (head === 'quiet') cfg.quiet[a] = value;
+  else if (head === 'lang') cfg.lang = value;
+  else if (head === 'rules') {
+    const rule = cfg.rules.find((r) => r.id === a);
+    if (!rule) return;
+    if (b === 'params') rule.params[c] = value;
+    else rule[b] = value;
+  }
+}
+
+// FusionSolar access as Settings shows it: paused after a failure, unknown before the first check, else working.
+export const authKey = (c, now = Date.now()) => (c.authBlockedUntil > now ? 'settings.collector.authPaused'
+  : c.lastTick == null ? 'settings.collector.authUnknown' : 'settings.collector.authOk');

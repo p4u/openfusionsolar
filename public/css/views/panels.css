@@ -1,0 +1,4 @@
+/* Panels view (task 7). Every class here starts with 'panels-'. */
+.panels-details > summary { min-height: 44px; }
+.panels-detail-list { display: flex; flex-direction: column; gap: var(--gutter); margin-top: var(--sp-base); }
+.panels-strings { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: var(--sp-lg) var(--gutter); margin-top: var(--sp-base); }

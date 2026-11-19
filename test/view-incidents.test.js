@@ -1,0 +1,89 @@
+process.env.TZ = 'Europe/Madrid';
+// Incidents view helpers, run under Node: hours per month across month boundaries, kind filter and grouping.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { dayStart } from '../public/js/format.js';
+import { groupNetwork } from '../public/js/incidents.js';
+import { hoursPerMonth, filterKinds, lossesRecovered } from '../public/js/views/incidents-model.js';
+
+const H = 3600e3;
+const ev = (kind, start, end, extra = {}) => ({ kind, start, end, ongoing: false, names: [], ...extra });
+
+test('hours per month split an event crossing a month boundary', () => {
+  const first = dayStart('2026-04-01'); // 22:00 UTC on 31 March
+  const rows = hoursPerMonth([ev('gridCut', first - 3 * H, first + 2 * H)]);
+  assert.deepEqual(rows.map((r) => r.month), ['2026-03', '2026-04']);
+  assert.equal(rows[0].hours.gridCut, 3);
+  assert.equal(rows[1].hours.gridCut, 2);
+});
+
+test('hours per month cross a year end and fill the empty months', () => {
+  const rows = hoursPerMonth([ev('network', dayStart('2025-11-10'), dayStart('2025-11-10') + H), ev('network', dayStart('2026-01-05'), dayStart('2026-01-05') + 2 * H)]);
+  assert.deepEqual(rows.map((r) => r.month), ['2025-11', '2025-12', '2026-01']);
+  assert.deepEqual(rows[1].hours, {});
+  const split = hoursPerMonth([ev('noProduction', dayStart('2026-01-01') - H, dayStart('2026-01-01') + H)]);
+  assert.deepEqual(split.map((r) => r.month), ['2025-12', '2026-01']);
+});
+
+test('hours per month honour the kind filter and an empty list', () => {
+  const day = dayStart('2026-05-04');
+  const events = [ev('gridCut', day, day + 2 * H), ev('network', day, day + H)];
+  assert.deepEqual(hoursPerMonth(events, ['network'])[0].hours, { network: 1 });
+  assert.deepEqual(hoursPerMonth(events, ['batteryLow']), []);
+  assert.deepEqual(hoursPerMonth([]), []);
+});
+
+test('the kind filter keeps a day of internet losses in one group', () => {
+  const day = dayStart('2026-05-04');
+  const events = [
+    ev('network', day + H, day + 2 * H, { names: ['Network Connection Error'] }),
+    ev('gridCut', day + 3 * H, day + 4 * H),
+    ev('network', day + 5 * H, day + 7 * H),
+  ];
+  const groups = (list) => groupNetwork(list).filter((e) => e.kind === 'networkDay');
+  assert.deepEqual(groups(filterKinds(events, ['network'])), groups(events));
+  assert.equal(groups(filterKinds(events, ['network']))[0].n, 2);
+  assert.deepEqual(filterKinds(events, ['gridCut']).map((e) => e.kind), ['gridCut']);
+  assert.equal(filterKinds(events, []).length, 3);
+  assert.equal(filterKinds(events, null).length, 3);
+});
+
+test('internet losses are reassuring only when the readings of those days came back', () => {
+  const d1 = dayStart('2026-11-10');
+  const d2 = dayStart('2026-11-11');
+  const series = { t: [d1, d2], coverage: [1, 0.95] };
+  const losses = [ev('network', d1 + 2 * H, d1 + 3 * H), ev('network', d2 + 5 * H, d2 + 9 * H)];
+  assert.equal(lossesRecovered(losses, series), 'all');
+  assert.equal(lossesRecovered(losses, { t: [d1, d2], coverage: [1, 0.4] }), 'partial');
+  assert.equal(lossesRecovered([ev('gridCut', d1, d1 + H)], series), null, 'no internet loss, nothing to say');
+  assert.equal(lossesRecovered(losses, { t: [], coverage: [] }), null);
+});
+
+test('without a series the server flag says whether internet losses were filled in, per loss and per day row', () => {
+  const d1 = dayStart('2026-11-10');
+  const a = ev('network', d1 + H, d1 + 2 * H, { recovered: true });
+  const b = ev('network', d1 + 5 * H, d1 + 6 * H, { recovered: false });
+  assert.equal(lossesRecovered([a]), 'all');
+  assert.equal(lossesRecovered([a, b]), 'partial');
+  assert.equal(lossesRecovered([ev('noData', d1, d1 + 2 * H)]), null);
+  assert.equal(groupNetwork([a]).find((e) => e.kind === 'networkDay').recovered, true);
+  assert.equal(groupNetwork([a, b]).find((e) => e.kind === 'networkDay').recovered, false);
+});
+
+test('periods without data are counted, titled and never raise the alarm headline', async () => {
+  const { register, setLang, t } = await import('../public/js/i18n.js');
+  const { default: core } = await import('../public/js/i18n/core.js');
+  register(core);
+  const { summarize, eventTitle } = await import('../public/js/incidents.js');
+  const { headline } = await import('../public/js/views/now-model.js');
+  const d1 = dayStart('2026-11-13');
+  setLang('ca');
+  const gap = ev('noData', d1, d1 + 30 * H);
+  assert.match(summarize([gap]), /^1 període sense dades/);
+  assert.match(eventTitle(gap), /^Sense dades/);
+  const now = d1 + 30 * H;
+  const h = headline({ lastSampleTs: now - 60e3 }, [{ ...gap, ongoing: true }], now);
+  assert.notEqual(h.state, 'alarm');
+  setLang('en');
+  assert.ok(t('core.ev.networkDayRecovered', { n: 2, d: '1 h' }).endsWith('data recovered.'));
+});

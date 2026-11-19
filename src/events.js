@@ -1,5 +1,6 @@
 // Turns Huawei's raw alarm log into a few understandable events: power cuts, internet losses,
 // low battery and island-mode overloads. Same-kind alarms that overlap or are close are merged.
+// From the readings themselves: panels stopped (noProduction) and periods without readings (noData).
 
 const KINDS = [
   ['network', /network connection/i],
@@ -17,7 +18,8 @@ export function classify(name = '') {
 }
 
 // alarms: rows from the alarms table; samples: rows from samples covering the same range.
-export function buildEvents(alarms, samples, now = Date.now()) {
+// range { from, to, since } (ms; since = first stored reading) adds the noData periods of that range.
+export function buildEvents(alarms, samples, now = Date.now(), range = null) {
   const byKind = new Map();
   for (const a of [...alarms].sort((x, y) => x.occur_utc - y.occur_utc)) {
     const kind = classify(a.name);
@@ -33,10 +35,12 @@ export function buildEvents(alarms, samples, now = Date.now()) {
       list.push({ kind, start, end, ongoing: a.clear_utc == null, names: new Set([a.name]) });
     }
   }
-  const events = [...byKind.values(), noProduction(samples)]
+  const events = [...byKind.values(), noProduction(samples), range ? noData(samples, { ...range, now }) : []]
     .flat()
     .filter((e) => e.kind !== 'network' || e.ongoing || e.end - e.start >= MIN_NETWORK_MS)
     .map((e) => ({ ...e, names: [...e.names] }));
+  // an internet loss whose 5-minute readings were filled in afterwards lost nothing
+  for (const e of events.filter((x) => x.kind === 'network' && !x.ongoing)) e.recovered = recovered(samples, e.start, e.end);
   const overloads = events.filter((e) => e.kind === 'overload');
   for (const e of events.filter((x) => x.kind === 'gridCut')) {
     e.batteryCovered = batteryCovered(samples, e.start, e.end);
@@ -71,6 +75,46 @@ export function noProduction(samples) {
   }
   close();
   return out;
+}
+
+// Periods of an hour or more without a home-consumption reading, within the elapsed part of the range and after the
+// first stored reading. A gap still open at `now` is ongoing (the hour minimum also keeps out the last few minutes,
+// which may simply not be synced yet).
+const MIN_GAP_MS = 60 * 60e3;
+const SLOT_MS = 5 * 60e3;
+
+export function noData(samples, { from, to, since, now = Date.now() }) {
+  const out = [];
+  const end = Math.min(to, now);
+  let cursor = Math.max(from, since ?? from);
+  if (since == null || cursor >= end) return out;
+  const gap = (a, b, ongoing) => {
+    if (b - a >= MIN_GAP_MS) out.push({ kind: 'noData', start: a, end: b, ongoing, names: [] });
+  };
+  for (const r of samples) {
+    if (r.load_kw == null) continue;
+    if (r.ts >= end) break;
+    gap(cursor, r.ts, false);
+    cursor = Math.max(cursor, r.ts + SLOT_MS);
+  }
+  gap(cursor, end, end === now);
+  return out;
+}
+
+// Share of the 5-minute slots of [start, end) that have a reading: 90 % or more counts as recovered.
+// samples are sorted by ts (as the store returns them): a binary search finds the start.
+function recovered(samples, start, end) {
+  const slots = Math.max(1, Math.floor((end - start) / SLOT_MS));
+  let lo = 0;
+  let hi = samples.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid].ts < start) lo = mid + 1;
+    else hi = mid;
+  }
+  let n = 0;
+  for (let i = lo; i < samples.length && samples[i].ts < end; i++) if (samples[i].load_kw != null) n++;
+  return n >= 0.9 * slots;
 }
 
 // true: the battery was powering the home during the cut; false: it was not; null: no data then.
