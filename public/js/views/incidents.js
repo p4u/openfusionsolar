@@ -7,8 +7,8 @@ import { parseRange, rangeLabel } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
 import { addDays } from '../buckets.js';
-import { duration, fmtDate, fmtTime, dayOf } from '../format.js';
-import { eventItem, summarize, groupNetwork } from '../incidents.js';
+import { duration, fmtDate, fmtTime, fmtMonthShort, dayOf } from '../format.js';
+import { eventItem, summarize, groupNetwork, groupEpisodes } from '../incidents.js';
 import { filterKinds, hoursPerMonth } from './incidents-model.js';
 
 register(dict);
@@ -16,13 +16,14 @@ register(dict);
 const SHOWN = 8; // rows before "Show all"
 const MAX_DAYS = 800; // /api/events limit
 const KINDS = ['gridCut', 'noProduction', 'network', 'batteryLow', 'overload', 'other'];
-// one chart series per group of kinds; colour is status here
+// one chart series per group of kinds; colour is status here. Internet losses last far longer than the rest and
+// would flatten them, so they get their own small chart.
 const GROUPS = [
   { key: 'cut', kinds: ['gridCut'], entity: 'alarm' },
   { key: 'stopped', kinds: ['noProduction'], entity: 'warn' },
-  { key: 'network', kinds: ['network'], entity: 'muted' },
   { key: 'other', kinds: ['batteryLow', 'overload', 'other'], entity: 'home' },
 ];
+const NETWORK = [{ key: 'network', kinds: ['network'], entity: 'muted' }];
 
 // One list row as a <details>: the shared row markup is the summary, the raw alarm names and the link to the day are the body.
 function row(e, all) {
@@ -31,7 +32,7 @@ function row(e, all) {
   const li = tpl.content.firstElementChild;
   const body = li.querySelector('.event-body');
   const members = e.kind === 'networkDay' ? all.filter((x) => x.kind === 'network' && !x.ongoing && dayOf(x.start) === e.day) : [];
-  const names = [...new Set((e.kind === 'networkDay' ? members.flatMap((x) => x.names ?? []) : e.names) ?? [])];
+  const names = [...new Set((e.kind === 'networkDay' ? members.flatMap((x) => x.names ?? []) : [...(e.names ?? []), ...(e.related ?? []).flatMap((r) => r.names ?? [])]))];
   const day = e.day ?? dayOf(e.start);
   const det = document.createElement('details');
   det.className = 'incidents-row';
@@ -91,7 +92,7 @@ export async function render(root, ctx) {
       return;
     }
     // network losses are one row per day; the rest stays one row per event, most recent first
-    const items = groupNetwork(events_);
+    const items = groupNetwork(groupEpisodes(events_));
     const important = items.filter((e) => e.kind !== 'networkDay');
     const minor = items.filter((e) => e.kind === 'networkDay');
     const shown = [...important.slice(0, SHOWN), ...minor.slice(0, Math.max(0, SHOWN - important.length))].sort((a, b) => b.start - a.start);
@@ -134,17 +135,26 @@ export async function render(root, ctx) {
       return;
     }
     const data = (g) => rows.map((r) => g.kinds.reduce((a, k) => a + (r.hours[k] ?? 0), 0));
-    const names = Object.fromEntries(GROUPS.map((g) => [g.key, t(`incidents.month.${g.key}`)]));
-    const fig = figure(el, { title: t('incidents.month.title'), csvName: 'incidents-per-month' });
-    fig.setCaption(t('incidents.month.caption'));
-    fig.setTable([t('incidents.month.col'), ...GROUPS.map((g) => ({ label: names[g.key], unit: 'h', decimals: 1 }))],
-      rows.map((r, i) => [r.month, ...GROUPS.map((g) => data(g)[i])]));
-    const c = chart(fig.host, {
-      id: 'incidents-month', kind: 'category', unit: 'h', stacked: true, y: { min: 0, decimals: 1 },
-      x: { categories: rows.map((r) => fmtDate(`${r.month}-01`, { month: 'short', year: '2-digit' })) },
-      series: GROUPS.map((g) => ({ key: g.key, name: names[g.key], type: 'bar', entity: g.entity, data: data(g) })),
-    });
-    handle = { destroy: () => { c.destroy(); fig.destroy(); } };
+    const names = Object.fromEntries([...GROUPS, ...NETWORK].map((g) => [g.key, t(`incidents.month.${g.key}`)]));
+    const cats = rows.map((r) => fmtMonthShort(r.month));
+    const parts = [];
+    const draw = (id, groups, title, caption) => {
+      if (!groups.some((g) => data(g).some((v) => v > 0))) return;
+      const fig = figure(el, { title, csvName: `${id}-${from}_${range.to}` });
+      fig.setCaption(caption);
+      fig.setTable([t('incidents.month.col'), ...groups.map((g) => ({ label: names[g.key], unit: 'h', decimals: 1 }))],
+        rows.map((r, i) => [cats[i], ...groups.map((g) => data(g)[i])]), rows.map((r) => r.month));
+      const c = chart(fig.host, {
+        id, kind: 'category', unit: 'h', stacked: true, y: { min: 0, decimals: 1 }, x: { categories: cats },
+        ...(groups === NETWORK && { height: 'strip' }),
+        series: groups.map((g) => ({ key: g.key, name: names[g.key], type: 'bar', entity: g.entity, data: data(g) })),
+      });
+      parts.push(c, fig);
+    };
+    draw('incidents-month', GROUPS, t('incidents.month.title'), t('incidents.month.caption'));
+    draw('incidents-month-network', NETWORK, t('incidents.month.networkTitle'), t('incidents.month.networkCaption'));
+    if (!parts.length) el.innerHTML = emptyState({ title: t('core.empty.title'), body: t('incidents.none') });
+    handle = { destroy: () => parts.forEach((p) => p.destroy()) };
   }
 
   const blocks = [[q('.incidents-main'), main]];

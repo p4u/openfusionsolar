@@ -66,9 +66,10 @@ test('incidents: titles have no em dash, internet losses group per plant day', (
   assert.equal(grouped.length, 2);
   const g = grouped.find((e) => e.kind === 'networkDay');
   assert.equal(g.n, 2);
-  assert.equal(g.total, 1.5 * H);
+  // one counting rule: a loss belongs to the day it started with its full length, so the day row and the summary agree
+  assert.equal(g.total, 2.5 * H);
   assert.equal(summarize([cut, ...nets]), '1 power cut (1 h), 2 internet losses (2.5 h in total)');
-  assert.match(eventItem(g), /2 internet losses \(1.5 h in total\)/);
+  assert.match(eventItem(g), /2 internet losses \(2.5 h in total\)/);
   assert.match(eventItem(cut), /<use href="\/icons.svg#zap-off"\/>/);
   assert.doesNotMatch(eventItem({ ...cut, names: ['<b>'] , kind: 'other' }), /<b>/);
 });
@@ -80,4 +81,38 @@ test('ledger columns fill every row when they can', async () => {
   assert.equal(ledgerColumns(8, 5), 4);
   assert.equal(ledgerColumns(10, 5), 5);
   assert.equal(ledgerColumns(7, 5), 4, 'no exact fit: the fullest last row');
+});
+
+test('a power cut and the overload and low battery it caused are one episode', async () => {
+  const { groupEpisodes, whenText } = await import('../public/js/incidents.js');
+  setLang('en');
+  f.setTimeZone('Europe/Madrid');
+  const day = f.dayStart('2026-11-10');
+  const M = 60e3;
+  const cut = { kind: 'gridCut', start: day + 7 * H + 41 * M, end: day + 8 * H + 45 * M, ongoing: false, batteryCovered: 'overload', names: [] };
+  const low = { kind: 'batteryLow', start: cut.start - 3e3, end: day + 8 * H, ongoing: false, names: ['low'] };
+  const over = { kind: 'overload', start: day + 7 * H + 50 * M, end: day + 8 * H, ongoing: false, names: ['over'] };
+  const later = { kind: 'batteryLow', start: day + 12 * H, end: day + 12 * H + 5 * M, ongoing: false, names: [] };
+  const list = groupEpisodes([cut, over, low, later]);
+  assert.deepEqual(list.map((e) => e.kind), ['gridCut', 'batteryLow']);
+  assert.deepEqual(list[0].related, [low, over]);
+  assert.equal(list[1], later);
+  assert.match(eventItem(list[0]), /During the cut: battery almost empty \(07:40 – 08:00\), overload \(07:50 – 08:00\)/);
+  // same day: the end shows only its time
+  assert.doesNotMatch(whenText(cut), /Nov.*Nov/);
+  assert.match(whenText({ ...cut, end: day + 30 * H }), /Nov.*Nov/);
+});
+
+test('internet losses: the 24 h summary and the day rows count the same losses and hours', () => {
+  const day = f.dayStart('2026-11-17');
+  const nets = [
+    { kind: 'network', start: day + 8 * H, end: day + 9 * H, ongoing: false, names: [] },
+    { kind: 'network', start: day + 21 * H, end: day + 31 * H, ongoing: false, names: [] }, // 10 h across midnight
+  ];
+  const rows = groupNetwork(nets);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].n, 2);
+  assert.equal(rows[0].total, 11 * H);
+  const sum = nets.reduce((a, e) => a + e.end - e.start, 0);
+  assert.equal(rows[0].total, sum);
 });

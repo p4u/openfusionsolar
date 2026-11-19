@@ -12,3 +12,4 @@
 .incidents-detail { display: flex; flex-direction: column; gap: var(--sp-xs); padding-block: var(--sp-xs) var(--sp-xs); color: var(--body); font-size: var(--fs-caption); }
 .incidents-detail ul { margin: 0; padding-left: var(--sp-base); }
 .incidents-rest { margin-top: var(--sp-sm); }
+.incidents-month .chart-figure + .chart-figure { margin-top: var(--sp-xl); }

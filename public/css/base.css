@@ -773,3 +773,4 @@ a.card:hover, .card-link:hover { border-color: var(--hairline-strong); box-shado
 .event-muted { color: var(--muted); }
 .event-when { display: flex; flex-wrap: wrap; gap: var(--sp-xxs) var(--sp-sm); color: var(--muted); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
 .event-title { margin-top: 2px; color: var(--body); }
+.event-related { margin-top: var(--sp-xxs); color: var(--muted); font-size: var(--fs-caption); }

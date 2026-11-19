@@ -4,7 +4,7 @@ import dict from '../i18n/now.js';
 import { getStatus, getSeries, getEnergy, getEvents } from '../api.js';
 import { esc, icon, statusLine, ledger, emptyState, loadBlock, every } from '../ui.js';
 import { kw, kwh, eur, pct, fmtTime, fmtDate, fmtMonth, duration, delta, dayOf, dayStart } from '../format.js';
-import { eventItem, groupNetwork, summarize } from '../incidents.js';
+import { eventItem, groupNetwork, groupEpisodes, summarize } from '../incidents.js';
 import { addDays } from '../buckets.js';
 import { figure, chart } from '../charts.js';
 import { gapBands, eventBands } from '../chart-data.js';
@@ -248,7 +248,7 @@ async function fillMonth(el, ctx, shared) {
 async function fillIncidents(el, ctx, shared) {
   const day = shared.status?.today ?? dayOf(Date.now());
   const events = await getEvents({ from: addDays(day, -30), to: day }, { signal: ctx.signal });
-  const last = groupNetwork(events).slice(0, 3);
+  const last = groupNetwork(groupEpisodes(events)).slice(0, 3);
   el.innerHTML = `<div class="card">${last.length ? `<ul class="events">${last.map(eventItem).join('')}</ul>` : `<p>${esc(t('now.inc.none'))}</p>`}
     <p class="now-more"><a href="#/incidents">${esc(t('now.inc.all'))}${icon('chevron-right', { size: 16 })}</a></p></div>`;
 }
