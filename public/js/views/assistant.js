@@ -136,6 +136,7 @@ export async function render(root, ctx) {
 
   // ---------- thread ----------
   const intro = () => `<div class="assistant-intro" data-intro><p class="assistant-lead">${esc(t('assistant.lead'))}</p>
+    <p class="hint assistant-privacy">${esc(t('assistant.privacy'))} <a class="link" href="#/settings?card=ai">${esc(t('assistant.privacyLink'))}</a></p>
     <h2 class="card-title">${esc(t('assistant.suggest.title'))}</h2>
     <ul class="assistant-suggest" role="list">${t('assistant.suggest').map((s, i) => `<li><button type="button" class="assistant-chip" data-suggest="${i}">${esc(s)}</button></li>`).join('')}</ul></div>`;
 
@@ -385,6 +386,10 @@ export async function render(root, ctx) {
   const onViewport = () => root.style.setProperty('--assistant-kb', `${Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop))}px`);
   vv?.addEventListener('resize', onViewport);
   vv?.addEventListener('scroll', onViewport);
+  // the thread ends with room for the sticky composer, so it never covers the last answer
+  const composer = $('[data-form]');
+  const sized = globalThis.ResizeObserver ? new ResizeObserver(() => root.style.setProperty('--assistant-composer-h', `${composer.offsetHeight}px`)) : null;
+  sized?.observe(composer);
 
   // ---------- first paint ----------
   setBusy(null);
@@ -418,5 +423,6 @@ export async function render(root, ctx) {
     charts.splice(0).forEach((c) => c.destroy());
     vv?.removeEventListener('resize', onViewport);
     vv?.removeEventListener('scroll', onViewport);
+    sized?.disconnect();
   };
 }

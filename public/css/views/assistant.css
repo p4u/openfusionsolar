@@ -1,7 +1,7 @@
 /* Assistant view (task 10). Every class here starts with 'assistant-'. Phone first: one column, the composer sticks
    above the tab bar (or the on-screen keyboard, --assistant-kb set by the view); from 1024 px the conversations list
    is a side column instead of a sheet. */
-.assistant { display: grid; gap: var(--sp-lg); }
+.assistant { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-lg); }
 .assistant-side { display: none; }
 .assistant-main { display: flex; flex-direction: column; gap: var(--sp-base); min-width: 0; }
 .assistant-head-actions { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
@@ -32,7 +32,8 @@
 
 /* intro and suggested questions */
 .assistant-intro { display: grid; gap: var(--sp-sm); }
-.assistant-lead { max-width: 62ch; margin: 0 0 var(--sp-xs); color: var(--body); }
+.assistant-lead { max-width: 62ch; margin: 0; color: var(--body); }
+.assistant-privacy { max-width: 62ch; margin: 0 0 var(--sp-xs); }
 .assistant-suggest { display: flex; flex-wrap: wrap; gap: var(--sp-xs); margin: 0; padding: 0; list-style: none; }
 .assistant-chip {
   min-height: 44px;
@@ -50,6 +51,8 @@
 
 /* thread */
 .assistant-thread { display: flex; flex-direction: column; gap: var(--sp-lg); min-width: 0; }
+/* phone and tablet: the sticky composer floats over the page end; this room keeps the last answer (a chart table) clear of it */
+@media (max-width: 1023px) { .assistant-thread { padding-bottom: var(--assistant-composer-h, 0px); } }
 .assistant-msg { display: flex; flex-direction: column; gap: var(--sp-sm); min-width: 0; scroll-margin: var(--sp-base) 0 220px; }
 .assistant-msg > * { scroll-margin: var(--sp-base) 0 220px; }
 .assistant-msg-user { align-self: flex-end; align-items: flex-end; max-width: min(88%, 640px); }
@@ -138,8 +141,8 @@
 .assistant-send:hover { background: var(--primary-active); color: var(--on-primary); }
 .assistant-send.assistant-stop { background: transparent; border: 1px solid var(--control-border); color: var(--ink); }
 .assistant-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-xxs) var(--sp-sm); margin: 0; padding: 0 var(--sp-xs); color: var(--muted); font-size: 12px; }
-@media (pointer: coarse) {
-  /* the on-screen keyboard has its own send key: the shortcut line stays for screen readers only */
+@media (pointer: coarse), (max-width: 639px) {
+  /* touch and phones: the on-screen keyboard has its own send key, so the shortcut line stays for screen readers only */
   .assistant-foot > :first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 .assistant-composer .field-error { margin: 0; padding: 0 var(--sp-xs); }

@@ -70,3 +70,22 @@ test('power presets refuse ranges over 7 days', () => {
   assert.equal(presetCheck('pie_chart', { from: '2026-11-01', to: '2026-11-02' }), 'billing.preset.unknown');
   assert.equal(presetCheck('bill_kwh_vs_measured', { invoiceId: 3 }), null);
 });
+
+test('a month that is still running is marked provisional up to today', () => {
+  const months = {
+    bucket: '1mo', total: { import_p1: 10, import_p2: 20, import_p3: 30 },
+    buckets: [['2026-10', '2026-10-31'], ['2026-11', '2026-11-30']].map(([key, to]) => ({ ...energy.buckets[0], key, from: `${key}-01`, to })),
+  };
+  for (const type of ['energy_bars', 'import_by_period']) {
+    const m = presetModel(type, months, { today: '2026-11-20' });
+    assert.deepEqual(m.spec.provisional, [false, true], type);
+    assert.match(m.caption, /November 2026 is not complete yet: provisional, with data up to 20 November\./);
+    assert.match(m.rows[1][0], /^November 2026 \(/);
+    assert.doesNotMatch(m.rows[0][0], /\(/);
+  }
+  const done = presetModel('energy_bars', months, { today: '2026-12-02' });
+  assert.deepEqual(done.spec.provisional, [false, false]);
+  assert.equal(done.caption, '');
+  const syncing = presetModel('energy_bars', { ...months, buckets: [{ ...months.buckets[0], provisional: true }] }, { today: '2026-12-02' });
+  assert.match(syncing.caption, /data up to 31 October/);
+});

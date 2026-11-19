@@ -3,6 +3,8 @@ export default {
   en: {
     'assistant.title': 'Assistant',
     'assistant.lead': 'Ask about your bills and your installation in your own words. Answers use only the data stored here.',
+    'assistant.privacy': 'Your questions and the bills you attach are sent to the AI provider named in Settings.',
+    'assistant.privacyLink': 'See it in Settings',
     'assistant.suggest.title': 'You can start with',
     'assistant.suggest': [
       'Explain my last bill in simple words',
@@ -78,6 +80,8 @@ export default {
   ca: {
     'assistant.title': 'Assistent',
     'assistant.lead': 'Pregunta sobre les teves factures i la teva instal·lació amb les teves paraules. Les respostes fan servir només les dades guardades aquí.',
+    'assistant.privacy': 'Les preguntes i les factures que adjuntis s’envien al proveïdor d’IA que indica la Configuració.',
+    'assistant.privacyLink': 'Mira-ho a la Configuració',
     'assistant.suggest.title': 'Pots començar per',
     'assistant.suggest': [
       'Explica’m l’última factura amb paraules senzilles',
