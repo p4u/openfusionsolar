@@ -87,11 +87,12 @@ the on/off switch of each rule are shared by everyone.
   "Not sent: email is not set up". Add the `SMTP_*` keys later and restart.
 - **With SMTP**: set the `SMTP_*` keys, restart, then use "Send test email" next to each address. The result, or the
   SMTP error, appears next to the button.
-- Each alert goes only to the addresses that chose it, one email per language. With nobody subscribed it is logged
-  as "Not sent: nobody subscribed to it". The history shows who each email went to, and a failed email is retried
-  to the same addresses.
+- Each alert goes only to the addresses that chose it, as a separate email to each address in its own language
+  (addresses never see each other). With nobody subscribed it is logged as "Not sent: nobody subscribed to it". The
+  history shows who each email went to, and a failed email is retried only to the addresses it failed for.
 - Quiet hours (default 22:00 to 08:00) hold the problem alerts and send each address one digest of its own alerts
-  when they end. At most 10 emails per hour; anything above is logged as skipped.
+  when they end. A safety cap allows at most 10 alert events per hour, however many addresses each one reaches (an
+  alert to 3 addresses counts once); anything above is logged as skipped.
 - Nothing is sent for history: alerts only cover incidents that start, or are still ongoing, after the first start.
 - FusionSolar reports alarms with a delay, and a power cut that also takes your router down is only seen afterwards.
 - If the machine running the app or its internet is down, no email goes out: the weekly summary is the sign of life.
