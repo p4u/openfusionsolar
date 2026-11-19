@@ -4,6 +4,7 @@
 import { t } from './i18n.js';
 import { nf, nfAxis, fmtDate, fmtTime, fmtMonthShort, dayOf, dayStart } from './format.js';
 import { esc } from './ui.js';
+import { addMonths } from './buckets.js';
 
 export const PARTIAL = 0.9; // coverage below this is drawn faded and flagged in the tooltip
 const GAP_MIN_MS = 15 * 60e3;
@@ -23,15 +24,23 @@ const unitOf = (span) => UNITS.find((u) => span <= u.upTo);
 
 // The one tick strategy of every time axis. ApexCharts spaces ticks evenly from x.min to x.max (a custom label
 // formatter turns its calendar scale off), so the tick count is chosen to land each tick on a unit boundary:
-// whole hours up to 2 days, days up to 45 days, months up to 2 years, then years. The step is the smallest that
-// divides the span and gives at most maxTicks ticks; when none does, one tick per unit and overlapping labels hide.
+// whole hours up to 2 days, days up to 45 days, months up to 2 years, then years. A month or year axis is widened
+// to whole months or years (a part of a month cannot hold even monthly ticks). The step is the smallest that divides
+// the span into at most maxTicks ticks; when none does, one tick per unit and the overlapping labels hide.
+// Returns { unit, tickAmount, min, max }: min and max are the axis extent to draw.
 export function timeAxis(min, max, { mobile = false } = {}) {
-  const span = max - min;
-  const u = unitOf(span);
-  const count = Math.max(1, Math.round(span / u.ms));
+  const u = unitOf(max - min);
+  if (u.unit === 'month' || u.unit === 'year') {
+    const cut = u.unit === 'month' ? 7 : 4;
+    const start = (ms) => dayStart(`${dayOf(ms).slice(0, cut)}${u.unit === 'month' ? '-01' : '-01-01'}`);
+    const next = (ms) => dayStart(addMonths(`${dayOf(ms).slice(0, 7)}-01`, u.unit === 'month' ? 1 : 12 - Number(dayOf(ms).slice(5, 7)) + 1));
+    min = start(min);
+    if (start(max) !== max) max = next(max);
+  }
+  const count = Math.max(1, Math.round((max - min) / u.ms));
   const maxTicks = mobile ? 6 : 12;
   const step = u.steps.find((s) => count % s === 0 && count / s <= maxTicks && count / s >= Math.min(4, count)) ?? 1;
-  return { unit: u.unit, tickAmount: count / step };
+  return { unit: u.unit, tickAmount: count / step, min, max };
 }
 
 const dayMonth = (ms) => fmtDate(ms, { day: 'numeric', month: 'short' }).replace(/ de | d’/, ' '); // "13 nov.", not "13 de nov."
@@ -190,6 +199,7 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
   const time = spec.kind !== 'category';
   const height = spec.height === 'strip' ? HEIGHTS.strip : spec.height ?? (mobile ? HEIGHTS.mobile : HEIGHTS.desktop);
   const span = time ? (spec.x?.max ?? 0) - (spec.x?.min ?? 0) : 0;
+  const axis = time && spec.x?.min != null && spec.x?.max != null ? timeAxis(spec.x.min, spec.x.max, { mobile }) : null;
   const series = spec.series.map((s) => ({
     name: s.name,
     type: s.type,
@@ -241,8 +251,7 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
     legend: { show: spec.series.length > 1, position: 'top', horizontalAlign: 'left', fontFamily: palette.fontFamily, labels: { colors: palette.text }, markers: { size: 8, strokeWidth: 1, customHTML: keys } },
     xaxis: time
       ? {
-          type: 'datetime', min: spec.x?.min, max: spec.x?.max, tooltip: { enabled: false },
-          tickAmount: spec.x?.min != null && spec.x?.max != null ? timeAxis(spec.x.min, spec.x.max, { mobile }).tickAmount : undefined,
+          type: 'datetime', min: axis?.min ?? spec.x?.min, max: axis?.max ?? spec.x?.max, tickAmount: axis?.tickAmount, tooltip: { enabled: false },
           axisBorder: { color: palette.hairline }, axisTicks: { color: palette.hairline },
           labels: { style: text, datetimeUTC: false, rotate: 0, hideOverlappingLabels: true, formatter: (v) => timeTick(Number(v), span) },
         }

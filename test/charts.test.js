@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apexOptions, toCsv, gapBands, eventBands, opacityFor, isBelow, legendKey, timeTick, timeAxis, bucketAxis, chartLabel, legendItemTemplate, tooltipHtml, HEIGHTS } from '../public/js/chart-data.js';
 import { setLang } from '../public/js/i18n.js';
-import { setTimeZone, isoLocal, fmtMonthShort, fmtDate } from '../public/js/format.js';
+import { setTimeZone, isoLocal, fmtMonthShort, fmtDate, dayOf, dayStart } from '../public/js/format.js';
 
 const palette = {
   sun: '#c98500', home: '#2a78d6', grid: '#b0409a', battery: '#199e70', p1: '#7f2c6f', p2: '#b0409a', p3: '#d98fc8',
@@ -220,14 +220,26 @@ test('time axes: tick count lands every tick on an hour, day, month or year boun
   setTimeZone('Europe/Madrid');
   const DAY = 86400e3;
   const d0 = Date.UTC(2026, 10, 12, 23); // 13 Nov 00:00 Madrid
-  assert.deepEqual(timeAxis(d0, d0 + DAY), { unit: 'hour', tickAmount: 12 }, 'a day: every 2 hours');
-  assert.deepEqual(timeAxis(d0, d0 + DAY, { mobile: true }), { unit: 'hour', tickAmount: 6 }, 'a phone: every 4 hours');
-  assert.deepEqual(timeAxis(d0, d0 + 2 * DAY, { mobile: true }), { unit: 'hour', tickAmount: 4 });
-  assert.deepEqual(timeAxis(d0, d0 + 7 * DAY), { unit: 'day', tickAmount: 7 }, '7 days: one tick a day');
-  assert.deepEqual(timeAxis(d0, d0 + 30 * DAY), { unit: 'day', tickAmount: 10 });
-  assert.deepEqual(timeAxis(d0, d0 + 31 * DAY), { unit: 'day', tickAmount: 31 }, 'no step divides 31: one a day, overlaps hide');
+  assert.deepEqual(timeAxis(d0, d0 + DAY), { unit: 'hour', tickAmount: 12, min: d0, max: d0 + DAY }, 'a day: every 2 hours');
+  assert.equal(timeAxis(d0, d0 + DAY, { mobile: true }).tickAmount, 6, 'a phone: every 4 hours');
+  assert.equal(timeAxis(d0, d0 + 2 * DAY, { mobile: true }).tickAmount, 4);
+  assert.deepEqual([timeAxis(d0, d0 + 7 * DAY).unit, timeAxis(d0, d0 + 7 * DAY).tickAmount], ['day', 7], '7 days: one tick a day');
+  assert.equal(timeAxis(d0, d0 + 30 * DAY).tickAmount, 10);
+  assert.equal(timeAxis(d0, d0 + 31 * DAY).tickAmount, 31, 'no step divides 31: one a day, overlaps hide');
+  // a year in progress is drawn to the end of the current month, so every monthly tick sits on a month start
+  const jan1 = Date.UTC(2025, 11, 31, 23);
+  const partial = timeAxis(jan1, Date.UTC(2026, 10, 19, 23));
+  assert.deepEqual(partial, { unit: 'month', tickAmount: 11, min: jan1, max: Date.UTC(2026, 10, 30, 23) });
+  const mid = timeAxis(Date.UTC(2026, 2, 14, 23), Date.UTC(2026, 8, 20, 22));
+  assert.equal(mid.min, Date.UTC(2026, 1, 28, 23), 'starts on 1 March');
+  assert.equal(mid.max, Date.UTC(2026, 8, 30, 22), 'ends on 1 October');
+  for (let k = 0; k <= partial.tickAmount; k++) {
+    const ms = partial.min + (k * (partial.max - partial.min)) / partial.tickAmount;
+    const nearest = dayStart(`${dayOf(ms + 15 * DAY).slice(0, 7)}-01`);
+    assert.ok(Math.abs(ms - nearest) <= 2 * DAY, `tick ${k} within 2 days of its month start`);
+  }
   assert.equal(timeAxis(d0, d0 + 365 * DAY).unit, 'month');
-  assert.equal(timeAxis(d0, d0 + 365 * DAY).tickAmount, 12);
+  assert.equal(timeAxis(d0, d0 + 365 * DAY).tickAmount, 13, '13 Nov to 13 Nov is drawn 1 Nov to 1 Dec: 13 months');
   assert.equal(timeAxis(d0, d0 + 5 * 365 * DAY).unit, 'year');
   // a 25 h DST day is still an hour axis with whole-hour ticks
   const oct25 = Date.UTC(2026, 9, 24, 22);
