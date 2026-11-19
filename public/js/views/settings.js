@@ -4,7 +4,7 @@ import dict from '../i18n/settings.js';
 import { esc, icon, loadBlock, emptyState, getTheme, setTheme } from '../ui.js';
 import { getAlertsConfig, putAlertsConfig, sendTestEmail, getAlertsHistory, ApiError } from '../api.js';
 import { kw, nf, pct, fmtDateTime, fmtTime } from '../format.js';
-import { ruleSentenceParts, splitSentence, fieldErrorsByInput, lastFired, deliveryWords, setField } from './settings-model.js';
+import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, lastFired, deliveryWords, setField } from './settings-model.js';
 
 register(dict);
 
@@ -100,13 +100,13 @@ function appearanceHtml() {
 const glossaryHtml = () => `<dl class="settings-glossary">${t('settings.glossary').map(([term, text]) => `<div><dt>${esc(term)}</dt><dd>${esc(text)}</dd></div>`).join('')}</dl>`;
 
 function sentenceText(rule) {
-  return t(`settings.rule.${rule.id}`).replace(/\{(\w+)\}/g, (_, k) => rule.params[k] ?? '');
+  return t(`settings.rule.${rule.id}`, rule.params);
 }
 
 function ruleHtml(rule, fired) {
   const inputs = new Map(ruleSentenceParts(rule).map((p) => [p.name, p]));
   const label = esc(sentenceText(rule));
-  const sentence = splitSentence(t(`settings.rule.${rule.id}`)).map((p) => {
+  const sentence = splitSentence(ruleTemplate(rule)).map((p) => {
     if (p.text) return esc(p.text);
     const i = inputs.get(p.input);
     if (!i) return '';

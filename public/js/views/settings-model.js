@@ -1,4 +1,5 @@
 // Pure helpers of the Settings view.
+import { t } from '../i18n.js';
 
 const LIMITS = { minutes: [5, 1440], soc: [1, 100], maxSeverity: [1, 4] };
 
@@ -7,6 +8,10 @@ export const ruleSentenceParts = (rule) =>
   Object.keys(rule.params ?? {}).map((name) => (name === 'time'
     ? { name, type: 'time', path: `rules.${rule.id}.params.time` }
     : { name, type: 'number', min: LIMITS[name]?.[0], max: LIMITS[name]?.[1], path: `rules.${rule.id}.params.${name}` }));
+
+// The rule's sentence in the current language with its {placeholders} kept (t() alone fills missing vars with '').
+export const ruleTemplate = (rule) =>
+  t(`settings.rule.${rule.id}`, Object.fromEntries(Object.keys(rule.params ?? {}).map((k) => [k, `{${k}}`])));
 
 // "Tell me when no data arrives for {minutes} minutes" -> [{ text }, { input: 'minutes' }, { text }]
 export function splitSentence(template) {

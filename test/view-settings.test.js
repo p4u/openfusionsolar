@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG, RULES, validateConfig } from '../src/alerts.js';
 import dict from '../public/js/i18n/settings.js';
-import { ruleSentenceParts, splitSentence, fieldErrorsByInput, lastFired, deliveryWords, setField } from '../public/js/views/settings-model.js';
+import { register, setLang } from '../public/js/i18n.js';
+import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, lastFired, deliveryWords, setField } from '../public/js/views/settings-model.js';
 
 test('every rule has a sentence in both languages whose placeholders are exactly its inputs', () => {
   assert.deepEqual(DEFAULT_CONFIG.rules.map((r) => r.id), RULES);
@@ -14,6 +15,18 @@ test('every rule has a sentence in both languages whose placeholders are exactly
       assert.deepEqual(splitSentence(template).filter((p) => p.input).map((p) => p.input).sort(), inputs, `${lang} ${rule.id}`);
     }
   }
+});
+
+test('the rendered rule template keeps one placeholder per input in both languages', () => {
+  register(dict);
+  for (const lang of ['en', 'ca']) {
+    setLang(lang);
+    for (const rule of DEFAULT_CONFIG.rules) {
+      const inputs = splitSentence(ruleTemplate(rule)).filter((p) => p.input).map((p) => p.input).sort();
+      assert.deepEqual(inputs, ruleSentenceParts(rule).map((p) => p.name).sort(), `${lang} ${rule.id}`);
+    }
+  }
+  assert.match(ruleTemplate(DEFAULT_CONFIG.rules.find((r) => r.id === 'noData')), /durant \{minutes\} minuts/);
 });
 
 test('sentence inputs carry the server limits and the field path', () => {
@@ -65,7 +78,7 @@ test('last fired takes the newest fired or report row per rule', () => {
 
 test('delivery words exist in both languages for every state and skip reason', () => {
   const rows = [{ delivery: 'sent' }, { delivery: 'queued' }, { delivery: 'failed', error: 'boom' },
-    ...['noSmtp', 'noRecipients', 'cooldown', 'rateLimit'].map((reason) => ({ delivery: 'skipped', reason }))];
+    ...['noSmtp', 'noRecipients', 'cooldown', 'rateLimit', 'queueFull'].map((reason) => ({ delivery: 'skipped', reason }))];
   for (const r of rows) for (const lang of ['en', 'ca']) assert.ok(dict[lang][deliveryWords(r).key], `${lang} ${r.delivery} ${r.reason}`);
   assert.equal(deliveryWords(rows[2]).detail, 'boom');
 });
