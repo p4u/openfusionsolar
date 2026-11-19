@@ -4,7 +4,7 @@
 .incidents-chips { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
 .incidents-chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface-card); }
 .incidents-list { margin: 0; padding: 0; list-style: none; }
-.incidents-row > summary { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-sm); list-style: none; cursor: pointer; }
+.incidents-row > summary { display: flex; min-height: 44px; align-items: flex-start; justify-content: space-between; gap: var(--sp-sm); list-style: none; cursor: pointer; }
 .incidents-row > summary::-webkit-details-marker { display: none; }
 .incidents-row > summary > :first-child { flex: 1; min-width: 0; }
 .incidents-row > summary .icon { flex: none; margin-top: 2px; color: var(--muted); transition: transform var(--dur) var(--ease); }

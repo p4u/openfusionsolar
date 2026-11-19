@@ -38,3 +38,4 @@
   .bill-msg-row td { display: block; }
 }
 .bill-phases { margin: 0; }
+@media (pointer: coarse) { .bill-real { min-height: 44px; } }
