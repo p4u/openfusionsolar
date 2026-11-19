@@ -102,9 +102,19 @@ export function noData(samples, { from, to, since, now = Date.now() }) {
 }
 
 // Share of the 5-minute slots of [start, end) that have a reading: 90 % or more counts as recovered.
+// samples are sorted by ts (as the store returns them): a binary search finds the start.
 function recovered(samples, start, end) {
   const slots = Math.max(1, Math.floor((end - start) / SLOT_MS));
-  return samples.filter((r) => r.ts >= start && r.ts < end && r.load_kw != null).length >= 0.9 * slots;
+  let lo = 0;
+  let hi = samples.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid].ts < start) lo = mid + 1;
+    else hi = mid;
+  }
+  let n = 0;
+  for (let i = lo; i < samples.length && samples[i].ts < end; i++) if (samples[i].load_kw != null) n++;
+  return n >= 0.9 * slots;
 }
 
 // true: the battery was powering the home during the cut; false: it was not; null: no data then.
