@@ -12,7 +12,7 @@ const eurs = (lang, v) => new Intl.NumberFormat(LANGS[lang].locale, { style: 'cu
 const f = (col, type = 'num', unit = null) => ({ col, type, unit });
 export const fieldGroups = () => [
   { id: 'data', fields: [f('supplier', 'text'), f('invoice_number', 'text'), f('kind', 'kind'), f('rectifies_number', 'text'),
-    f('issue_date', 'date'), f('period_from', 'date'), f('period_to', 'date'), f('days', 'int', 'd'), f('due_date', 'date'),
+    f('issue_date', 'date'), f('period_from', 'date'), f('period_to', 'date'), f('days', 'int'), f('due_date', 'date'),
     f('tariff', 'text'), f('self_consumption', 'bool'), f('notes', 'text')] },
   { id: 'power', fields: [f('contracted_p1_kw', 'num', 'kW'), f('contracted_p2_kw', 'num', 'kW'), f('max_demand_p1_kw', 'num', 'kW'),
     f('max_demand_p2_kw', 'num', 'kW'), f('power_price_p1', 'num', 'eur/kW'), f('power_price_p2', 'num', 'eur/kW'), f('power_eur', 'num', 'eur')] },
@@ -51,6 +51,9 @@ export function parseField(col, text) {
   if (type === 'int' && !(Number.isInteger(value) && value >= 0 && value <= 366)) return { error: 'int' };
   return { value };
 }
+
+// The jargon the bill prints, explained under the field's label with the Settings glossary text (settings.gloss.*).
+export const GLOSS = { adjust_eur: 'adjust', max_demand_p1_kw: 'maxDemand', tax_base_eur: 'taxBase' };
 
 // The value as the input shows it (decimal comma in Catalan).
 export function fieldText(col, v, lang) {
@@ -150,4 +153,51 @@ export function plainWords(inv, lang) {
   const parts = blocks.filter(([id, v]) => v !== 0 || id === 'fixed' || id === 'energy')
     .map(([id, eur, vars]) => ({ id, eur: cents(eur), text: say(lang, `invoices.plain.${id}`, { ...vars, eur: eurs(lang, Math.abs(cents(eur))) }) }));
   return { parts, sum: cents(parts.reduce((s, p) => s + p.eur, 0)), total: inv.total_eur ?? null };
+}
+
+const numText = (lang, v, max = 3) => new Intl.NumberFormat(LANGS[lang].locale, { maximumFractionDigits: max }).format(v);
+const UNIT = { days: 'invoices.unit.d', kW: 'invoices.unit.kW', kWh: 'invoices.unit.kWh', '%': 'invoices.unit.%' };
+
+// A bill line's quantity and unit price in the reader's locale: "31 dies", "4,4 kW", an EUR quantity as money.
+export function lineCells(line, lang) {
+  const q = line.quantity;
+  let qty = '';
+  if (typeof q === 'number') {
+    qty = line.unit === 'EUR' ? eurs(lang, q) : `${numText(lang, q)}${UNIT[line.unit] ? ` ${say(lang, UNIT[line.unit])}` : ''}`;
+  }
+  return { qty, price: typeof line.unit_price === 'number' ? numText(lang, line.unit_price, 6) : '' };
+}
+
+// A meter reading's kWh: "2.016,92 - 2.017,87 kWh" in Catalan.
+export function readingText(r, lang) {
+  const v = (x) => (typeof x === 'number' ? numText(lang, x, 2) : '');
+  return r.start_kwh == null && r.end_kwh == null ? '' : `${v(r.start_kwh)} - ${v(r.end_kwh)} kWh`;
+}
+
+// A coverage cell of GET /api/invoices -> its state. 'missing' only for months the server lists in `missing` (the list
+// the sentence under the grid reads too); a month without enough measurements is 'nodata'; a measured month that is not
+// missing yet (its bill may still arrive) is 'pending'. Without `measuredMonths` (older server) such a month is 'nodata'.
+export function coverageState(cell, missing = [], measuredMonths = null) {
+  if (cell.state === 'ok' || cell.state === 'review') return cell.state;
+  if (missing.includes(cell.month)) return 'missing';
+  return measuredMonths?.includes(cell.month) ? 'pending' : 'nodata';
+}
+
+// The checks of a 409 checks_failed -> { notes: [{ id, col, text }], byCol: { col: noteCol } }: one plain sentence per
+// failing check, shown under the field it computes (its target) or its first field; every field it names points there.
+export function failedChecks(checks, nf, lang) {
+  const notes = [];
+  const byCol = {};
+  for (const c of checks ?? []) {
+    const fields = (c.fields ?? []).filter(Boolean);
+    if (!fields.length) continue;
+    const col = fields.includes(c.target) ? c.target : fields[0];
+    const plain = say(lang, dict.en[`invoices.check.${c.id}`] ? `invoices.check.${c.id}` : 'invoices.check.rule');
+    const sum = c.terms?.length && c.expected != null && c.op ? ` ${sumText(c, nf, lang)}` : '';
+    const note = notes.find((n) => n.col === col);
+    if (note) note.text += ` ${plain}${sum}`;
+    else notes.push({ id: c.id, col, text: `${plain}${sum}` });
+    for (const fld of fields) byCol[fld] ??= col;
+  }
+  return { notes, byCol };
 }

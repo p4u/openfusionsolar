@@ -55,8 +55,9 @@ export const getInvoices = (opts) => api('/api/invoices', opts);
 export const getInvoice = (id, opts) => api(`/api/invoices/get${q({ id })}`, opts);
 export const getUploads = (opts) => api('/api/invoices/uploads', opts);
 export const createInvoice = (group, opts) => post('/api/invoices/create', group ? { group } : {}, opts);
-export const saveInvoice = (id, fields, { confirm, force, noNumber } = {}, opts) =>
-  post('/api/invoices/save', { id, fields, confirm, force, noNumber }, opts);
+// revert: columns put back to the value read from the bill (sent only when there are some)
+export const saveInvoice = (id, fields, { confirm, force, noNumber, revert } = {}, opts) =>
+  post('/api/invoices/save', { id, fields, confirm, force, noNumber, ...(revert?.length && { revert }) }, opts);
 export const resolveInvoice = (id, action, opts) => post('/api/invoices/resolve', { id, action }, opts);
 export const retryInvoice = (group, opts) => post('/api/invoices/retry', { group }, opts);
 export const processGroup = (group, opts) => post('/api/invoices/process', { group }, opts);
