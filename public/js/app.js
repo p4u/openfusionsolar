@@ -5,6 +5,7 @@ import core from './i18n/core.js';
 import { getStatus, logout } from './api.js';
 import { setTimeZone } from './format.js';
 import { errorState, getTheme, setTheme, skeleton } from './ui.js';
+import { resetLegends } from './charts.js';
 
 register(core);
 
@@ -13,7 +14,7 @@ const ROUTES = { '': 'now', energy: 'energy', battery: 'battery', panels: 'panel
 const PATHS = Object.fromEntries(Object.entries(ROUTES).map(([path, name]) => [name, path]));
 const CARRIED = ['r', 'd', 'from', 'to', 'cmp', 'b']; // the time range follows the user across these views
 const RANGED = new Set(['energy', 'battery', 'panels', 'bill', 'incidents', 'signals']);
-const IN_SHEET = new Set(['panels', 'bill', 'signals', 'settings']);
+const IN_SHEET = new Set(['panels', 'incidents', 'signals', 'settings']);
 const STATUS_MS = 60e3;
 
 const $ = (sel) => document.querySelector(sel);
@@ -123,10 +124,13 @@ async function render({ focus = false } = {}) {
       console.error(err);
     }
   }
+  if (current?.name !== name) resetLegends(); // hidden legend series do not follow the user to another view
   const me = { name, controller: new AbortController(), cleanup: null };
   current = me;
   const { signal } = me.controller;
   updateNav(name, params);
+  // set at once from the route, so the tab title never names the previous view while this one loads
+  document.title = `${t(`core.nav.${name}`)} – ${plantName()}`;
   // a fresh root per render: a slow, superseded render writes into a detached node
   const root = document.createElement('div');
   root.className = `view view-${name}`;
@@ -143,7 +147,6 @@ async function render({ focus = false } = {}) {
     }
     me.cleanup = typeof cleanup === 'function' ? cleanup : null;
     const h1 = root.querySelector('h1');
-    document.title = h1 ? `${h1.textContent} – ${plantName()}` : plantName();
     if (focus && h1) {
       h1.tabIndex = -1;
       h1.focus({ preventScroll: true });
