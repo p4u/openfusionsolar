@@ -97,7 +97,7 @@ export default {
     'now.chart.caption': 'The panels peaked at {v} at {time}.',
     'now.chart.noSun': 'No solar production yet today.',
     'now.chart.noData': 'No readings today yet.',
-    'now.chart.csv': 'power-today',
+    'now.chart.csv': 'power',
     'now.chart.time': 'Time',
     'now.chart.link': 'See the day in detail',
 
@@ -208,7 +208,7 @@ export default {
     'now.chart.caption': 'Les plaques han arribat al màxim de {v} a les {time}.',
     'now.chart.noSun': 'Avui encara no hi ha producció solar.',
     'now.chart.noData': 'Avui encara no hi ha lectures.',
-    'now.chart.csv': 'potencia-avui',
+    'now.chart.csv': 'potencia',
     'now.chart.time': 'Hora',
     'now.chart.link': 'Veure el dia al detall',
 

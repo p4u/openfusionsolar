@@ -3,7 +3,7 @@ import { register, t } from '../i18n.js';
 import dict from '../i18n/now.js';
 import { getStatus, getSeries, getEnergy, getEvents } from '../api.js';
 import { esc, icon, statusLine, ledger, emptyState, loadBlock, every } from '../ui.js';
-import { kw, kwh, eur, pct, fmtTime, fmtDate, fmtMonth, duration, delta, dayOf, dayStart } from '../format.js';
+import { kw, kwh, eur, pct, fmtTime, fmtDate, fmtMonth, duration, delta, dayOf, dayStart, isoLocal } from '../format.js';
 import { eventItem, groupNetwork, groupEpisodes, summarize } from '../incidents.js';
 import { addDays } from '../buckets.js';
 import { figure, chart } from '../charts.js';
@@ -216,14 +216,16 @@ async function fillChart(el, ctx, shared, state) {
   };
   if (!state.fig || !el.contains(state.fig.host)) {
     el.replaceChildren();
-    state.fig = figure(el, { title: t('now.chart.title'), csvName: t('now.chart.csv') });
+    state.fig = figure(el, { title: t('now.chart.title'), csvName: `${t('now.chart.csv')}-${day}` });
     state.chart = chart(state.fig.host, spec);
   } else state.chart.update(spec);
   const peak = pv.reduce((best, v, i) => (v != null && (best < 0 || v > pv[best]) ? i : best), -1);
   state.fig.setCaption(peak >= 0 && pv[peak] > 0 ? t('now.chart.caption', { v: kw(pv[peak]), time: fmtTime(s.t[peak]) }) : s.series.pv_kw.some((v) => v != null) ? t('now.chart.noSun') : t('now.chart.noData'));
+  const shown = s.t.map((ms, i) => i).filter((i) => pv[i] != null || load[i] != null);
   state.fig.setTable(
     [{ label: t('now.chart.time') }, { label: t('core.entity.sun'), unit: t('core.unit.kw') }, { label: t('core.entity.home'), unit: t('core.unit.kw') }],
-    s.t.map((ms, i) => [fmtTime(ms), pv[i], load[i]]).filter((r) => r[1] != null || r[2] != null),
+    shown.map((i) => [fmtTime(s.t[i]), pv[i], load[i]]),
+    shown.map((i) => isoLocal(s.t[i], '5m')),
   );
 }
 
