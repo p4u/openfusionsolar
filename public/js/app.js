@@ -6,15 +6,10 @@ import { getStatus, logout } from './api.js';
 import { setTimeZone } from './format.js';
 import { esc, errorState, getTheme, setTheme, skeleton } from './ui.js';
 import { resetLegends } from './charts.js';
+import { ROUTES, PATHS, CARRIED, RANGED, IN_SHEET, PARENT } from './routes.js';
 
 register(core);
 
-// hash path to view module; Bill keeps the #/money URL
-const ROUTES = { '': 'now', energy: 'energy', battery: 'battery', panels: 'panels', money: 'bill', incidents: 'incidents', signals: 'signals', settings: 'settings' };
-const PATHS = Object.fromEntries(Object.entries(ROUTES).map(([path, name]) => [name, path]));
-const CARRIED = ['r', 'd', 'from', 'to', 'cmp', 'b']; // the time range follows the user across these views
-const RANGED = new Set(['energy', 'battery', 'panels', 'bill', 'incidents', 'signals']);
-const IN_SHEET = new Set(['panels', 'incidents', 'signals', 'settings']);
 const STATUS_MS = 60e3;
 
 const $ = (sel) => document.querySelector(sel);
@@ -56,7 +51,7 @@ function updateNav(name, params) {
   for (const a of $$('a[data-route]')) {
     const route = a.dataset.route;
     a.href = hashFor(PATHS[route], RANGED.has(route) ? carried : new URLSearchParams());
-    if (route === name) a.setAttribute('aria-current', 'page');
+    if (route === name || route === PARENT[name]) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
   $('.tab[data-action="sheet"]').classList.toggle('is-current', IN_SHEET.has(name));
@@ -107,6 +102,12 @@ async function refreshStatus() {
   status = await getStatus();
   setTimeZone(status.timeZone ?? status.station?.timeZone);
   updatePlant();
+  updateAsk();
+}
+
+// the Ask button exists only while the assistant is on (re-evaluated on every status refresh)
+function updateAsk() {
+  $('#ask-btn').hidden = !status?.ai?.enabled;
 }
 
 async function render({ focus = false } = {}) {

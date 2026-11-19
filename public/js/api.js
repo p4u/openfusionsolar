@@ -48,3 +48,62 @@ export const putAlertsConfig = (cfg, opts) => api('/api/alerts/config', { ...opt
 export const sendTestEmail = (to, opts, lang) => api('/api/alerts/test', { ...opts, method: 'POST', body: to ? { to, ...(lang && { lang }) } : {} });
 export const getAlertsHistory = ({ limit, before } = {}, opts) => api(`/api/alerts/history${q({ limit, before })}`, opts);
 export const logout = (opts) => api('/api/logout', { ...opts, method: 'POST' });
+
+// Bills and billing (shapes: src/invoices.js, src/billing.js)
+const post = (path, body, opts) => api(path, { ...opts, method: 'POST', body: body ?? {} });
+export const getInvoices = (opts) => api('/api/invoices', opts);
+export const getInvoice = (id, opts) => api(`/api/invoices/get${q({ id })}`, opts);
+export const getUploads = (opts) => api('/api/invoices/uploads', opts);
+export const createInvoice = (group, opts) => post('/api/invoices/create', group ? { group } : {}, opts);
+export const saveInvoice = (id, fields, { confirm, force, noNumber } = {}, opts) =>
+  post('/api/invoices/save', { id, fields, confirm, force, noNumber }, opts);
+export const resolveInvoice = (id, action, opts) => post('/api/invoices/resolve', { id, action }, opts);
+export const retryInvoice = (group, opts) => post('/api/invoices/retry', { group }, opts);
+export const processGroup = (group, opts) => post('/api/invoices/process', { group }, opts);
+export const deleteInvoice = (id, opts) => post('/api/invoices/delete', { id }, opts);
+export const deleteAllInvoices = (opts) => post('/api/invoices/delete-all', {}, opts);
+export const fileUrl = (fileId) => `/api/invoices/file${q({ id: fileId })}`;
+export const getBilling = ({ from, to }, opts) => api(`/api/billing${q({ from, to })}`, opts);
+export const getBillingInvoice = (id, opts) => api(`/api/billing/invoice${q({ id })}`, opts);
+
+// Assistant
+export const getConversations = (opts) => api('/api/assistant/conversations', opts);
+export const getConversation = (id, opts) => api(`/api/assistant/conversation${q({ id })}`, opts);
+export const deleteConversation = (id, opts) => post('/api/assistant/conversations/delete', { id }, opts);
+export const deleteAllConversations = (opts) => post('/api/assistant/conversations/delete-all', {}, opts);
+export const getAiUsage = (opts) => api('/api/assistant/usage', opts);
+
+// NDJSON: one JSON object per line; a line may arrive cut across chunks. Pure, so tests can feed a fake reader.
+export async function readNdjson(reader, onEvent) {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const flush = (line) => {
+    if (line.trim()) onEvent(JSON.parse(line));
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    lines.forEach(flush);
+  }
+  flush(buffer + decoder.decode());
+}
+
+// POST the question; a JSON error before the stream starts throws ApiError, a 200 streams events to onEvent.
+export async function chatStream(body, { signal, onEvent } = {}) {
+  const res = await fetch('/api/assistant/chat', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal,
+  });
+  if (res.status === 401) {
+    location.assign(`/login?next=${encodeURIComponent(location.pathname + location.hash)}`);
+    return new Promise(() => {});
+  }
+  if (res.status !== 200) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(res.status, data?.error ?? `HTTP ${res.status}`, data);
+  }
+  await readNdjson(res.body.getReader(), onEvent ?? (() => {}));
+  return null;
+}
