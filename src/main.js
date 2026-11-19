@@ -5,6 +5,8 @@ import { Store } from './db.js';
 import { Collector } from './collector.js';
 import { startServer } from './server.js';
 import { pricesFromEnv } from './tariff.js';
+import { createAlertEngine } from './alerts.js';
+import { createTransport, smtpInfo } from './mailer.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const env = process.env;
@@ -43,11 +45,13 @@ const client = new FusionSolarClient({
   session: readSession(),
   log,
 });
+let engine = null; // created below, once the config exists
 const collector = new Collector({
   client,
   store,
   log,
   onSession: () => writeSession(client.exportSession()),
+  onTick: () => engine?.run(),
 });
 
 // Battery values left empty are taken from FusionSolar (station and battery settings).
@@ -64,5 +68,15 @@ const config = {
   password: env.APP_PASSWORD,
   trustProxy: env.TRUST_PROXY === '1',
 };
-startServer({ store, collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log });
+// SMTP is optional: without SMTP_HOST alerts are only listed in the app. Credentials stay in mailer.js.
+const transport = await createTransport(env);
+engine = createAlertEngine({
+  store, collector, transport, log,
+  appConfig: {
+    plantName: config.plantName, prices: config.prices, battery: config.battery,
+    alertTo: env.ALERT_TO, appUrl: env.APP_URL, smtp: smtpInfo(env),
+  },
+});
+engine.start();
+startServer({ store, collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log, alerts: engine });
 if (env.COLLECT !== '0') collector.run({ backfillDays: Number(env.BACKFILL_DAYS ?? 30) });

@@ -45,3 +45,39 @@ test('shiftDay walks calendar days across DST changes', async () => {
   assert.equal(shiftDay('2026-10-26', -1), '2026-10-25'); // fall back
   assert.equal(shiftDay('2026-01-01', -1), '2025-12-31');
 });
+
+test('every tick syncs current alarms and fetches history when an active alarm disappears', async () => {
+  const { Collector } = await import('../src/collector.js');
+  const store = new Store(':memory:');
+  const calls = [];
+  const cut = { csn: 7, alarmName: 'Grid loss', severity: 1, occurUtc: 1000, cleared: false };
+  let current = [cut];
+  let history = [];
+  const client = {
+    energyFlow: async () => ({}),
+    energyBalance: async () => ({ data: { xAxis: [] } }),
+    alarms: async (st, { dataType, pageNo, pageSize }) => {
+      calls.push(`${dataType}:${pageNo}:${pageSize}`);
+      const hits = dataType === 'CURRENT' ? current : history;
+      return { data: { hits, totalCount: hits.length } };
+    },
+  };
+  const c = new Collector({ client, store, log: () => {} });
+  c.station = { dn: 'st' };
+  c.devices = [];
+  await c.tick(); // first tick runs the full sync, which already includes CURRENT (no second fetch)
+  assert.deepEqual(calls, ['CURRENT:1:100', 'HISTORY:1:100']);
+  assert.equal(store.activeAlarms().length, 1);
+  calls.length = 0;
+  await c.tick();
+  assert.deepEqual(calls, ['CURRENT:1:100']);
+  calls.length = 0;
+  current = [];
+  history = [{ ...cut, cleared: true, clearUtc: 5000 }];
+  await c.tick(); // the stored active alarm is gone from CURRENT: its clear time is in HISTORY
+  assert.deepEqual(calls, ['CURRENT:1:100', 'HISTORY:1:100']);
+  assert.equal(store.activeAlarms().length, 0);
+  calls.length = 0;
+  await c.tick();
+  assert.deepEqual(calls, ['CURRENT:1:100']);
+});

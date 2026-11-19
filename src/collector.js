@@ -55,11 +55,12 @@ const SAMPLE_SIGNALS = {
 };
 
 export class Collector {
-  constructor({ client, store, log = console.log, onSession = () => {} }) {
+  constructor({ client, store, log = console.log, onSession = () => {}, onTick = () => {} }) {
     this.client = client;
     this.store = store;
     this.log = log;
     this.onSession = onSession;
+    this.onTick = onTick;
     this.queue = Promise.resolve();
     this.authBlockedUntil = 0;
     this.status = { lastTick: null, lastError: null, backfill: null };
@@ -260,22 +261,32 @@ export class Collector {
     if (days.length) this.log(`daily totals rebuilt for ${days.length} days`);
   }
 
-  async syncAlarms() {
+  // Returns the csns seen per data type.
+  async syncAlarms(types = ['CURRENT', 'HISTORY'], maxPages = Infinity) {
     const st = this.station.dn;
-    let n = 0;
-    for (const dataType of ['CURRENT', 'HISTORY']) {
-      for (let pageNo = 1; ; pageNo++) {
+    const seen = {};
+    for (const dataType of types) {
+      seen[dataType] = new Set();
+      for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
         const j = await this.#call('alarms', { stationDn: st, dataType, pageNo }, () =>
           this.client.alarms(st, { dataType, pageNo, pageSize: 100 }),
         );
         const hits = j.data?.hits ?? [];
         this.store.tx(() => hits.forEach((h) => this.store.saveAlarm(h)));
-        n += hits.length;
+        hits.forEach((h) => seen[dataType].add(h.csn));
         if (hits.length < 100 || pageNo * 100 >= (j.data?.totalCount ?? 0)) break;
         await sleep(PAUSE_MS);
       }
     }
-    return n;
+    return seen;
+  }
+
+  // Current alarms every tick, so cuts are noticed within minutes; an active alarm that left CURRENT was
+  // cleared, and its clear time is on the first HISTORY page.
+  async syncCurrentAlarms() {
+    const active = this.store.activeAlarms().map((a) => a.csn);
+    const { CURRENT } = await this.syncAlarms(['CURRENT'], 1);
+    if (active.some((csn) => !CURRENT.has(csn))) await this.syncAlarms(['HISTORY'], 1);
   }
 
   // Month/year/lifetime totals, kept raw for later use.
@@ -332,6 +343,8 @@ export class Collector {
     const now = Date.now();
     await this.#serial(async () => {
       await this.realtime();
+      const full = !this.lastDaily || now - this.lastDaily >= 6 * HOUR;
+      if (!full) await this.syncCurrentAlarms(); // the full sync below already fetches CURRENT
       const today = localDay(now);
       await this.syncDay(today);
       const hourly = !this.lastHourly || now - this.lastHourly >= HOUR;
@@ -342,7 +355,7 @@ export class Collector {
           if (!this.#isFinal(day)) await this.syncDay(day);
         }
       }
-      if (!this.lastDaily || now - this.lastDaily >= 6 * HOUR) {
+      if (full) {
         this.lastDaily = now;
         await this.syncAlarms();
         await this.syncPeriods();
@@ -371,6 +384,8 @@ export class Collector {
       } catch (err) {
         this.#fail(err);
       }
+      // not awaited: a slow SMTP server must not delay polling
+      Promise.resolve().then(this.onTick).catch((err) => this.log(`alerts error: ${err.message}`));
       // Next run one minute after the next 5-minute boundary, when Huawei has usually published the slot.
       const next = Math.ceil((Date.now() + 1) / FIVE_MIN) * FIVE_MIN + 60 * 1000;
       await sleep(next - Date.now());

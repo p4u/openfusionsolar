@@ -17,6 +17,7 @@ import {
   passwordMatches, sessionKey, signSession, verifySession, createLimiter, clientIp, isHttps, cookieHeader,
 } from './auth.js';
 import { resolveStatic, MIME, FONTS, buildSprite } from './static.js';
+import { isEmail } from './alerts.js';
 
 const PUBLIC = fileURLToPath(new URL('../public', import.meta.url));
 const APEXCHARTS = fileURLToPath(new URL('../node_modules/apexcharts/dist/apexcharts.min.js', import.meta.url));
@@ -134,6 +135,7 @@ export function startServer({
     return n > maxDays ? { error: [400, { error: 'range too long' }] } : { from, to, n };
   };
   const RANGE_ERROR = [400, { error: 'from/to (unix ms, from < to, max 400 days) required' }];
+  const needAlerts = (fn) => (ctx) => (alerts ? fn(ctx) : [503, { error: 'alerts are not running' }]);
 
   // Handler: (ctx) => [status, body, headers?], may be async. ctx = { req, url, query, body }.
   const routes = {
@@ -151,6 +153,7 @@ export function startServer({
       battery: batteryInfo(store, config.battery ?? {}),
       pricesConfigured: Boolean(config.prices),
       plantName: config.plantName ?? null,
+      alerts: alerts ? alerts.status() : { smtpConfigured: false, firing: [] },
       prices: config.prices
         ? (({ p1, p2, p3, export: exp, adjust, iee, vat, contractedP1, contractedP2 }) =>
           ({ p1, p2, p3, export: exp, adjust, iee, vat, contractedP1, contractedP2 }))(config.prices)
@@ -220,6 +223,22 @@ export function startServer({
       const r = range(query);
       return r ? [200, store.alarms(...r)] : RANGE_ERROR;
     },
+    'GET /api/alerts/config': needAlerts(() => [200, alerts.getConfig()]),
+    'PUT /api/alerts/config': needAlerts(({ body }) => {
+      const r = alerts.setConfig(body);
+      return r.fields ? [400, { error: 'invalid', fields: r.fields }] : [200, r.config];
+    }),
+    'POST /api/alerts/test': needAlerts(async ({ body }) => {
+      const to = body?.to;
+      if (to != null && !isEmail(to)) return [400, { error: 'invalid', fields: { to: 'invalid email address' } }];
+      return [200, await alerts.sendTest(to ?? undefined)];
+    }),
+    'GET /api/alerts/history': needAlerts(({ query }) => {
+      const limit = Math.min(Math.max(Number.parseInt(query.get('limit') ?? '50', 10) || 50, 1), 200);
+      const before = query.get('before') == null ? undefined : Number(query.get('before'));
+      if (before !== undefined && !Number.isInteger(before)) return [400, { error: 'before must be an integer id' }];
+      return [200, alerts.history({ limit, before })];
+    }),
     'POST /api/logout': ({ req }) => [204, null, { 'set-cookie': cookieHeader('', { maxAgeS: 0, secure: isHttps(req, trustProxy) }) }],
   };
   const routePaths = new Set(Object.keys(routes).map((k) => k.slice(k.indexOf(' ') + 1)));
