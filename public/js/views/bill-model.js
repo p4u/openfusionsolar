@@ -98,3 +98,17 @@ export function periodParts(parts, bought) {
   for (let k = 0; k < extra && k < order.length; k++) out[order[k][1]] += 1;
   return out;
 }
+
+// Confirmed bills by the month holding most of their days: { 'YYYY-MM': { id, total } }. A bill without a total is left out
+// (nothing to show), and when two bills fall in one month the later one wins.
+export function confirmedMonths(invoices) {
+  const out = {};
+  for (const inv of [...(invoices ?? [])].sort((a, b) => (a.period.from < b.period.from ? -1 : 1))) {
+    if (inv.total != null) out[inv.month] = { id: inv.id, total: inv.total };
+  }
+  return out;
+}
+
+// What the "real bill" cell of a month holds: a link to the confirmed bill, or the typed amount in an input.
+export const realCellModel = (month, linked, bills) =>
+  linked?.[month] ? { kind: 'link', id: linked[month].id, total: linked[month].total } : { kind: 'input', value: bills?.[month] ?? null };
