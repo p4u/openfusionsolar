@@ -3,7 +3,7 @@ import { register, t } from '../i18n.js';
 import dict from '../i18n/signals.js';
 import { esc, loadBlock, emptyState } from '../ui.js';
 import { getSignals, getSignalHistory } from '../api.js';
-import { fmtDate, fmtDateTime } from '../format.js';
+import { fmtDate, fmtDateTime, isoLocal } from '../format.js';
 import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
@@ -75,11 +75,13 @@ export async function render(root, ctx) {
       const x = { min: h.t[0], max: h.t.at(-1) + BUCKET_MS[h.bucket], label: (i) => (h.bucket === '1d' ? fmtDate(h.t[i], { weekday: 'short', day: 'numeric', month: 'short' }) : fmtDateTime(h.t[i])) };
       const bands = gapBands({ t: h.t, coverage: h.t.map((_, i) => (known.some((s) => s.avg[i] != null) ? 1 : 0)), bucketMs: BUCKET_MS[h.bucket], now: Date.now() });
       for (const { unit, signals } of groupByUnit(known)) {
-        const f = figure(el, { title: unit || t('signals.noUnit'), csvName: `signals-${unit || 'no-unit'}` });
+        // titled by what is plotted; the unit stays on the axis and in brackets
+        const names = signals.map((s) => s.name).join(', ');
+        const f = figure(el, { title: unit ? `${names} (${unit})` : names, csvName: `signals-${signals.map((s) => s.id).join('-')}-${cl.from}_${range.to}` });
         f.setCaption(t('signals.caption'));
         f.setTable([t('signals.col.time'), ...signals.flatMap((s) => [
           { label: t('signals.col.avg', { name: s.name }), unit, decimals: 3 }, { label: t('signals.col.min', { name: s.name }), unit, decimals: 3 }, { label: t('signals.col.max', { name: s.name }), unit, decimals: 3 }])],
-        h.t.map((_, i) => [stamp(i), ...signals.flatMap((s) => [s.avg[i], s.min[i], s.max[i]])]));
+        h.t.map((_, i) => [stamp(i), ...signals.flatMap((s) => [s.avg[i], s.min[i], s.max[i]])]), h.t.map((ms) => isoLocal(ms, h.bucket)));
         const series = signals.flatMap((s) => {
           const entity = ENTITIES[ids.indexOf(s.id) % ENTITIES.length];
           return [
