@@ -7,6 +7,7 @@ import { INVOICE_COLS } from '../src/db.js';
 import { normalise, toRow } from '../src/invoice-schema.js';
 import {
   plainWords, queueState, fieldGroups, stateLabel, parseField, missingText, sumText, uploadErrorKey, ofMonth, say,
+  lineCells, readingText, coverageState, failedChecks,
 } from '../public/js/views/invoices-model.js';
 
 const { row: sample } = toRow(normalise(JSON.parse(readFileSync(new URL('./fixtures/bills/sample-v1.json', import.meta.url)))));
@@ -91,4 +92,46 @@ test('every field group column exists in the invoice schema', () => {
   assert.equal(new Set(cols).size, cols.length);
   for (const c of cols) keysOk(`invoices.col.${c}`);
   for (const s of ['verified', 'unverified', 'suspect', 'missing', 'edited', 'weird']) keysOk(stateLabel(s));
+});
+
+test('bill lines and readings read in the reader locale, with money as money', () => {
+  assert.deepEqual(lineCells({ quantity: 31, unit: 'days', unit_price: 0.081 }, 'ca'), { qty: '31\u00a0dies', price: '0,081' });
+  assert.deepEqual(lineCells({ quantity: 4.4, unit: 'kW', unit_price: 29.934 }, 'ca'), { qty: '4,4\u00a0kW', price: '29,934' });
+  assert.equal(lineCells({ quantity: 52.3, unit: 'EUR', unit_price: 0.0511269 }, 'ca').qty, '52,30\u00a0€');
+  assert.equal(lineCells({ quantity: 52.3, unit: 'EUR' }, 'en').qty, '€52.30');
+  assert.deepEqual(lineCells({ quantity: null, unit: null, unit_price: null }, 'ca'), { qty: '', price: '' });
+  assert.equal(readingText({ start_kwh: 2016.92, end_kwh: 2017.87 }, 'ca'), '2.016,92 - 2.017,87\u00a0kWh');
+  assert.equal(readingText({ start_kwh: null, end_kwh: null }, 'ca'), '');
+});
+
+test('a month is marked missing only when the server lists it', () => {
+  const missing = ['2026-05'];
+  const measured = ['2026-05', '2026-10'];
+  assert.equal(coverageState({ month: '2026-04', state: 'ok' }, missing, measured), 'ok');
+  assert.equal(coverageState({ month: '2026-04', state: 'review' }, missing, measured), 'review');
+  assert.equal(coverageState({ month: '2026-05', state: 'missing' }, missing, measured), 'missing');
+  assert.equal(coverageState({ month: '2026-10', state: 'missing' }, missing, measured), 'pending'); // measured, the bill may still come
+  assert.equal(coverageState({ month: '2025-01', state: 'missing' }, missing, measured), 'nodata');
+  assert.equal(coverageState({ month: '2025-01', state: 'missing' }, [], undefined), 'nodata'); // older server
+  for (const s of ['nodata', 'pending']) keysOk(`invoices.cell.${s}`);
+});
+
+test('failing checks of a refused save name their fields in plain words', () => {
+  const nf = (n) => n.toFixed(2).replace('.', ',');
+  const h1 = { id: 'H1', outcome: 'fail', op: '+', target: 'total_eur', expected: 59.15, actual: 69.15, fields: ['tax_base_eur', 'vat_eur', 'total_eur'],
+    terms: [{ col: 'tax_base_eur', value: 48.88 }, { col: 'vat_eur', value: 10.27 }] };
+  const h6 = { id: 'H6', outcome: 'fail', fields: ['vat_pct'], terms: [], op: null, expected: null };
+  const { notes, byCol } = failedChecks([h1, h6], nf, 'ca');
+  assert.deepEqual(notes.map((n) => n.col), ['total_eur', 'vat_pct']);
+  assert.match(notes[0].text, /^El total hauria de ser la base imposable/);
+  assert.match(notes[0].text, /sumen 59,15, però la factura diu 69,15\.$/);
+  assert.equal(byCol.tax_base_eur, 'total_eur');
+  assert.equal(byCol.vat_pct, 'vat_pct');
+  assert.match(failedChecks([{ id: 'X9', fields: ['days'] }], nf, 'en').notes[0].text, /does not fit/);
+  assert.deepEqual(failedChecks(undefined, nf, 'en'), { notes: [], byCol: {} });
+  for (const id of ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'H7']) keysOk(`invoices.check.${id}`);
+});
+
+test('the days field has no unit repeating its label', () => {
+  assert.equal(fieldGroups()[0].fields.find((x) => x.col === 'days').unit, null);
 });

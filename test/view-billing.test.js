@@ -2,8 +2,8 @@ process.env.TZ = 'Europe/Madrid';
 // Billing summary helpers under Node: status sentence, share bar, reconciliation rows, advice text.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setLang } from '../public/js/i18n.js';
-import { statusSentence, breakdownSegments, reconRows, adviceView, savingsSplit } from '../public/js/views/billing-model.js';
+import { setLang, t } from '../public/js/i18n.js';
+import { statusSentence, breakdownSegments, reconRows, adviceView, savingsSplit, fixedShare, adviceNote } from '../public/js/views/billing-model.js';
 import { bill, summaryOf } from './fixtures/billing-summary.js';
 
 test('status sentence counts bills and names the reconciling one', () => {
@@ -69,8 +69,51 @@ test('advice cards come as plain text, the prices lines as data and the savings 
   assert.match(power.caveat, /power cut/);
   const data = adviceView({ id: 'data', state: 'attention', period: { from: '2025-11-20', to: '2026-11-19' }, numbers: { missing: ['2026-05'], review: [4], check: [] } });
   assert.match(data.text, /Months with no bill/);
-  assert.match(data.text, /1 bill\(s\) waiting/);
+  assert.match(data.text, /1 bill waiting for review\./);
+  assert.match(adviceView({ id: 'data', state: 'attention', period: { from: '2025-11-20', to: '2026-11-19' }, numbers: { missing: [], review: [4, 5], check: [6] } }).text,
+    /^2 bills waiting for review\. 1 bill does not match/);
   const split = savingsSplit([bill(1, '2026-09'), bill(2, '2026-10', 'nodata')]);
   assert.equal(split.bills, 1);
   assert.equal(Math.round((split.avoided + split.surplus + split.other) * 100) / 100, split.saved);
+  assert.equal(split.printed, null); // the server did not send the printed discount
+});
+
+test('the savings split adds up with no remainder and keeps the printed discount', () => {
+  const a = bill(1, '2026-10');
+  a.compare.savings = { withoutSolar: 125.39, avoided: 65.32, surplusDiscount: 0.92, surplusDiscountPrinted: 0.72 };
+  const split = savingsSplit([a]);
+  assert.deepEqual(split, { bills: 1, saved: 66.24, avoided: 65.32, surplus: 0.92, other: 0, printed: 0.72 });
+});
+
+test('reconciliation rows say of what and which way the gap goes', () => {
+  setLang('en');
+  const bills = [1, 2, 3, 4].map((id) => bill(id, `2026-0${id}`));
+  [{ prices: 0, kwh: 3.34, other: 0 }, { prices: 0, kwh: -2, other: 0 }, { prices: 1, kwh: 0, other: 0 }, { prices: -1, kwh: 0, other: 0 }]
+    .forEach((d, i) => { bills[i].compare.diff = d; });
+  const keys = Object.fromEntries(reconRows(bills).map((r) => [r.id, r.reasonKey]));
+  assert.deepEqual(keys, { 1: 'billing.recon.kwhMore', 2: 'billing.recon.kwhLess', 3: 'billing.recon.pricesMore', 4: 'billing.recon.pricesLess' });
+  assert.match(t(keys[1], { eur: '3,34 €' }), /charges more than we measured, 3,34 € against you/);
+});
+
+test('the fixed share is power, social bonus and meter rent over the total, never the donation', () => {
+  const a = bill(1, '2026-10');
+  a.total = 59.15;
+  a.parts = { energy: 31.59, fixed: 14.45, taxes: 10, other: 2.31, surplus: 0.72 }; // other: a voluntary donation
+  assert.equal(fixedShare([a]), 24);
+  assert.equal(fixedShare([]), null);
+  assert.equal(fixedShare([{ ...a, total: 0 }]), null);
+});
+
+test('advice with one bill keeps the power card and says the others need more data', () => {
+  assert.equal(adviceNote([{ id: 'data' }]), 'billing.advice.notEnough');
+  assert.equal(adviceNote([{ id: 'power' }, { id: 'data' }]), 'billing.advice.notEnoughOthers');
+  assert.equal(adviceNote([{ id: 'power' }, { id: 'peak' }, { id: 'data' }]), null);
+  setLang('en');
+  const period = { from: '2025-11-20', to: '2026-11-19' };
+  const keep = adviceView({ id: 'power', state: 'keep', period, basis: 'measured_peaks', caveat: 'billing.advice.power.nope',
+    numbers: { contractedKw: 4.4, maxKw: 3.9, daysOver: 0, billMaxP1Kw: 4.952, billMaxP2Kw: 1.2 } });
+  assert.match(keep.text, /maximum demand of 4\.95.kW, above the 4\.40.kW contracted/);
+  assert.match(keep.caveat, /power cut/); // an unknown caveat key falls back to the usual one
+  const ok = adviceView({ id: 'power', state: 'ok', period, numbers: { contractedKw: 4.4, maxKw: 3.9, daysOver: 0, billMaxP1Kw: 3.1 } });
+  assert.match(ok.text, /The maximum demand on the bill was 3\.10.kW\./);
 });

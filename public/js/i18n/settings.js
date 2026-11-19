@@ -1,4 +1,20 @@
 // Strings of the Settings view (every key starts with 'settings.').
+// Glossary entries the bill form also shows at the point of use (settings.gloss.*): one text, two places.
+const GLOSS = {
+  en: {
+    periods: ['Peak / standard / off-peak', 'The 2.0TD tariff has three periods. Peak (P1): weekdays 10 to 14 h and 18 to 22 h, the dearest. Standard (P2): weekdays 8 to 10 h, 14 to 18 h and 22 to 24 h. Off-peak (P3): every day 0 to 8 h, plus weekends and national holidays all day, the cheapest.'],
+    adjust: ['Adjustment services', 'A cost of keeping the grid balanced at every moment; the supplier charges it for each kWh you buy.'],
+    maxDemand: ['Maximum demand', 'The highest power the distributor’s meter saw over 15 minutes in the period. If it is above the contracted power, lowering the power is not safe.'],
+    taxBase: ['Tax base', 'The amount VAT is charged on: everything before VAT, the electricity tax included.'],
+  },
+  ca: {
+    periods: ['Punta / pla / vall', 'La tarifa 2.0TD té tres franges. Punta (P1): dies feiners de 10 a 14 h i de 18 a 22 h, la més cara. Pla (P2): dies feiners de 8 a 10 h, de 14 a 18 h i de 22 a 24 h. Vall (P3): cada dia de 0 a 8 h, i els caps de setmana i festius nacionals tot el dia, la més barata.'],
+    adjust: ['Serveis d’ajust', 'Un cost de mantenir la xarxa equilibrada a cada moment; la companyia te’l cobra per cada kWh que compres.'],
+    maxDemand: ['Demanda màxima', 'La potència més alta que el comptador de la distribuïdora ha vist durant un quart d’hora del període. Si supera la potència contractada, no és segur baixar-la.'],
+    taxBase: ['Base imposable', 'L’import sobre el qual es calcula l’IVA: tot el que hi ha abans de l’IVA, amb l’impost elèctric inclòs.'],
+  },
+};
+
 export default {
   en: {
     'settings.title': 'Settings',
@@ -141,7 +157,7 @@ export default {
     'settings.appearance.lang': 'Language',
     'settings.glossary.title': 'What does it mean?',
     'settings.ai.title': 'Assistant and bills',
-    'settings.ai.usage': 'This month: {spent} of {budget}',
+    'settings.ai.usage': 'AI cost this month: {spent} of a {budget} limit',
     'settings.ai.usageHint': 'What the assistant has spent reading bills and answering questions. At the limit it pauses until next month; bills can still be uploaded and filled in by hand.',
     'settings.ai.limit': 'The monthly limit has been reached: the assistant answers again next month.',
     'settings.ai.off': 'The assistant is off on this server: no file or question leaves it. Bills are entered by hand.',
@@ -171,8 +187,12 @@ export default {
       ['Energy cost', 'What you pay for the electricity bought, minus what you are paid for the surplus.'],
       ['Estimated bill', 'Energy cost plus the fixed charges (contracted power, meter rent) and taxes: the figure to compare with your bill.'],
       ['Saved', 'What the same consumption would have cost buying everything from the grid, minus what it really cost.'],
-      ['Peak / standard / off-peak', 'The 2.0TD tariff has three periods. Peak (P1): weekdays 10 to 14 h and 18 to 22 h, the dearest. Standard (P2): weekdays 8 to 10 h, 14 to 18 h and 22 to 24 h. Off-peak (P3): every day 0 to 8 h, plus weekends and national holidays all day, the cheapest.'],
+      GLOSS.en.periods, GLOSS.en.adjust, GLOSS.en.maxDemand, GLOSS.en.taxBase,
     ],
+    'settings.gloss.periods': GLOSS.en.periods,
+    'settings.gloss.adjust': GLOSS.en.adjust,
+    'settings.gloss.maxDemand': GLOSS.en.maxDemand,
+    'settings.gloss.taxBase': GLOSS.en.taxBase,
     'settings.err.email': 'This email address is not valid.',
     'settings.err.recipients': 'Up to 20 email addresses.',
     'settings.err.duplicate': 'This address is already in the list.',
@@ -184,6 +204,7 @@ export default {
     'settings.admin.prices': 'Electricity prices: PRICE_P1, PRICE_P2, PRICE_P3 and PRICE_EXPORT; contracted power: POWER_P1_KW and POWER_P2_KW (PRICE_POWER_P1 and PRICE_POWER_P2 for its price); taxes: TAX_*.',
     'settings.admin.battery': 'Battery: BATTERY_KWH, BATTERY_MIN_PCT, BATTERY_RESERVE_PCT and BATTERY_RESERVE_SINCE.',
     'settings.admin.email': 'Email: SMTP_HOST, SMTP_PORT, SMTP_SECURE (on by default for port 465), SMTP_USER, SMTP_PASS (or SMTP_PASSWORD) and SMTP_FROM; first recipients: ALERT_TO; contracted power for its alert: POWER_P1_KW and POWER_P2_KW.',
+    'settings.admin.aiBudget': 'The administrator sets this limit in the server configuration file (.env, AI_MONTHLY_BUDGET_USD). It is in US dollars because the AI provider bills in dollars.',
     'settings.admin.collect': 'Data collection: FUSIONSOLAR_USER and FUSIONSOLAR_PASSWORD; it is off while COLLECT=0.',
   },
   ca: {
@@ -327,7 +348,7 @@ export default {
     'settings.appearance.lang': 'Idioma',
     'settings.glossary.title': 'Què vol dir?',
     'settings.ai.title': 'Assistent i factures',
-    'settings.ai.usage': 'Aquest mes: {spent} de {budget}',
+    'settings.ai.usage': 'Cost de l’IA aquest mes: {spent} de {budget} de límit',
     'settings.ai.usageHint': 'El que ha gastat l’assistent llegint factures i responent preguntes. Quan arriba al límit s’atura fins al mes que ve; les factures es poden continuar pujant i omplint a mà.',
     'settings.ai.limit': 'S’ha arribat al límit mensual: l’assistent tornarà a respondre el mes que ve.',
     'settings.ai.off': 'L’assistent està desactivat en aquest servidor: no en surt cap fitxer ni cap pregunta. Les factures s’entren a mà.',
@@ -357,8 +378,12 @@ export default {
       ['Cost de l’energia', 'El que pagues per l’electricitat comprada menys el que et paguen per l’excedent.'],
       ['Factura estimada', 'Cost de l’energia més els termes fixos (potència contractada, lloguer del comptador) i els impostos: la xifra per comparar amb la factura.'],
       ['Estalviat', 'El que hauria costat el mateix consum comprant-ho tot a la xarxa, menys el que ha costat de debò.'],
-      ['Punta / pla / vall', 'La tarifa 2.0TD té tres franges. Punta (P1): dies feiners de 10 a 14 h i de 18 a 22 h, la més cara. Pla (P2): dies feiners de 8 a 10 h, de 14 a 18 h i de 22 a 24 h. Vall (P3): cada dia de 0 a 8 h, i els caps de setmana i festius nacionals tot el dia, la més barata.'],
+      GLOSS.ca.periods, GLOSS.ca.adjust, GLOSS.ca.maxDemand, GLOSS.ca.taxBase,
     ],
+    'settings.gloss.periods': GLOSS.ca.periods,
+    'settings.gloss.adjust': GLOSS.ca.adjust,
+    'settings.gloss.maxDemand': GLOSS.ca.maxDemand,
+    'settings.gloss.taxBase': GLOSS.ca.taxBase,
     'settings.err.email': 'Aquesta adreça electrònica no és vàlida.',
     'settings.err.recipients': 'Com a màxim 20 adreces electròniques.',
     'settings.err.duplicate': 'Aquesta adreça ja és a la llista.',
@@ -370,6 +395,7 @@ export default {
     'settings.admin.prices': 'Preus de l’electricitat: PRICE_P1, PRICE_P2, PRICE_P3 i PRICE_EXPORT; potència contractada: POWER_P1_KW i POWER_P2_KW (PRICE_POWER_P1 i PRICE_POWER_P2 per al preu); impostos: TAX_*.',
     'settings.admin.battery': 'Bateria: BATTERY_KWH, BATTERY_MIN_PCT, BATTERY_RESERVE_PCT i BATTERY_RESERVE_SINCE.',
     'settings.admin.email': 'Correu: SMTP_HOST, SMTP_PORT, SMTP_SECURE (activat per defecte amb el port 465), SMTP_USER, SMTP_PASS (o SMTP_PASSWORD) i SMTP_FROM; primers destinataris: ALERT_TO; potència contractada per al seu avís: POWER_P1_KW i POWER_P2_KW.',
+    'settings.admin.aiBudget': 'L’administrador fixa aquest límit al fitxer de configuració del servidor (.env, AI_MONTHLY_BUDGET_USD). És en dòlars perquè el proveïdor d’IA factura en dòlars.',
     'settings.admin.collect': 'Recollida de dades: FUSIONSOLAR_USER i FUSIONSOLAR_PASSWORD; està aturada mentre COLLECT=0.',
   },
 };

@@ -10,7 +10,7 @@ import { getEnergy, getSeries, getBilling, getBillingInvoice } from './api.js';
 import { figure, chart } from './charts.js';
 import { bucketAxis } from './chart-data.js';
 import { legalSeriesBuckets, legalEnergyBuckets, autoSeriesBucket, autoEnergyBucket, spanDays } from './buckets.js';
-import { eur, kwh, fmtDate, fmtDateTime, fmtMonth, isoLocal } from './format.js';
+import { eur, kwh, fmtDate, fmtDateTime, fmtMonth, isoLocal, dayOf } from './format.js';
 import { energyBars } from './views/energy-model.js';
 import { notComparedList } from './views/billing-model.js';
 
@@ -46,19 +46,31 @@ export function presetCheck(type, { from, to, bucket, invoiceId } = {}) {
 
 // ---- spec builders: each returns { id, title, caption, columns, rows, iso, spec } or null when there is nothing to draw
 
-function energyModel(data, id) {
+// A bucket still filling up (today inside it) or with days still syncing: { partial: [bool], note } where note names
+// the last one and the day its data reaches, as Previsió marks a provisional month.
+export function partialBuckets(bs, today, name) {
+  const partial = bs.map((b) => Boolean(b.provisional) || (b.from <= today && today <= b.to));
+  const i = partial.lastIndexOf(true);
+  if (i < 0) return { partial, note: '' };
+  const upTo = bs[i].to < today ? bs[i].to : today;
+  return { partial, note: t('billing.preset.partial', { label: name(i), day: fmtDate(upTo, { day: 'numeric', month: 'long' }) }) };
+}
+
+function energyModel(data, id, today) {
   const bs = data?.buckets ?? [];
   if (!bs.length) return null;
   const axis = bucketAxis(bs.map((b) => b.key), data.bucket);
-  const label = (i) => (data.bucket === '1mo' ? fmtMonth(bs[i].key) : data.bucket === '1y' ? bs[i].key : fmtDate(bs[i].from, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }));
+  const name = (i) => (data.bucket === '1mo' ? fmtMonth(bs[i].key) : data.bucket === '1y' ? bs[i].key : fmtDate(bs[i].from, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }));
+  const { partial, note } = partialBuckets(bs, today, name);
+  const label = (i) => (partial[i] ? `${name(i)} (${t('core.badge.provisional')})` : name(i));
   const x = { categories: axis.categories, title: axis.title, label };
-  const base = { kind: 'category', unit: 'kWh', stacked: true, y: { min: 0, decimals: 0 }, x, coverage: bs.map((b) => b.coverage), provisional: bs.map((b) => b.provisional) };
+  const base = { kind: 'category', unit: 'kWh', stacked: true, y: { min: 0, decimals: 0 }, x, coverage: bs.map((b) => b.coverage), provisional: partial };
   if (id === 'import_by_period') {
     const names = P.map((p) => t(`bill.period.${p}`));
     const cols = P.map((p) => bs.map((b) => b[`import_${p}`] ?? null));
     if (!cols.some((c) => c.some(num))) return null;
     return {
-      id, title: t('bill.period.title'), caption: t('bill.period.caption', { total: kwh(sum(data.total ? P.map((p) => data.total[`import_${p}`]) : [])) }),
+      id, title: t('bill.period.title'), caption: [t('bill.period.caption', { total: kwh(sum(data.total ? P.map((p) => data.total[`import_${p}`]) : [])) }), note].filter(Boolean).join(' '),
       columns: [t('bill.table.month'), ...names.map((label) => ({ label, unit: 'kWh', decimals: 1 }))],
       rows: bs.map((_, i) => [label(i), ...cols.map((c) => c[i])]), iso: bs.map((b) => b.key),
       spec: { id, ...base, y: { min: 0, decimals: 0 }, series: names.map((name, i) => ({ key: P[i], name, type: 'bar', entity: P[i], data: cols[i] })) },
@@ -72,7 +84,7 @@ function energyModel(data, id) {
     { key: 'produced', name: t('energy.series.produced'), type: 'line', entity: 'sun', markers: true, data: bars.produced },
   ];
   return {
-    id, title: t('energy.chart.energy'), caption: '',
+    id, title: t('energy.chart.energy'), caption: note,
     columns: [t('bill.table.month'), ...series.map((s) => ({ label: s.name, unit: 'kWh', decimals: 1 }))],
     rows: bs.map((_, i) => [label(i), ...series.map((s) => (s.key === 'sold' && s.data[i] != null ? -s.data[i] : s.data[i]))]), iso: bs.map((b) => b.key),
     spec: { id, ...base, y: { decimals: 1 }, series },
@@ -127,7 +139,7 @@ function billModel(bills, id) {
 
   if (id === 'bill_breakdown') {
     const taxes = col((b) => round2(b.parts.taxes + b.parts.other));
-    return model(t('billing.chart.breakdown'), t('billing.chart.breakdownCaption', { total: eur(sum(sorted.map((b) => b.total))), n: sorted.length }),
+    return model(t('billing.chart.breakdown'), t(sorted.length === 1 ? 'billing.chart.breakdownCaptionOne' : 'billing.chart.breakdownCaption', { total: eur(sum(sorted.map((b) => b.total))), n: sorted.length }),
       cols(['billing.col.energy', '€'], ['billing.col.fixed', '€'], ['billing.col.taxes', '€'], ['billing.col.surplus', '€'], ['billing.col.total', '€']),
       rows((b) => b.parts.energy, (b) => b.parts.fixed, (b) => round2(b.parts.taxes + b.parts.other), (b) => b.parts.surplus, (b) => b.total),
       { stacked: true, y: { decimals: 0 }, series: [
@@ -182,8 +194,8 @@ function billModel(bills, id) {
     const without = col((b) => c(b).savings?.withoutSolar ?? null);
     const s = (b) => c(b).savings;
     return model(t('billing.chart.savings'), [t('billing.chart.savingsCaption'), notCompared].filter(Boolean).join(' '),
-      cols(['billing.col.without', '€'], ['billing.col.paid', '€'], ['billing.col.avoided', '€'], ['billing.col.surplus', '€'], ['billing.col.other', '€']),
-      rows((b) => s(b)?.withoutSolar ?? null, (b) => b.total, (b) => s(b)?.avoided ?? null, (b) => s(b)?.surplusDiscount ?? null, (b) => s(b)?.other ?? null),
+      cols(['billing.col.without', '€'], ['billing.col.paid', '€'], ['billing.col.avoided', '€'], ['billing.col.surplus', '€']),
+      rows((b) => s(b)?.withoutSolar ?? null, (b) => b.total, (b) => s(b)?.avoided ?? null, (b) => s(b)?.surplusDiscount ?? null),
       { stacked: false, series: [
         bar('without', t('billing.s.without'), 'home', without),
         bar('paid', t('billing.s.paid'), 'grid', col((b) => b.total)),
@@ -228,8 +240,8 @@ const BILL_TYPES = ['bill_breakdown', 'bill_by_period', 'price_per_kwh', 'bill_r
 
 // Model of one chart from already fetched data: `data` is the /api/energy answer, the /api/series answer, the
 // /api/billing summary or, for one bill, the /api/billing/invoice answer. Null when there is nothing to draw.
-export function presetModel(type, data, { invoice = false } = {}) {
-  if (ENERGY.includes(type)) return energyModel(data, type);
+export function presetModel(type, data, { invoice = false, today = dayOf(Date.now()) } = {}) {
+  if (ENERGY.includes(type)) return energyModel(data, type, today);
   if (POWER.includes(type)) return powerModel(data, type);
   if (type === 'bill_kwh_vs_measured' && invoice) return data?.kwh ? invoiceKwhModel(data) : null;
   return BILL_TYPES.includes(type) ? billModel(data?.invoices ?? [], type) : null;

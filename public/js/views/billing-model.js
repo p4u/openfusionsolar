@@ -56,13 +56,30 @@ export function reconRows(invoices) {
       else if (o > Math.max(p, k)) [reason, reasonEur] = ['other', d.other];
       else [reason, reasonEur] = p >= k ? ['prices', d.prices] : ['kwh', d.kwh];
     }
+    // the text says of what and which way: prices above or below the app's; kWh charged above (against you) or below
+    const way = (reason === 'prices' || reason === 'kwh') ? (reasonEur < 0 ? 'Less' : 'More') : '';
     return {
       id: b.id, month: b.month, period: b.period, total: b.total, verdict: c.verdict, billed, measured,
       missingDays: c.verdict === 'nodata' ? Math.max(c.days - c.daysWithData, 0) : 0,
       diffPct: num(billed) && num(measured) && measured > 0 ? ((billed - measured) / measured) * 100 : null,
-      reason, reasonEur,
+      reason, reasonEur, reasonKey: reason == null ? null : `billing.recon.${reason}${way}`,
     };
   });
+}
+
+// The bill's fixed part (contracted power, social bonus and meter rent, before taxes) as a whole percent of what the
+// bills total; a voluntary donation or other charges are not fixed. Null when nothing was paid.
+export function fixedShare(invoices) {
+  const total = (invoices ?? []).reduce((a, b) => a + (num(b.total) ? b.total : 0), 0);
+  if (!(total > 0)) return null;
+  return Math.round(((invoices ?? []).reduce((a, b) => a + (b.parts?.fixed ?? 0), 0) / total) * 100);
+}
+
+// The line over the advice cards: the power card works with one bill, the others need 3 bills and 90 days.
+export function adviceNote(cards) {
+  const ids = (cards ?? []).map((c) => c.id);
+  if (ids.some((id) => id !== 'data' && id !== 'power')) return null;
+  return ids.includes('power') ? 'billing.advice.notEnoughOthers' : 'billing.advice.notEnough';
 }
 
 const per = (v) => `${nf(3).format(v)} €/kWh`;
@@ -79,10 +96,15 @@ export function adviceView(card) {
   let vars = range;
   let lines = null;
   switch (card.id) {
-    case 'power':
-      vars = { ...range, kw: kw(n.contractedKw), max: kw(n.maxKw), n: n.daysOver, eur: eur(n.savingsYear) };
-      text = t(k(card.state), card.state === 'lower' ? { ...vars, kw: kw(n.suggestedKw) } : vars);
+    case 'power': {
+      const billMax = [n.billMaxP1Kw, n.billMaxP2Kw].filter(num);
+      vars = { ...range, kw: kw(n.contractedKw), max: kw(n.maxKw), n: n.daysOver, eur: eur(n.savingsYear), bill: billMax.length ? kw(Math.max(...billMax)) : '' };
+      // keep without a measured day over: the bill's own maximum demand was above the contracted power
+      const key = card.state === 'keep' && !(n.daysOver > 0) && vars.bill ? k('keepBill') : k(card.state);
+      text = [t(key, card.state === 'lower' ? { ...vars, kw: kw(n.suggestedKw) } : vars), vars.bill && key !== k('keepBill') ? t(k('bill'), vars) : '']
+        .filter(Boolean).join(' ');
       break;
+    }
     case 'peak':
       vars = { pct: pct(n.share * 100), kwh: kwh(n.movedKwhYear), eur: eur(n.savingsYear) };
       text = t(k(card.state), vars);
@@ -102,12 +124,14 @@ export function adviceView(card) {
     default: { // data
       const parts = [];
       if (n.missing?.length) parts.push(t(k('missing'), { list: n.missing.map(fmtMonthShort).join(', ') }));
-      if (n.review?.length) parts.push(t(k('review'), { n: n.review.length }));
-      if (n.check?.length) parts.push(t(k('check'), { n: n.check.length }));
+      if (n.review?.length) parts.push(t(k(n.review.length === 1 ? 'reviewOne' : 'review'), { n: n.review.length }));
+      if (n.check?.length) parts.push(t(k(n.check.length === 1 ? 'checkOne' : 'check'), { n: n.check.length }));
       text = parts.join(' ') || t(k(card.state));
     }
   }
-  return { id: card.id, state: card.state, title: t(k('title')), text, how: t(k('how'), vars), caveat: t(k('caveat')), lines, period: card.period };
+  // a card may name its own caveat key (power with one bill); an unknown key falls back to the card's usual caveat
+  const caveat = typeof card.caveat === 'string' && t(card.caveat) !== card.caveat ? t(card.caveat) : t(k('caveat'));
+  return { id: card.id, state: card.state, title: t(k('title')), text, how: t(k('how'), vars), caveat, lines, period: card.period };
 }
 
 // "Not compared: October, 12 days of measurements missing." for the bills with too few measured days; '' when all compare.
@@ -118,9 +142,12 @@ export function notComparedList(bills) {
   return list.length ? t('billing.chart.notCompared', { list: list.join('; ') }) : '';
 }
 
-// How the saving of the bills we could compare splits: electricity not bought, surplus discount, and what neither explains.
+// How the saving of the bills we could compare splits: electricity not bought and the surplus discount (with taxes;
+// `printed` is the discount as the bills print it, null when the server does not send it). `other` is 0 from servers
+// that split the saving exactly; older ones sent a remainder, still counted in `saved` so the parts add up.
 export function savingsSplit(invoices) {
   const s = (invoices ?? []).map((b) => b.compare.savings).filter(Boolean);
   const add = (k) => Math.round(s.reduce((a, x) => a + (x[k] ?? 0), 0) * 100) / 100;
-  return { bills: s.length, saved: Math.round((add('avoided') + add('surplusDiscount') + add('other')) * 100) / 100, avoided: add('avoided'), surplus: add('surplusDiscount'), other: add('other') };
+  const printed = s.length && s.every((x) => num(x.surplusDiscountPrinted)) ? add('surplusDiscountPrinted') : null;
+  return { bills: s.length, saved: Math.round((add('avoided') + add('surplusDiscount') + add('other')) * 100) / 100, avoided: add('avoided'), surplus: add('surplusDiscount'), other: add('other'), printed };
 }
