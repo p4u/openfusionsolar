@@ -46,3 +46,13 @@ test('power mode is refused for ranges over 31 days', () => {
   for (const n of [1, 2, 7, 31]) assert.equal(powerAllowed(n), true, `${n} days`);
   for (const n of [32, 45, 120, 731]) assert.equal(powerAllowed(n), false, `${n} days`);
 });
+
+test('the power caption names the highest plotted mean, not an average of the period', async () => {
+  const { default: dict } = await import('../public/js/i18n/energy.js');
+  for (const lang of ['en', 'ca']) {
+    const s = dict[lang]['energy.caption.power'];
+    assert.match(s, /\{bucket\}/, lang);
+    assert.doesNotMatch(s, /averaged up to|mitjana de \{pv\}/, lang);
+    assert.ok(dict[lang]['energy.cmp.powerLine'] && dict[lang]['energy.provisional'], lang);
+  }
+});

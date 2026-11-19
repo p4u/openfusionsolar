@@ -3,14 +3,15 @@ import { register, t, locale } from '../i18n.js';
 import dict from '../i18n/energy.js';
 import { esc, icon, ledger, emptyState, badge, loadBlock, every } from '../ui.js';
 import { getSeries, getEnergy, getEvents } from '../api.js';
-import { kw, kwh, fmtDate, fmtDateTime, fmtMonth, dayOf, dayStart } from '../format.js';
+import { kw, kwh, fmtDate, fmtDateTime, fmtMonth, dayOf, dayStart, isoLocal } from '../format.js';
 import { parseRange, rangeParams, customFromZoom } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
 import { gapBands, eventBands } from '../chart-data.js';
 import {
-  addDays, legalSeriesBuckets, legalEnergyBuckets, autoSeriesBucket, autoEnergyBucket, defaultMode,
+  addDays, legalSeriesBuckets, legalEnergyBuckets, autoSeriesBucket, autoEnergyBucket, defaultMode, compareDays,
 } from '../buckets.js';
+import { reserveMarks } from './battery-model.js';
 import { shares, deltaText, energyBars, powerAllowed, compareLabel } from './energy-model.js';
 
 register(dict);
@@ -20,7 +21,7 @@ const METRICS = {
   produced: { key: 'pv_kwh', entity: 'sun', sign: 1, name: 'energy.metric.produced' },
   consumed: { key: 'load_kwh', entity: 'home', sign: 1, name: 'energy.metric.consumed' },
   bought: { key: 'import_kwh', entity: 'grid', sign: 1, name: 'energy.metric.bought' },
-  sold: { key: 'export_kwh', entity: 'grid', sign: -1, name: 'energy.metric.sold' },
+  sold: { key: 'export_kwh', entity: 'sold', sign: -1, name: 'energy.metric.sold' },
 };
 const maxOf = (arr) => arr.reduce((a, b) => (b != null && (a == null || b > a) ? b : a), null);
 const pairs = (times, arr) => times.map((ms, i) => [ms, arr[i] ?? null]);
@@ -34,7 +35,7 @@ export async function render(root, ctx) {
   const asked = params.get('mode');
   const mode = (asked === 'power' && power) || (asked === 'energy') ? asked : power ? defaultMode(days) : 'energy';
   const seriesBucket = legalSeriesBuckets(days).includes(range.b) ? range.b : autoSeriesBucket(days);
-  const energyBucket = legalEnergyBuckets(days).includes(range.b) ? range.b : autoEnergyBucket(days);
+  const energyBucket = legalEnergyBuckets(days).includes(range.b) ? range.b : autoEnergyBucket(days, range.r === 'all');
   const hourly = mode === 'energy' && days <= 2 && !legalEnergyBuckets(days).includes(range.b);
   const metric = METRICS[params.get('metric')] ? params.get('metric') : 'produced';
   const cmpOn = range.cmp !== 'none';
@@ -66,12 +67,15 @@ export async function render(root, ctx) {
   async function fetchData() {
     const o = { signal };
     const needSeries = mode === 'power' || hourly;
-    const [energy, series, events] = await Promise.all([
+    // power mode compares with a dashed solar line from the same span of the other period
+    const cmpDays = mode === 'power' && cmpOn && seriesFrom <= to ? compareDays(seriesFrom, to, range.cmp) : null;
+    const [energy, series, events, cmpSeries] = await Promise.all([
       getEnergy({ from, to, bucket: energyBucket, compare: cmpOn ? range.cmp : null }, o),
       needSeries && seriesFrom <= to ? getSeries({ from: seriesFrom, to, bucket: mode === 'power' ? seriesBucket : '1h' }, o) : null,
       needSeries ? getEvents({ from: [from, addDays(to, -799)].reduce((a, b) => (b > a ? b : a)), to }, o).catch(() => []) : [],
+      cmpDays ? getSeries({ ...cmpDays, bucket: seriesBucket }, o).then((r) => ({ ...r, ...cmpDays })) : null,
     ]);
-    return { energy, series, events };
+    return { energy, series, events, cmpSeries };
   }
 
   const zoomValue = () => params.get('zoomFrom')
@@ -95,7 +99,7 @@ export async function render(root, ctx) {
     return `<section aria-label="${esc(t('energy.tiles.label'))}">${ledger([
       cell('produced', 'energy.tiles.produced', 'sun'), cell('consumed', 'energy.tiles.consumed', 'house'),
       cell('bought', 'energy.tiles.bought', 'utility-pole'), cell('sold', 'energy.tiles.sold', 'zap'),
-    ])}${missing > 0 || tot.provisional ? `<p class="hint energy-note">${tot.provisional ? badge(t('core.badge.provisional'), 'provisional') : ''} ${missing > 0 ? esc(t('energy.incomplete', { n: missing })) : ''}</p>` : ''}</section>`;
+    ])}${missing > 0 || tot.provisional ? `<p class="hint energy-note">${tot.provisional ? `${badge(t('core.badge.provisional'), 'provisional')} <span>${esc(t('energy.provisional'))}</span>` : ''} ${missing > 0 ? esc(t('energy.incomplete', { n: missing })) : ''}</p>` : ''}</section>`;
   }
 
   function segmented(title, parts) {
@@ -117,6 +121,7 @@ export async function render(root, ctx) {
       return {
         start: series.t, end: series.t.map((s) => s + step), coverage: series.coverage, provisional: series.provisional,
         label: (i) => fmtDateTime(series.t[i]),
+        iso: series.t.map((ms) => isoLocal(ms, '1h')),
         buckets: series.t.map((_, i) => ({ pv_kwh: k.pv[i], load_kwh: k.load[i], import_kwh: k.imp[i], export_kwh: k.exp[i] })),
       };
     }
@@ -125,6 +130,7 @@ export async function render(root, ctx) {
     return {
       start: bs.map((b) => dayStart(b.from)), end: bs.map((b) => dayStart(addDays(b.to, 1))),
       coverage: bs.map((b) => b.coverage), provisional: bs.map((b) => b.provisional), label: (i) => labelOf(bs[i]), buckets: bs,
+      iso: bs.map((b) => b.key),
     };
   }
 
@@ -136,7 +142,7 @@ export async function render(root, ctx) {
     const series = [
       { key: 'homeSolar', name: t('energy.series.homeSolar'), type: 'bar', entity: 'sun', data: pairs(x, bars.home_solar) },
       { key: 'bought', name: t('energy.series.bought'), type: 'bar', entity: 'grid', data: pairs(x, bars.bought) },
-      { key: 'sold', name: t('energy.series.sold'), type: 'bar', entity: 'grid', below: true, data: pairs(x, bars.sold) },
+      { key: 'sold', name: t('energy.series.sold'), type: 'bar', entity: 'sold', below: true, data: pairs(x, bars.sold) },
       { key: 'produced', name: t('energy.series.produced'), type: 'line', entity: 'sun', markers: true, data: pairs(x, bars.produced) },
     ];
     const c = data.energy.compare;
@@ -160,6 +166,7 @@ export async function render(root, ctx) {
     fig.setTable(
       [{ label: t('energy.col.time') }, ...series.map((s) => ({ label: s.name, unit: 'kWh', decimals: 1 }))],
       m.buckets.map((_, i) => [m.label(i), ...series.map((s) => (s.key === 'sold' && s.data[i][1] != null ? -s.data[i][1] : s.data[i][1]))]),
+      m.iso,
     );
     return true;
   }
@@ -177,33 +184,48 @@ export async function render(root, ctx) {
       line('pv', t('core.entity.sun'), 'area', 'sun', k.pv_kw),
       line('home', t('core.entity.home'), 'line', 'home', k.load_kw, { width: 2.5 }),
       line('charge', t('core.entity.charging'), 'line', 'battery', k.charge_kw),
-      line('discharge', t('core.entity.discharging'), 'line', 'battery', k.discharge_kw, { dashed: true }),
+      line('discharge', t('core.entity.discharging'), 'line', 'discharge', k.discharge_kw, { dashed: true }),
       line('bought', t('energy.series.bought'), 'line', 'grid', k.imp_kw, { hidden: true }),
-      line('sold', t('energy.series.sold'), 'line', 'grid', k.exp_kw, { hidden: true, dashed: true }),
+      line('sold', t('energy.series.sold'), 'line', 'sold', k.exp_kw, { hidden: true, dashed: true }),
     ];
+    const cs = data.cmpSeries;
+    const cmpLabel = cs ? compareLabel(cs, locale()) : '';
+    const cmpKnown = cs?.series.pv_kw.some((v) => v != null);
+    if (cmpKnown) {
+      // aligned by bucket index: both periods have the same span and bucket
+      main.push(line('cmp', t('energy.cmp.series', { metric: t('energy.metric.produced'), label: cmpLabel }), 'line', 'sun', s.t.map((_, i) => cs.series.pv_kw[i] ?? null), { dashed: true, width: 1.5 }));
+    }
     const fig = figure(figs, { title: t('energy.chart.power'), csvName: `power-${from}_${to}` });
-    fig.setCaption(t('energy.caption.power', { pv: kw(maxOf(k.pv_kw)), home: kw(maxOf(k.load_kw)) }));
+    // the series are bucket means, so the caption gives the highest mean, the value the reader can find on the chart
+    fig.setCaption(`${t('energy.caption.power', { pv: kw(maxOf(k.pv_kw)), home: kw(maxOf(k.load_kw)), bucket: t(`charts.bucket.${s.bucket ?? seriesBucket}`) })}${
+      cs ? ` ${cmpKnown ? t('energy.cmp.powerLine', { label: cmpLabel }) : t('energy.cmp.powerNone', { label: cmpLabel })}` : ''}`);
     live.push(chart(fig.host, {
       id: 'energy-power', kind: 'time', unit: 'kW', x: { min: s.t[0], max: xmax, label }, y: { decimals: 2 },
       series: main, coverage: s.coverage, provisional: s.provisional, bands, group: 'energy', onZoom,
     }));
+    const iso = s.t.map((ms) => isoLocal(ms, s.bucket));
     fig.setTable(
       [{ label: t('energy.col.time') }, ...main.map((m) => ({ label: m.name, unit: 'kW', decimals: 2 }))],
       s.t.map((_, i) => [label(i), ...main.map((m) => m.data[i][1])]),
+      iso,
     );
 
     const b = status.battery ?? {};
+    // the reserve exists from the day it was set: no line over the days before it
+    const reserve = reserveMarks(b.reservePct, b.reserveSince ? dayStart(b.reserveSince) : null, s.t);
     const refLines = [
-      b.reservePct != null && { y: b.reservePct, label: t('energy.ref.reserve'), entity: 'warn' },
+      reserve.mode === 'all' && { y: b.reservePct, label: t('energy.ref.reserve'), entity: 'warn' },
       b.minPct != null && { y: b.minPct, label: t('energy.ref.minimum'), entity: 'muted' },
     ].filter(Boolean);
     const strip = figure(figs, { title: t('energy.chart.soc'), csvName: `soc-${from}_${to}` });
     strip.setCaption(t('energy.caption.soc'));
     live.push(chart(strip.host, {
       id: 'energy-soc', kind: 'time', height: 'strip', unit: '%', x: { min: s.t[0], max: xmax, label }, y: { min: 0, max: 100, decimals: 0 },
-      series: [line('soc', t('core.entity.soc'), 'area', 'battery', k.soc)], coverage: s.coverage, provisional: s.provisional, bands, refLines, group: 'energy',
+      series: [line('soc', t('core.entity.soc'), 'area', 'battery', k.soc),
+        ...(reserve.mode === 'part' ? [{ key: 'reserve', name: t('energy.ref.reserve'), type: 'line', entity: 'warn', dashed: true, data: reserve.data }] : [])],
+      coverage: s.coverage, provisional: s.provisional, bands, refLines, group: 'energy',
     }));
-    strip.setTable([{ label: t('energy.col.time') }, { label: t('core.entity.soc'), unit: '%', decimals: 0 }], s.t.map((_, i) => [label(i), k.soc[i]]));
+    strip.setTable([{ label: t('energy.col.time') }, { label: t('core.entity.soc'), unit: '%', decimals: 0 }], s.t.map((_, i) => [label(i), k.soc[i]]), iso);
     return true;
   }
 
