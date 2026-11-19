@@ -43,6 +43,6 @@ export const getBills = (opts) => api('/api/bills', opts);
 export const putBill = (month, amount, opts) => api('/api/bills', { ...opts, method: 'PUT', body: { month, amount } });
 export const getAlertsConfig = (opts) => api('/api/alerts/config', opts);
 export const putAlertsConfig = (cfg, opts) => api('/api/alerts/config', { ...opts, method: 'PUT', body: cfg });
-export const sendTestEmail = (to, opts) => api('/api/alerts/test', { ...opts, method: 'POST', body: to ? { to } : {} });
+export const sendTestEmail = (to, opts, lang) => api('/api/alerts/test', { ...opts, method: 'POST', body: to ? { to, ...(lang && { lang }) } : {} });
 export const getAlertsHistory = ({ limit, before } = {}, opts) => api(`/api/alerts/history${q({ limit, before })}`, opts);
 export const logout = (opts) => api('/api/logout', { ...opts, method: 'POST' });

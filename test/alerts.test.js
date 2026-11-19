@@ -2,7 +2,7 @@ process.env.TZ = 'Europe/Madrid';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Store } from '../src/db.js';
-import { RULES, DEFAULT_CONFIG, validateConfig, evaluate, schedule, createAlertEngine, QUEUE_MAX } from '../src/alerts.js';
+import { RULES, DEFAULT_CONFIG, DEFAULT_ON, validateConfig, evaluate, schedule, createAlertEngine, QUEUE_MAX } from '../src/alerts.js';
 import { render } from '../src/alert-texts.js';
 import { createTransport, smtpInfo } from '../src/mailer.js';
 import { startTestServer } from './helpers.js';
@@ -40,6 +40,8 @@ const cfgWith = (top = {}, rules = {}) => ({
   ...DEFAULT_CONFIG, recipients: ['owner@example.com'], ...top,
   rules: DEFAULT_CONFIG.rules.map((r) => ({ ...r, ...rules[r.id], params: { ...r.params, ...rules[r.id]?.params } })),
 });
+// noData at its former 30-minute default: these tests are about the state machine, not the threshold
+const noData30 = (top = {}, rules = {}) => cfgWith(top, { noData: { params: { minutes: 30 } }, ...rules });
 const only = (id, patch = {}) => cfgWith({}, Object.fromEntries(RULES.map((r) => [r, r === id ? { enabled: true, ...patch } : { enabled: false }])));
 
 const hit = (csn, name, occur, clear = null, severity = 1) =>
@@ -51,7 +53,7 @@ const snap = (o = {}) => ({ lastSampleTs: null, authBlocked: false, soc: null, b
 test('noData goes pending, fires after 30 minutes, reminds after 24 hours and resolves once', () => {
   let state = {};
   const step = (now, lastSampleTs) => {
-    const r = evaluate(snap({ lastSampleTs }), DEFAULT_CONFIG, state, now);
+    const r = evaluate(snap({ lastSampleTs }), noData30(), state, now);
     state = r.state;
     return r.actions.map((a) => a.event);
   };
@@ -73,7 +75,7 @@ test('noData goes pending, fires after 30 minutes, reminds after 24 hours and re
 });
 
 test('a rule that fires again within the cooldown is logged as skipped and stays silent on resolve', async () => {
-  const s = setup();
+  const s = setup({ config: noData30() });
   s.store.saveSample(T0, { load_kw: 0.4 });
   await s.run(T0 + 31 * MIN); // fired
   s.store.saveSample(T0 + 35 * MIN, { load_kw: 0.4 });
@@ -90,7 +92,7 @@ test('a rule that fires again within the cooldown is logged as skipped and stays
 });
 
 test('quiet hours queue normal alerts into one 08:00 digest while gridCut is sent at once', async () => {
-  const s = setup({ start: at(18, 23), config: cfgWith({ lang: 'en' }) });
+  const s = setup({ start: at(18, 23), config: noData30({ lang: 'en' }) });
   s.store.saveSample(at(18, 22, 50), { load_kw: 0.3 });
   s.store.saveAlarm(hit(1, 'Grid loss', at(18, 22, 58)));
   await s.run(at(18, 23));
@@ -105,7 +107,7 @@ test('quiet hours queue normal alerts into one 08:00 digest while gridCut is sen
   assert.equal(s.transport.sent.length, 2);
   const digest = s.transport.sent[1];
   assert.match(digest.subject, /^\[Casa\]: 1 alert during quiet hours/);
-  assert.match(digest.text, /18\/11 23:30 {2}No data since 18\/11 22:50/); // dated: the digest goes out the next day
+  assert.match(digest.text, /18\/11 23:30 {2}No data from the plant since 18\/11 22:50/); // dated: the digest goes out the next day
   assert.equal(s.engine.history()[0].event, 'digest');
   await s.run(at(19, 8, 5));
   assert.equal(s.transport.sent.length, 2);
@@ -212,12 +214,13 @@ test('deviceAlarm skips internet losses and severities above the threshold', () 
     row(6, 'Battery dischargeable capacity low', T0 - HOUR),
   ];
   const keys = (cfg) => evaluate(snap({ alarms }), cfg, {}, T0).actions.map((a) => a.key).sort();
-  assert.deepEqual(keys(only('deviceAlarm')), ['deviceAlarm:3', 'deviceAlarm:4']);
-  assert.deepEqual(keys(only('deviceAlarm', { params: { maxSeverity: 3 } })), ['deviceAlarm:2', 'deviceAlarm:3', 'deviceAlarm:4']);
+  // the overload alarm (3) has its own urgent rule, backupOverload
+  assert.deepEqual(keys(only('deviceAlarm')), ['deviceAlarm:4']);
+  assert.deepEqual(keys(only('deviceAlarm', { params: { maxSeverity: 3 } })), ['deviceAlarm:2', 'deviceAlarm:4']);
 });
 
 test('without SMTP every alert is logged as not sent and state still advances', async () => {
-  const s = setup({ transport: null });
+  const s = setup({ transport: null, config: noData30() });
   s.store.saveSample(T0, { load_kw: 0.4 });
   await s.run(T0 + 31 * MIN);
   const [r] = s.engine.history();
@@ -285,7 +288,8 @@ test('daily summary and monthly report are sent once at their time', async () =>
   assert.match(s.transport.sent[0].text, /Produced: 10 kWh/);
   await s.run(at(1, 8, 5, 11));
   assert.equal(s.transport.sent.length, 1);
-  assert.ok(s.engine.setConfig(cfgWith({ lang: 'en' }, { dailySummary: { enabled: true } })).config);
+  const daily = [{ email: 'owner@example.com', alerts: [...DEFAULT_ON, 'dailySummary'] }]; // not in the default set
+  assert.ok(s.engine.setConfig(cfgWith({ lang: 'en', recipients: daily }, { dailySummary: { enabled: true } })).config);
   await s.run(at(1, 21, 0, 11));
   assert.equal(s.transport.sent.length, 2);
   assert.match(s.transport.sent[1].text, /Produced: 5 kWh/);
@@ -314,7 +318,8 @@ test('config validation reports field paths; the config api round-trips and neve
     'lang', 'quiet.from', 'recipients.0', 'recipients.1', 'rules.batteryLowInCut.params.soc', 'rules.dailySummary.params.time',
     'rules.deviceAlarm.params.maxSeverity', 'rules.gridCut.enabled', 'rules.noData.params.minutes',
   ]);
-  assert.ok(validateConfig({ ...DEFAULT_CONFIG, recipients: Array(11).fill('a@b.example') }).fields.recipients);
+  // the limit is now 20 distinct addresses (was 10, and repeated ones are refused on their own)
+  assert.ok(validateConfig({ ...DEFAULT_CONFIG, recipients: Array.from({ length: 21 }, (_, i) => `a${i}@b.example`) }).fields.recipients);
   assert.deepEqual(validateConfig(DEFAULT_CONFIG).config, DEFAULT_CONFIG);
 
   const env = {
@@ -327,7 +332,7 @@ test('config validation reports field paths; the config api round-trips and neve
     assert.doesNotMatch(raw, /secret-user|secret-pass/);
     const cfg = JSON.parse(raw);
     assert.deepEqual(cfg.smtp, { configured: true, host: 'smtp.example.com', from: 'Casa <casa@example.com>' });
-    assert.deepEqual(cfg.recipients, ['owner@example.com']);
+    assert.deepEqual(cfg.recipients, [{ email: 'owner@example.com', lang: 'ca', alerts: DEFAULT_ON }]); // ALERT_TO, migrated
     assert.deepEqual(cfg.rules.map((r) => r.id), RULES);
     cfg.rules.find((r) => r.id === 'noData').params.minutes = 45;
     cfg.lang = 'en';
@@ -367,10 +372,16 @@ test('texts exist in ca and en for every rule and event, html is escaped', () =>
   const t = at(18, 14, 32);
   const FACTS = {
     noData: { since: t, authBlocked: false },
-    gridCut: { start: t, end: t + 38 * MIN, batteryCovered: true },
-    batteryLowInCut: { soc: 18, threshold: 20 },
-    batteryLow: { start: t, end: t + HOUR },
-    belowReserve: { soc: 25, reservePct: 30, since: t },
+    gridCut: { start: t, end: t + 38 * MIN, batteryCovered: true, soc: 62, limiter: true },
+    batteryLowInCut: { soc: 18, threshold: 20, leftMin: 90 },
+    backupOverload: { start: t, end: t + 20 * MIN },
+    collectorDown: { authBlocked: false, since: t, error: 'HTTP 503' },
+    belowReserve: { soc: 25, reservePct: 30, since: t - 3 * HOUR, cutoffPct: 20 },
+    powerLimit: { ts: t, kw: 5.1, limit: 4.4 },
+    weeklySummary: {
+      from: '2026-11-09', to: '2026-11-15', pv: 41, load: 60, imp: 30, exp: 11, cost: 12.3, peakKw: 5.1, peakTs: t, contractedKw: 4.4,
+      incidents: [{ kind: 'gridCut', start: t, end: t + HOUR }],
+    },
     panelsStopped: { start: t, end: t + HOUR },
     deviceAlarm: { name: '<script>x</script>', device: 'Inverter', severity: 1, start: t, end: t + HOUR },
     dailySummary: { day: '2026-11-18', pv: 10.2, load: 8, imp: 2, exp: 4.1, cost: 0.35, incidents: 1 },
@@ -379,7 +390,7 @@ test('texts exist in ca and en for every rule and event, html is escaped', () =>
   const opts = { plantName: '<Casa & "Sol">', appUrl: 'https://solar.example/?a=1&b=<2>' };
   const cases = [];
   for (const rule of RULES) {
-    if (rule === 'dailySummary' || rule === 'monthlyReport') cases.push({ rule, event: 'report', facts: FACTS[rule] });
+    if (['weeklySummary', 'dailySummary', 'monthlyReport'].includes(rule)) cases.push({ rule, event: 'report', facts: FACTS[rule] });
     else {
       for (const event of ['fired', 'resolved', 'reminder']) cases.push({ rule, event, facts: FACTS[rule] });
       cases.push({ rule, event: 'fired', facts: { ...FACTS[rule], past: true } });
