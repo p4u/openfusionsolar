@@ -76,6 +76,10 @@ test('too many buckets is rejected with the legal list', async () => {
     assert.equal((await get(srv, '/api/series?from=2026-01-01&to=2026-01-30&bucket=1d'))[0], 200);
     assert.equal((await get(srv, '/api/series?from=2026-01-05&to=2026-01-01&bucket=1d'))[0], 400);
     assert.equal((await get(srv, '/api/series?from=2026-01-01&to=2026-01-01&bucket=2h'))[0], 400);
+    // impossible calendar dates are a 400, not a 500 from SQLite
+    assert.equal((await get(srv, '/api/series?from=2026-02-30&to=2026-03-01&bucket=5m'))[0], 400);
+    assert.equal((await get(srv, '/api/days?from=2026-02-30&to=2026-03-01'))[0], 400);
+    assert.equal((await get(srv, '/api/events?from=2026-13-01&to=2026-13-02'))[0], 400);
   } finally {
     await srv.close();
   }

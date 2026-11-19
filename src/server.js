@@ -11,7 +11,7 @@ import { buildEvents } from './events.js';
 import { dayBounds, localDay } from './collector.js';
 import * as aggregate from './aggregate.js';
 import {
-  SERIES_BUCKETS, ENERGY_BUCKETS, spanDays, legalSeriesBuckets, legalEnergyBuckets, autoSeriesBucket, autoEnergyBucket,
+  SERIES_BUCKETS, ENERGY_BUCKETS, spanDays, legalSeriesBuckets, legalEnergyBuckets, autoSeriesBucket, autoEnergyBucket, addDays,
 } from '../public/js/buckets.js';
 import {
   passwordMatches, sessionKey, signSession, verifySession, createLimiter, clientIp, isHttps, cookieHeader,
@@ -44,6 +44,8 @@ const MAX_EVENT_DAYS = 800;
 const MAX_ENERGY_DAYS = 36600;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Date.parse rolls impossible dates over (2026-02-30 is valid in V8); a real day round-trips unchanged.
+const isDay = (d) => DAY_RE.test(d ?? '') && addDays(d, 0) === d;
 
 // Configured values win; otherwise what FusionSolar reports for this plant. null when unknown.
 export function batteryInfo(store, cfg) {
@@ -128,7 +130,7 @@ export function startServer({
   };
   const dayRange = (query, maxDays) => {
     const [from, to] = [query.get('from') ?? '', query.get('to') ?? ''];
-    if (!DAY_RE.test(from) || !DAY_RE.test(to) || from > to || Number.isNaN(Date.parse(from)) || Number.isNaN(Date.parse(to))) {
+    if (!isDay(from) || !isDay(to) || from > to) {
       return { error: [400, { error: 'from/to (YYYY-MM-DD, from <= to) required' }] };
     }
     const n = spanDays(from, to);
@@ -162,14 +164,14 @@ export function startServer({
     'GET /api/days': ({ query }) => {
       const from = query.get('from');
       const to = query.get('to');
-      if (!DAY_RE.test(from ?? '') || !DAY_RE.test(to ?? '') || from > to) {
+      if (!isDay(from) || !isDay(to) || from > to) {
         return [400, { error: 'from/to (YYYY-MM-DD, from <= to) required' }];
       }
       return [200, store.days(from, to).map(withMoney)];
     },
     'GET /api/events': ({ query }) => {
       let r;
-      if (DAY_RE.test(query.get('from') ?? '') && DAY_RE.test(query.get('to') ?? '')) {
+      if (isDay(query.get('from')) && isDay(query.get('to'))) {
         const [from, to] = [query.get('from'), query.get('to')];
         if (from > to || spanDays(from, to) > MAX_EVENT_DAYS) return [400, { error: `from/to (days, from <= to, max ${MAX_EVENT_DAYS} days) required` }];
         r = [dayBounds(from)[0], dayBounds(to)[1]];
