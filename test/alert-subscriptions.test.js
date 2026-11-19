@@ -136,26 +136,84 @@ test('retired rules lose their stored state on the first run', () => {
 
 // ---- delivery: subscriptions and languages ----
 
-test('an alert reaches only its subscribers, one email per language, and the log says to whom', async () => {
+test('an alert reaches only its subscribers, one email per address in its language, and the log says to whom', async () => {
   const s = setup({ config: cfg([ANA, BOB, CEL], { noData: { params: { minutes: 30 } } }) });
   s.store.saveAlarm(hit(1, 'Grid loss', T0 - 5 * MIN));
   await s.run(T0);
   const sent = s.transport.sent.map((m) => [m.to, m.subject]);
   assert.deepEqual(sent, [
     ['ana@example.com', '[Casa]: tall de corrent des de les 11:55'],
-    ['bob@example.com, cel@example.com', '[Casa]: power cut since 11:55'],
+    ['bob@example.com', '[Casa]: power cut since 11:55'],
+    ['cel@example.com', '[Casa]: power cut since 11:55'],
   ]);
   const rows = s.engine.history().reverse();
   assert.deepEqual(rows.map((r) => [r.rule, r.delivery, r.lang, r.recipients]), [
     ['gridCut', 'sent', 'ca', ['ana@example.com']],
-    ['gridCut', 'sent', 'en', ['bob@example.com', 'cel@example.com']],
+    ['gridCut', 'sent', 'en', ['bob@example.com']],
+    ['gridCut', 'sent', 'en', ['cel@example.com']],
   ]);
+  assert.equal(new Set(rows.map((r) => r.grp)).size, 1, 'one alert event');
 
   // noData: only Ana subscribes
   s.store.saveSample(T0 + 5 * MIN, { load_kw: 0.3 });
   await s.run(T0 + 40 * MIN);
-  assert.deepEqual(s.transport.sent.slice(2).map((m) => m.to), ['ana@example.com']);
-  assert.match(s.transport.sent[2].subject, /sense dades de la instal·lació des de les 12:05/);
+  assert.deepEqual(s.transport.sent.slice(3).map((m) => m.to), ['ana@example.com']);
+  assert.match(s.transport.sent[3].subject, /sense dades de la instal·lació des de les 12:05/);
+});
+
+test('two addresses of the same language get two separate emails, never a shared To: line', async () => {
+  const s = setup({ config: cfg([BOB, { ...CEL, alerts: ['gridCut'] }]) });
+  s.store.saveAlarm(hit(1, 'Grid loss', T0 - 5 * MIN));
+  await s.run(T0);
+  assert.deepEqual(s.transport.sent.map((m) => m.to), ['bob@example.com', 'cel@example.com']);
+  assert.ok(s.transport.sent.every((m) => !/[,;]/.test(m.to)));
+  assert.equal(s.transport.sent[0].subject, s.transport.sent[1].subject);
+});
+
+test('a send that fails for one address is retried only to that address', async () => {
+  const sent = [];
+  const transport = {
+    down: new Set(['cel@example.com']),
+    async send(m) {
+      if (this.down.has(m.to)) throw new Error('550 mailbox unavailable');
+      sent.push(m.to);
+    },
+  };
+  const s = setup({ transport, config: cfg([BOB, { ...CEL, alerts: ['gridCut'] }]) });
+  s.store.saveAlarm(hit(1, 'Grid loss', T0 - 5 * MIN));
+  await s.run(T0);
+  assert.deepEqual(sent, ['bob@example.com']);
+  assert.deepEqual(s.engine.history().reverse().map((r) => [r.recipients[0], r.delivery, r.error]), [
+    ['bob@example.com', 'sent', null], ['cel@example.com', 'failed', '550 mailbox unavailable'],
+  ]);
+  transport.down.clear();
+  await s.run(T0 + 3 * MIN);
+  assert.deepEqual(sent, ['bob@example.com', 'cel@example.com'], 'bob is not emailed twice');
+  assert.deepEqual(s.engine.history().map((r) => r.delivery), ['sent', 'sent']);
+});
+
+test('the hourly cap counts alert events, not emails', async () => {
+  const three = ['a', 'b', 'c'].map((x) => ({ email: `${x}@example.com`, lang: 'en', alerts: ['deviceAlarm'] }));
+  const s = setup({ config: cfg(three) });
+  for (let i = 1; i <= 12; i++) s.store.saveAlarm(hit(i, `Inverter fault ${i}`, T0 - i * MIN));
+  await s.run(T0);
+  assert.equal(s.transport.sent.length, 30, '10 events to 3 addresses each');
+  assert.deepEqual(s.engine.history().filter((r) => r.delivery === 'skipped').map((r) => r.reason), ['rateLimit', 'rateLimit']);
+  assert.deepEqual(await s.engine.sendTest('x@example.com'), { ok: false, error: 'rate limit: 10 emails per hour' });
+});
+
+test('retries count once per event in the cap, however many of its addresses failed', async () => {
+  const three = ['a', 'b', 'c'].map((x) => ({ email: `${x}@example.com`, lang: 'en', alerts: ['deviceAlarm'] }));
+  const transport = fakeTransport();
+  transport.fail = true;
+  const s = setup({ transport, config: cfg(three) });
+  for (let i = 1; i <= 9; i++) s.store.saveAlarm(hit(i, `Inverter fault ${i}`, T0 - i * MIN));
+  await s.run(T0); // 9 events, 27 failed emails, 9 events in the cap
+  transport.fail = false;
+  await s.run(T0 + 3 * MIN); // the cap has room for one more event: one event is retried, to its 3 addresses
+  assert.equal(transport.sent.length, 3);
+  assert.equal(new Set(transport.sent.map((m) => m.subject)).size, 1);
+  assert.equal(new Set(transport.sent.map((m) => m.to)).size, 3);
 });
 
 test('nobody subscribed: logged as skipped (noRecipients), not sent and not counted in the hourly cap', async () => {

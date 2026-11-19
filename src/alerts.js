@@ -10,7 +10,7 @@ import { GROUPS, DEFAULT_ON } from '../public/js/alert-catalogue.js';
 const MIN = 60e3;
 const HOUR = 60 * MIN;
 const NO_DATA_LAG_MS = 10 * MIN; // samples normally land within 10 min; older than that counts as missing
-const CAP_PER_HOUR = 10;
+const CAP_PER_HOUR = 10; // alert events per hour, not emails: an alert to 3 addresses counts once
 export const QUEUE_MAX = 100; // quiet-hours queue; the oldest entries are dropped (they stay in the history)
 const RETRY_PER_RUN = 3;
 const RETRY_WINDOW_MS = 24 * HOUR;
@@ -400,20 +400,22 @@ export function createAlertEngine({ store, collector = null, appConfig = {}, tra
   const countSend = (t) => {
     meta().sent = [...(meta().sent ?? []).filter((x) => t - x < HOUR), t];
   };
-  const deliver = (to, msg) => transport.send({ to: to.join(', '), ...msg });
+  // privacy: one address per email, never several in one To: line
+  const deliver = async (to, msg) => {
+    for (const addr of to) await transport.send({ to: addr, ...msg });
+  };
   const subscribed = (cfg, rule) => cfg.recipients.filter((r) => rule === 'digest' || r.alerts.includes(rule));
 
-  // One email per language, and for the digest per set of items: [{ lang, to: [email], d }]. Empty: nobody subscribed.
+  // One email per subscribed address, in its language; the digest holds only that address's items.
+  // [{ lang, to: [email], d }]. Empty: nobody subscribed.
   function envelopes(cfg, d) {
-    const groups = new Map();
+    const out = [];
     for (const r of cfg.recipients) {
       const items = d.rule === 'digest' ? d.items.filter((i) => r.alerts.includes(i.rule)) : null;
       if (items ? !items.length : !r.alerts.includes(d.rule)) continue;
-      const k = `${r.lang}|${items ? items.map((i) => d.items.indexOf(i)).join(',') : ''}`;
-      if (!groups.has(k)) groups.set(k, { lang: r.lang, to: [], d: items ? { ...d, items } : d });
-      groups.get(k).to.push(r.email);
+      out.push({ lang: r.lang, to: [r.email], d: items ? { ...d, items } : d });
     }
-    return [...groups.values()];
+    return out;
   }
 
   const INCIDENT_KINDS = ['gridCut', 'overload', 'noProduction'];
@@ -488,20 +490,24 @@ export function createAlertEngine({ store, collector = null, appConfig = {}, tra
     };
   }
 
-  // Failed emails of the last 24 h, oldest first, at most 3 per run, with growing pauses; they count in the cap.
-  // A retry goes to the addresses of the first attempt (rows from before per-recipient alerts: today's subscribers).
+  // Failed emails of the last 24 h, oldest first, with growing pauses: at most 3 alert events per run, each counted
+  // once in the cap however many of its addresses failed. Each row is one address, so only the failed ones are retried
+  // (rows from before per-recipient alerts have no address: they go to today's subscribers of their rule).
   async function retryFailed(t, cfg) {
     const failed = store.failedAlerts(t - RETRY_WINDOW_MS);
     const prev = meta().retry ?? {};
     const retry = (meta().retry = Object.fromEntries(failed.filter((r) => prev[r.id]).map((r) => [r.id, prev[r.id]])));
-    let n = 0;
+    const events = new Set();
     for (const row of failed) {
-      if (n >= RETRY_PER_RUN || capFull(t)) break;
       const to = row.recipients ?? subscribed(cfg, row.rule).map((r) => r.email);
       const r = retry[row.id] ?? { n: 0, next: 0 };
       if (t < r.next || !to.length) continue;
-      n++;
-      countSend(t);
+      const ev = row.grp ?? `row:${row.id}`;
+      if (!events.has(ev)) {
+        if (events.size >= RETRY_PER_RUN || capFull(t)) continue;
+        events.add(ev);
+        countSend(t);
+      }
       try {
         await deliver(to, { subject: row.title, text: row.body });
         store.updateAlertLog(row.id, { delivery: 'sent' });
@@ -529,6 +535,7 @@ export function createAlertEngine({ store, collector = null, appConfig = {}, tra
     }
     const opts = textOpts();
     const outgoing = [];
+    let n = 0;
     for (const d of deliveries) {
       const groups = d.delivery === 'send' ? envelopes(cfg, d) : [];
       if (d.delivery === 'send' && !groups.length) Object.assign(d, { delivery: 'skipped', reason: 'noRecipients' });
@@ -538,12 +545,14 @@ export function createAlertEngine({ store, collector = null, appConfig = {}, tra
         log(`alert ${d.rule} ${d.event}: ${d.delivery === 'skipped' ? `not sent (${d.reason})` : d.delivery}`);
         continue;
       }
-      // one row per email; logged as failed until the send succeeds, so an email cut short by a restart is retried
+      // one row per address (grp ties the rows of one alert event); logged as failed until the send succeeds,
+      // so an email cut short by a restart is retried
+      const grp = `${t}:${n++}`;
       for (const g of groups) {
         const msg = render(g.lang, g.d, opts);
         const id = store.logAlert({
           ts: t, rule: d.rule, event: d.event, title: msg.subject, body: msg.text, delivery: 'failed', error: 'not sent yet',
-          recipients: g.to, lang: g.lang,
+          recipients: g.to, lang: g.lang, grp,
         });
         outgoing.push([id, g.to, msg]);
       }

@@ -73,9 +73,10 @@ export class Store {
   constructor(path) {
     this.db = new DatabaseSync(path);
     this.db.exec(SCHEMA);
-    // added columns (older databases get them here): who an alert email went to, and in which language
+    // added columns (older databases get them here): who an alert email went to, in which language, and grp, shared by
+    // the rows (one per address) of one alert event
     const logCols = new Set(this.db.prepare('pragma table_info(alert_log)').all().map((c) => c.name));
-    for (const c of ['recipients', 'lang']) if (!logCols.has(c)) this.db.exec(`alter table alert_log add column ${c} text`);
+    for (const c of ['recipients', 'lang', 'grp']) if (!logCols.has(c)) this.db.exec(`alter table alert_log add column ${c} text`);
     const q = (sql) => this.db.prepare(sql);
     this.st = {
       lastSha: q('select sha from raw where endpoint = ? and params = ? order by id desc limit 1'),
@@ -114,8 +115,8 @@ export class Store {
       alertState: q('select key, value from alert_state'),
       clearAlertState: q('delete from alert_state'),
       putAlertState: q('insert into alert_state (key, value) values (?, ?)'),
-      logAlert: q(`insert into alert_log (ts, rule, event, title, body, delivery, reason, error, recipients, lang)
-                   values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      logAlert: q(`insert into alert_log (ts, rule, event, title, body, delivery, reason, error, recipients, lang, grp)
+                   values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
       updateAlertLog: q('update alert_log set delivery = ?, error = ? where id = ?'),
       alertLog: q('select * from alert_log where id < ? order by id desc limit ?'),
       failedAlerts: q("select * from alert_log where delivery = 'failed' and ts >= ? order by id"),
@@ -269,7 +270,7 @@ export class Store {
 
   logAlert(r) {
     const res = this.st.logAlert.run(r.ts, r.rule, r.event, r.title ?? null, r.body ?? null, r.delivery, r.reason ?? null, r.error ?? null,
-      r.recipients ? JSON.stringify(r.recipients) : null, r.lang ?? null);
+      r.recipients ? JSON.stringify(r.recipients) : null, r.lang ?? null, r.grp ?? null);
     return Number(res.lastInsertRowid);
   }
 
