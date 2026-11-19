@@ -11,7 +11,7 @@ const dicts = new Map(await Promise.all(fs.readdirSync(DIR).filter((f) => f.ends
   .map(async (f) => [path.basename(f, '.js'), (await import(pathToFileURL(path.join(DIR, f)))).default])));
 
 test('the shell and every view have a dictionary', () => {
-  for (const ns of ['core', 'now', 'energy', 'battery', 'panels', 'bill', 'incidents', 'signals', 'settings']) {
+  for (const ns of ['core', 'now', 'energy', 'battery', 'panels', 'bill', 'billing', 'invoices', 'assistant', 'incidents', 'signals', 'settings']) {
     assert.ok(dicts.has(ns), ns);
     if (ns !== 'core') assert.equal(typeof dicts.get(ns).en[`${ns}.title`], 'string', `${ns}.title`);
   }

@@ -1,5 +1,6 @@
 // Shared markup builders (they return HTML strings; every value is escaped) and small DOM helpers.
 import { t } from './i18n.js';
+import { CARRIED } from './routes.js';
 
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -10,6 +11,16 @@ export function icon(name, { size = 20, label } = {}) {
   return label
     ? `<svg class="icon icon-${size}" role="img"><title>${esc(label)}</title>${use}</svg>`
     : `<svg class="icon icon-${size}" aria-hidden="true">${use}</svg>`;
+}
+
+// Sub-navigation of Facturació: active is a route name (billing | invoices | bill); params carry the time range.
+const MONEY_TABS = [['billing', 'money', 'core.money.summary'], ['invoices', 'invoices', 'core.nav.invoices'], ['bill', 'forecast', 'core.nav.bill']];
+export function moneyTabs(active, params) {
+  const carried = new URLSearchParams(CARRIED.filter((k) => params?.has(k)).map((k) => [k, params.get(k)]));
+  const query = carried.toString();
+  const links = MONEY_TABS.map(([name, path, key]) =>
+    `<a href="#/${path}${query ? `?${query}` : ''}"${name === active ? ' aria-current="page"' : ''}>${esc(t(key))}</a>`);
+  return `<nav class="segmented money-tabs" aria-label="${esc(t('core.money.label'))}">${links.join('')}</nav>`;
 }
 
 // Placeholder with the final height, so nothing jumps when the data arrives.
