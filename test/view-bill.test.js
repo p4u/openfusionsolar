@@ -2,9 +2,9 @@ process.env.TZ = 'Europe/Madrid';
 // Bill view helpers, run under Node: month rows with and without prices, peak vs contracted power, meter phases.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { register, setLang } from '../public/js/i18n.js';
+import { register, setLang, t } from '../public/js/i18n.js';
 import billDict from '../public/js/i18n/bill.js';
-import { monthRows, peakVsContracted, phaseSignals } from '../public/js/views/bill-model.js';
+import { monthRows, peakVsContracted, phaseSignals, confirmedMonths, realCellModel } from '../public/js/views/bill-model.js';
 
 register(billDict);
 
@@ -150,4 +150,23 @@ test('a month inside a Catalan sentence is lowercase and takes the elided prepos
   assert.match(fmtMonth('2026-01'), /^Gener/, 'a month that starts a line keeps its capital');
   setLang('en');
   assert.match(label('2026-04'), /^Real bill for April 2026/);
+});
+
+test('months with a confirmed bill link to it instead of the input', () => {
+  const linked = confirmedMonths([
+    { id: 7, month: '2026-09', total: 59.15, period: { from: '2026-08-15', to: '2026-09-14' } },
+    { id: 8, month: '2026-10', total: null, period: { from: '2026-09-15', to: '2026-10-14' } },
+  ]);
+  assert.deepEqual(linked, { '2026-09': { id: 7, total: 59.15 } }); // no total, nothing to link
+  assert.deepEqual(realCellModel('2026-09', linked, { '2026-09': 50 }), { kind: 'link', id: 7, total: 59.15 }); // the bill wins over a typed amount
+  assert.deepEqual(realCellModel('2026-10', linked, { '2026-10': 61.2 }), { kind: 'input', value: 61.2 }); // other months keep the input
+  assert.deepEqual(realCellModel('2026-11', linked, {}), { kind: 'input', value: null });
+  assert.deepEqual(realCellModel('2026-11', undefined, undefined), { kind: 'input', value: null }); // lookup failed
+});
+
+test('the forecast is titled Previsio in both languages', () => {
+  setLang('ca');
+  assert.equal(t('bill.title'), 'Previsió');
+  setLang('en');
+  assert.equal(t('bill.title'), 'Forecast');
 });

@@ -1,7 +1,7 @@
 // Strings of the Bill view (every key starts with 'bill.').
 export default {
   en: {
-    'bill.title': 'Bill',
+    'bill.title': 'Forecast',
     'bill.noPrices': 'Electricity prices are not set, so there are no euro figures. The administrator can add them (see Settings, For the administrator).',
     'bill.tile.cost': 'Energy cost (approx.)',
     'bill.tile.costHint': 'What you pay for the energy bought, minus what you get for the surplus. Taxes included; fixed power charges and meter rent not included. On the bill it never goes below zero in a month.',
@@ -67,7 +67,7 @@ export default {
     'bill.table.total': 'Total',
   },
   ca: {
-    'bill.title': 'Factura',
+    'bill.title': 'Previsió',
     'bill.noPrices': 'Els preus de l’electricitat no estan configurats, així que no hi ha xifres en euros. Els pot afegir l’administrador (vegeu Configuració, Per a l’administrador).',
     'bill.tile.cost': 'Cost de l’energia (aprox.)',
     'bill.tile.costHint': 'El que pagues per l’energia comprada menys el que et paguen per l’excedent. Amb impostos; sense la potència contractada ni el lloguer del comptador. A la factura mai baixa de zero en un mes.',
