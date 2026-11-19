@@ -47,6 +47,9 @@ const sum = (...v) => (v.some((x) => typeof x === 'number') ? Math.round(v.reduc
 const hardOk = (list) => list.filter((c) => c.hard).every((c) => c.outcome === 'pass');
 // a check that cannot run (a value left empty) does not block a person's confirmation; a wrong sum does
 const hardFailed = (list) => [...new Set(list.filter((c) => c.hard && c.outcome === 'fail').map((c) => c.id))];
+// The failing hard checks as the 409 answer sends them: the check with its fields and a stable message key.
+const CHECK_KEY = { '+': 'invoices.check.sum', '×': 'invoices.check.product' };
+const failedChecks = (list) => list.filter((c) => c.hard && c.outcome === 'fail').map((c) => ({ ...c, key: CHECK_KEY[c.op] ?? 'invoices.check.rule' }));
 const intId = (v) => (Number.isInteger(v) && v > 0 ? v : typeof v === 'string' && /^[1-9]\d{0,15}$/.test(v) ? Number(v) : null);
 const cleanName = (raw) => {
   if (typeof raw !== 'string') return null;
@@ -302,7 +305,7 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
   function confirmError(row, list, force) {
     const h7 = list.find((c) => c.id === 'H7');
     if (h7.outcome !== 'pass') return [400, { error: 'invalid', fields: Object.fromEntries(h7.fields.map((f) => [f, 'required'])) }];
-    if (!force && hardFailed(list).length) return [409, { error: 'checks_failed', checks: hardFailed(list) }];
+    if (!force && hardFailed(list).length) return [409, { error: 'checks_failed', checks: failedChecks(list) }];
     return null;
   }
 
@@ -435,6 +438,8 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
       if (err) return err;
       const input = body.fields ?? {};
       if (typeof input !== 'object' || Array.isArray(input)) return [400, { error: 'invalid', fields: { fields: 'an object' } }];
+      const revert = body.revert ?? [];
+      if (!Array.isArray(revert) || !revert.every((c) => typeof c === 'string')) return [400, { error: 'invalid', fields: { revert: 'a list of field names' } }];
       const fields = {};
       for (const [col, v] of Object.entries(input)) {
         const e = fieldError(col, v);
@@ -447,10 +452,17 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
       if (body.noNumber === true && (values.invoice_number ?? inv.invoice_number) == null) values.invoice_number = ''; // explicit "no number"
       const edits = inv.edits ? JSON.parse(inv.edits) : {};
       const patch = {};
+      const base = { ...inv };
+      // revert first: an edited column goes back to the value read from the bill; columns never edited are ignored
+      for (const col of revert) {
+        if (!Object.hasOwn(edits, col)) continue;
+        patch[col] = base[col] = edits[col].from;
+        delete edits[col];
+      }
       for (const [col, v] of Object.entries(values)) {
-        if (v === inv[col]) continue;
+        if (v === base[col]) continue;
         patch[col] = v;
-        if (!Object.hasOwn(edits, col)) edits[col] = { from: inv[col], at: now() };
+        if (!Object.hasOwn(edits, col)) edits[col] = { from: base[col], at: now() };
       }
       const row = { ...inv, ...patch };
       const confirm = body.confirm === true || inv.status === 'confirmed';

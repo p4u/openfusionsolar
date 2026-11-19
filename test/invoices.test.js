@@ -399,8 +399,16 @@ test('editing records the original value, re-runs the checks and confirm needs f
 
   const refused = await s.post('/api/invoices/save', { id, fields: { total_eur: 60 } });
   assert.equal(refused.status, 409);
-  assert.deepEqual(await refused.json(), { error: 'checks_failed', checks: ['H1'] });
+  const why = await refused.json();
+  assert.equal(why.error, 'checks_failed');
+  // each failing check says which one, on which fields, with a stable message key and its numbers
+  assert.deepEqual(why.checks.map((c) => [c.id, c.key, c.fields, c.expected, c.actual]),
+    [['H1', 'invoices.check.sum', ['tax_base_eur', 'vat_eur', 'other_exempt_eur', 'total_eur'], 59.15, 60]]);
   assert.equal(s.store.invoice(id).total_eur, 59.15);
+  const rule = await (await s.post('/api/invoices/save', { id, fields: { issue_date: '2026-10-15' } })).json();
+  assert.deepEqual(rule.checks.map((c) => [c.id, c.key, c.fields]), [['H5', 'invoices.check.rule', ['issue_date']]]);
+  const product = await (await s.post('/api/invoices/save', { id, fields: { energy_p1_eur: 7.4 } })).json();
+  assert.deepEqual(product.checks.map((c) => [c.id, c.key]), [['H4', 'invoices.check.product'], ['H4', 'invoices.check.sum']]);
 
   const forced = await s.post('/api/invoices/save', { id, fields: { total_eur: 60, notes: 'checked by hand' }, force: true });
   assert.equal(forced.status, 200);
@@ -417,6 +425,28 @@ test('editing records the original value, re-runs the checks and confirm needs f
   const again = await (await s.post('/api/invoices/save', { id, fields: { total_eur: 59.15 }, force: true })).json();
   assert.equal(again.invoice.edits.total_eur.from, 59.15);
   assert.equal(again.invoice.badge, 'confirmed');
+
+  // revert: an edited field goes back to the value read from the bill and its edit entry goes; never-edited ones are ignored
+  assert.equal((await s.post('/api/invoices/save', { id, fields: { total_eur: 60 }, force: true })).status, 200);
+  const reverted = await s.post('/api/invoices/save', { id, revert: ['total_eur', 'supplier'] });
+  assert.equal(reverted.status, 200);
+  const r = await reverted.json();
+  assert.deepEqual([r.invoice.total_eur, r.invoice.edits.total_eur, r.invoice.edits.notes.from, r.invoice.status], [59.15, undefined, null, 'confirmed']);
+  assert.equal(r.states.total_eur, 'verified');
+  assert.equal(r.invoice.supplier, s.store.invoice(id).supplier);
+  // revert and fields together: revert first, so the new edit keeps the bill's value as its original
+  const both = await (await s.post('/api/invoices/save', { id, revert: ['notes'], fields: { total_eur: 61 }, force: true })).json();
+  assert.deepEqual([both.invoice.notes, both.invoice.edits.notes, both.invoice.total_eur, both.invoice.edits.total_eur.from], [null, undefined, 61, 59.15]);
+  // same confirm rules: when the value read from the bill fails a hard check, the revert of a confirmed bill needs force
+  s.store.updateInvoice(id, { edits: JSON.stringify({ total_eur: { from: 70, at: 1 } }) });
+  const unforced = await s.post('/api/invoices/save', { id, revert: ['total_eur'] });
+  assert.equal(unforced.status, 409);
+  assert.equal(s.store.invoice(id).total_eur, 61);
+  const forcedBack = await (await s.post('/api/invoices/save', { id, revert: ['total_eur'], force: true })).json();
+  assert.deepEqual([forcedBack.invoice.total_eur, forcedBack.invoice.edits, forcedBack.invoice.status], [70, {}, 'confirmed']);
+  for (const bad of ['total_eur', [1], { total_eur: 1 }]) {
+    assert.equal((await s.post('/api/invoices/save', { id, revert: bad })).status, 400, JSON.stringify(bad));
+  }
 
   // a manual draft: confirming needs the required fields, and "no number" stands for the number
   const created = await s.post('/api/invoices/create', {});
