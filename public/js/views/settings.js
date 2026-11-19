@@ -244,7 +244,7 @@ function drawHistory(el, rows, hasMore, loadMore) {
     const w = deliveryWords(r);
     const text = t(w.key) === w.key ? t(w.fallback) : t(w.key);
     return `<li class="settings-history-row"><div><p class="settings-history-title">${esc(r.title ?? r.rule)}</p>
-      <p class="hint">${esc(fmtDateTime(r.ts))} · ${esc(text)}${w.detail ? `: ${esc(w.detail)}` : ''}</p></div></li>`;
+      <p class="hint">${esc(fmtDateTime(r.ts))}, ${esc(text)}${w.detail ? `: ${esc(w.detail)}` : ''}</p></div></li>`;
   };
   const draw = () => {
     el.innerHTML = `<h3 class="card-title">${esc(t('settings.history.title'))}</h3>
