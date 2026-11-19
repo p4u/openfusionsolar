@@ -78,5 +78,5 @@ engine = createAlertEngine({
   },
 });
 engine.start();
-startServer({ store, collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log, alerts: engine });
+startServer({ store, collector: env.COLLECT === '0' ? null : collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log, alerts: engine });
 if (env.COLLECT !== '0') collector.run({ backfillDays: Number(env.BACKFILL_DAYS ?? 30) });
