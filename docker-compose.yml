@@ -7,5 +7,7 @@ services:
     volumes:
       - ./data:/app/data          # SQLite DB and portal session; owned by uid 1000 (node)
     ports:
-      - "127.0.0.1:8080:8080"     # password protected (APP_PASSWORD); expose through a TLS reverse proxy if needed
+      # Host address and port from .env (OFS_BIND, OFS_PORT); default localhost:8080. Password protected (APP_PASSWORD);
+      # expose it on the network only behind a TLS reverse proxy (then set TRUST_PROXY=1 and APP_URL).
+      - "${OFS_BIND:-127.0.0.1}:${OFS_PORT:-8080}:8080"
     # health: the image checks /healthz every minute (Dockerfile HEALTHCHECK)
