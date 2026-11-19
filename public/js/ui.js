@@ -44,7 +44,14 @@ export function ledger(tiles) {
       ${delta != null ? `<dd class="tile-delta">${esc(typeof delta === 'string' ? delta : delta.text)}</dd>` : ''}
       ${hint ? `<dd class="tile-hint">${esc(hint)}</dd>` : ''}
     </div>`;
-  return `<dl class="ledger">${tiles.map(tile).join('')}</dl>`;
+  return `<dl class="ledger" style="--cols:${ledgerColumns(tiles.length, 5)};--cols-md:${ledgerColumns(tiles.length, 4)}">${tiles.map(tile).join('')}</dl>`;
+}
+
+// Columns that fill every row of the card when they can (9 tiles: 3 by 3, not 5 and 4 with a hole), at most `max`.
+export function ledgerColumns(n, max) {
+  if (n <= max) return Math.max(n, 1);
+  const options = Array.from({ length: max - 2 }, (_, i) => max - i); // max down to 3
+  return options.find((c) => n % c === 0) ?? options.reduce((a, c) => (n % c > n % a ? c : a));
 }
 
 const STATES = {
@@ -56,13 +63,15 @@ const STATES = {
 };
 
 // The headline that answers "do I need to act?": icon plus words; the orb hue is decoration only.
-export function statusLine({ state = 'ok', title, details = [] }) {
+// link: { href, label } shown after the details.
+export function statusLine({ state = 'ok', title, details = [], link = null }) {
   const [name, hue] = STATES[state] ?? STATES.info;
   return `<div class="status-line status-${esc(state)}" role="status">
     <span class="orb orb-${hue}" aria-hidden="true"></span>
     ${icon(name, { size: 24 })}
     <div class="status-text"><p class="headline">${esc(title)}</p>
-    ${[].concat(details).filter(Boolean).map((d) => `<p class="status-detail">${esc(d)}</p>`).join('')}</div>
+    ${[].concat(details).filter(Boolean).map((d) => `<p class="status-detail">${esc(d)}</p>`).join('')}
+    ${link ? `<p class="status-detail"><a class="link" href="${esc(link.href)}">${esc(link.label)}</a></p>` : ''}</div>
   </div>`;
 }
 

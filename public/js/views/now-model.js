@@ -7,7 +7,20 @@ const DAY = 24 * 3600e3;
 const ACTIVE_KW = 0.05; // below this a battery counts as idle
 const LEVEL = { ok: 0, info: 1, waiting: 2, warn: 2, alarm: 3 };
 
+// Below the power-cut reserve, what refills the battery: { key, vars }, or null when it is not below the reserve.
+// When the grid stops charging below the reserve (cutoff < reserve), only the sun fills the rest: say so, promise nothing.
+export function reserveNote(soc, bat = {}) {
+  if (soc == null || bat.reservePct == null || soc >= bat.reservePct) return null;
+  const vars = { soc: Math.round(soc), reserve: bat.reservePct, cutoff: bat.gridChargeCutoffPct };
+  if (bat.chargeFromGrid === false) return { key: 'sunOnly', vars };
+  if (bat.chargeFromGrid && bat.gridChargeCutoffPct != null && bat.gridChargeCutoffPct < bat.reservePct) {
+    return { key: soc >= bat.gridChargeCutoffPct ? 'gridStops' : 'gridUntil', vars };
+  }
+  return { key: 'plain', vars };
+}
+
 // The first line answers "do I need to act?". Returns the most serious candidate: { state, key, vars }.
+// The view shows t(`${key}.title`) as the short headline and t(key, vars) as the sentence below it.
 export function headline(status, events = [], now = Date.now()) {
   const last = status?.lastSampleTs;
   const rt = status?.realtime;
@@ -21,9 +34,13 @@ export function headline(status, events = [], now = Date.now()) {
   const stops = events.filter((e) => e.kind === 'noProduction');
   const stopped = stops.filter((e) => e.end > now - DAY).reduce((a, e) => a + e.end - e.start, 0);
   if (stopped) found.push({ state: 'warn', key: stops.length > 1 ? 'now.head.stoppedRepeat' : 'now.head.stopped', vars: { d: duration(stopped), n: stops.length } });
-  if (rt?.soc != null && bat.reservePct != null && rt.soc < bat.reservePct) {
+  const note = reserveNote(rt?.soc, bat);
+  if (note) {
     const recharging = (rt.battery_kw ?? 0) > ACTIVE_KW;
-    found.push({ state: recharging ? 'info' : 'warn', key: recharging ? 'now.head.recharging' : 'now.head.notRecharging', vars: { soc: Math.round(rt.soc), reserve: bat.reservePct } });
+    const vars = { soc: note.vars.soc, reserve: note.vars.reserve };
+    // above the grid-charge cutoff only the sun can refill it: expected, nothing to do
+    if (!recharging && (note.key === 'gridStops' || note.key === 'sunOnly')) found.push({ state: 'info', key: `now.head.${note.key}`, vars: note.vars });
+    else found.push({ state: recharging ? 'info' : 'warn', key: recharging ? 'now.head.recharging' : 'now.head.notRecharging', vars });
   }
   // the first candidate wins a tie, so a cut outranks everything else of the same level
   return found.reduce((a, b) => (LEVEL[b.state] > LEVEL[a.state] ? b : a), { state: 'ok', key: 'now.head.ok', vars: {} });

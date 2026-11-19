@@ -452,12 +452,19 @@ a.card:hover, .card-link:hover { border-color: var(--hairline-strong); box-shado
   font-weight: 500;
   line-height: 1.15;
   letter-spacing: -0.02em;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal; /* a value and its unit ("4,16 kWh/kWp") never break inside */
 }
 .tile-delta { color: var(--body); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
 .tile-hint { color: var(--muted); font-size: var(--fs-caption); }
+@media (min-width: 640px) and (max-width: 1023px) {
+  .ledger { grid-template-columns: repeat(var(--cols-md, 3), minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .ledger { grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); }
+}
 @media (max-width: 639px) {
   .ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ledger > .tile:last-child:nth-child(odd) { grid-column: span 2; }
   .tile { padding: var(--sp-base); }
   .tile-value { font-size: 22px; }
 }

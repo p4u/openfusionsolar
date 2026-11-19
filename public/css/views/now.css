@@ -47,8 +47,8 @@
 .now-limit { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 var(--sp-base); padding-block: var(--sp-xs); border-top: 1px solid var(--hairline); }
 .now-limit dt { color: var(--body); }
 .now-limit dd { margin: 0; text-align: right; color: var(--ink); }
-.now-src { display: inline-block; }
 
 .now-more { margin-top: var(--sp-sm); }
 .now-more a { display: inline-flex; align-items: center; gap: var(--sp-xxs); color: var(--ink); font-weight: 500; }
 .now-grid { margin-top: var(--sp-xl); }
+.now-hero-facts { margin-top: var(--sp-lg); }

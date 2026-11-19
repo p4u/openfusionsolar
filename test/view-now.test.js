@@ -1,7 +1,8 @@
 process.env.TZ = 'Europe/Madrid';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { headline, flow, autonomyHours, STALE_MS } from '../public/js/views/now-model.js';
+import { headline, flow, autonomyHours, reserveNote, STALE_MS } from '../public/js/views/now-model.js';
+import nowDict from '../public/js/i18n/now.js';
 import { fmtTime } from '../public/js/format.js';
 
 const NOW = Date.UTC(2026, 10, 19, 12, 0);
@@ -59,4 +60,34 @@ test('autonomy is null without capacity', () => {
   assert.equal(autonomyHours(50, { capacityKwh: 10, minPct: 10 }, 2), 2); // the floor is not usable
   assert.equal(autonomyHours(5, { capacityKwh: 10, minPct: 10 }, 1), 0);
   assert.equal(autonomyHours(100, { capacityKwh: 10 }, 0), 10 / 0.15); // a tiny load is floored
+});
+
+test('below the reserve with the grid cutoff under it, nothing promises a refill from the grid', () => {
+  const bat = { reservePct: 60, chargeFromGrid: true, gridChargeCutoffPct: 50 };
+  assert.equal(reserveNote(70, bat), null);
+  assert.equal(reserveNote(55, bat).key, 'gridStops'); // above the cutoff: only the sun can fill it
+  assert.equal(reserveNote(40, bat).key, 'gridUntil');
+  assert.equal(reserveNote(40, { reservePct: 60, chargeFromGrid: true, gridChargeCutoffPct: 90 }).key, 'plain');
+  assert.equal(reserveNote(40, { reservePct: 60, chargeFromGrid: false }).key, 'sunOnly');
+  // at night above the cutoff it is expected: info, not "check that grid charging is on"
+  const h = headline(status({ battery: bat, realtime: { ...rt, soc: 55, battery_kw: 0 } }), [], NOW);
+  assert.deepEqual([h.state, h.key, h.vars.cutoff], ['info', 'now.head.gridStops', 50]);
+  const low = headline(status({ battery: bat, realtime: { ...rt, soc: 40, battery_kw: 0 } }), [], NOW);
+  assert.deepEqual([low.state, low.key], ['warn', 'now.head.notRecharging']);
+  for (const lang of ['en', 'ca']) {
+    for (const k of ['plain', 'gridStops', 'gridUntil', 'sunOnly']) {
+      assert.doesNotMatch(nowDict[lang][`now.bat.reserve.${k}`], /refills before|s’omple abans/, `${lang} ${k}`);
+    }
+  }
+});
+
+test('every headline has a short title and a sentence in both languages', () => {
+  const keys = ['ok', 'cut', 'alarm', 'waiting', 'stale', 'stopped', 'stoppedRepeat', 'recharging', 'notRecharging', 'gridStops', 'sunOnly'];
+  for (const lang of ['en', 'ca']) {
+    for (const k of keys) {
+      assert.equal(typeof nowDict[lang][`now.head.${k}`], 'string', `${lang} ${k}`);
+      const title = nowDict[lang][`now.head.${k}.title`];
+      assert.ok(title && title.length <= 40, `${lang} ${k}.title is short`);
+    }
+  }
 });

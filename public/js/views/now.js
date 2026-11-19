@@ -8,7 +8,7 @@ import { eventItem, groupNetwork, summarize } from '../incidents.js';
 import { addDays } from '../buckets.js';
 import { figure, chart } from '../charts.js';
 import { gapBands, eventBands } from '../chart-data.js';
-import { headline, flow, autonomyHours } from './now-model.js';
+import { headline, flow, autonomyHours, reserveNote } from './now-model.js';
 
 register(dict);
 
@@ -101,12 +101,12 @@ function batteryCard(status) {
   let state = t('now.bat.idle');
   if (charge > BAT_ACTIVE_KW) state = t((rt.grid_kw ?? 0) > BAT_ACTIVE_KW && (rt.pv_kw ?? 0) < charge ? 'now.bat.chargingGrid' : 'now.bat.chargingSun', { v: kw(charge) });
   else if (give > BAT_ACTIVE_KW) state = t('now.bat.giving', { v: kw(give) });
-  if (soc != null && b.reservePct != null && soc < b.reservePct) state += ` ${t('now.bat.belowReserve', { reserve: b.reservePct })}`;
+  const note = reserveNote(soc, b);
+  if (note) state += ` ${t(`now.bat.reserve.${note.key}`, note.vars)}`;
   const hours = autonomyHours(soc, b, rt?.load_kw);
   const autonomy = hours == null ? ''
     : hours === 0 ? t('now.bat.autonomyNone')
       : `${t('now.bat.autonomy', { hours: duration(hours * 3600e3) })}${b.minPct ? ` ${t('now.bat.autonomyFloor', { min: b.minPct })}` : ''}`;
-  const from = (key) => ({ fusionsolar: t('now.bat.fromFusion'), env: t('now.bat.fromEnv') })[b.source?.[key]] ?? '';
   const limits = [
     ['capacity', 'capacityKwh', b.capacityKwh != null && kwh(b.capacityKwh, 1), ''],
     ['minPct', 'minPct', b.minPct != null && pct(b.minPct), ''],
@@ -121,34 +121,54 @@ function batteryCard(status) {
     <p class="now-soc">${esc(pct(soc))}</p>${bar}
     <p class="now-bat-state">${esc(soc == null ? t('now.bat.noReading') : state)}</p>
     ${autonomy ? `<p class="now-bat-autonomy">${esc(autonomy)}</p>` : ''}
-    ${limits.length ? `<h3 class="now-limits-title">${esc(t('now.bat.limits'))}</h3><dl class="now-limits">${limits.map(([k, src, v, extra]) => `<div class="now-limit"><dt>${esc(t(`now.bat.${k}`))}</dt>
-      <dd><span class="num">${esc(v)}</span>${extra ? ` <span class="hint">${esc(extra)}</span>` : ''} <span class="hint now-src">${esc(from(src))}</span></dd></div>`).join('')}</dl>` : ''}
+    ${limits.length ? `<h3 class="now-limits-title">${esc(t('now.bat.limits'))}</h3><dl class="now-limits">${limits.map(([k, , v, extra]) => `<div class="now-limit"><dt>${esc(t(`now.bat.${k}`))}</dt>
+      <dd><span class="num">${esc(v)}</span>${extra ? ` <span class="hint">${esc(extra)}</span>` : ''}</dd></div>`).join('')}</dl>` : ''}
   </section>`;
+}
+
+// Month and year so far under the headline: savings when prices are set, and this year's production.
+// A ledger card, so the headline's orb never sits behind a number.
+function heroFacts(status, month, year) {
+  const facts = [
+    status.pricesConfigured && month?.money && { icon: 'euro', label: t('now.hero.monthSavings'), value: eur(month.money.savings) },
+    status.pricesConfigured && year?.money && { icon: 'euro', label: t('now.hero.yearSavings'), value: eur(year.money.savings) },
+    year?.days && { icon: 'sun', label: t('now.hero.yearProduced'), value: kwh(year.pv_kwh, 0) },
+  ].filter(Boolean);
+  return facts.length ? `<section class="now-hero-facts" aria-label="${esc(t('now.hero.label'))}">${ledger(facts)}</section>` : '';
 }
 
 // ---------- blocks ----------
 async function fillTop(el, ctx, shared) {
   const { signal } = ctx;
   const today = shared.status?.today ?? dayOf(Date.now());
-  const [status, events] = await Promise.all([getStatus({ signal }), getEvents({ from: addDays(today, -30), to: today }, { signal })]);
+  const [status, events, month, year] = await Promise.all([
+    getStatus({ signal }),
+    getEvents({ from: addDays(today, -30), to: today }, { signal }),
+    getEnergy({ from: `${today.slice(0, 7)}-01`, to: today, bucket: '1mo' }, { signal }),
+    getEnergy({ from: `${today.slice(0, 4)}-01-01`, to: today, bucket: '1mo' }, { signal }),
+  ]);
   shared.status = status;
   const now = Date.now();
   const h = headline(status, events, now);
   const recent = events.filter((e) => e.end > now - DAY && !e.ongoing);
   const col = status.collector;
   const details = [
+    t(h.key, h.vars),
     recent.length && t('now.head.recent', { list: summarize(recent) }),
     col?.backfill && t('now.backfill', { done: col.backfill.done, total: col.backfill.total }),
     col?.authBlockedUntil > now && t('now.authPaused', { time: fmtTime(col.authBlockedUntil) }),
   ].filter(Boolean);
-  el.innerHTML = `${statusLine({ state: h.state, title: t(h.key, h.vars), details })}
+  const link = recent.length ? { href: '#/incidents', label: t('now.head.seeIncidents') } : null;
+  el.innerHTML = `${statusLine({ state: h.state, title: t(`${h.key}.title`), details, link })}${heroFacts(status, month.total, year.total)}
     <div class="grid now-grid">${flowCard(status)}${batteryCard(status)}</div>`;
   ctx.fresh.textContent = status.lastSampleTs ? t('now.dataFrom', { time: fmtTime(status.lastSampleTs) }) : '';
 }
 
 function tiles(total, st) {
   const load = total.load_kwh;
-  const self = load && total.self_use_kwh != null ? Math.min(1, total.self_use_kwh / load) * 100 : null;
+  // before any sun today the share is not 0 % but not known yet
+  const noSun = !(total.pv_kwh > 0.05);
+  const self = !noSun && load && total.self_use_kwh != null ? Math.min(1, total.self_use_kwh / load) * 100 : null;
   const out = [
     { icon: 'sun', label: t('now.tiles.produced'), value: kwh(total.pv_kwh) },
     { icon: 'house', label: t('now.tiles.consumed'), value: kwh(load) },
@@ -156,7 +176,7 @@ function tiles(total, st) {
     { icon: 'zap', label: t('now.tiles.sold'), value: kwh(total.export_kwh) },
     { icon: 'battery-charging', label: t('now.tiles.stored'), value: kwh(total.charge_kwh), hint: t('now.tiles.storedHint') },
     { icon: 'battery-medium', label: t('now.tiles.taken'), value: kwh(total.discharge_kwh), hint: t('now.tiles.takenHint') },
-    { icon: 'gauge', label: t('now.tiles.self'), value: pct(self), hint: t('now.tiles.selfHint') },
+    { icon: 'gauge', label: t('now.tiles.self'), value: self == null ? null : pct(self), hint: t(noSun ? 'now.tiles.selfNoSun' : 'now.tiles.selfHint') },
   ];
   const m = total.money;
   if (!st.pricesConfigured) out.push({ icon: 'euro', label: t('now.tiles.cost'), value: null, hint: t('now.tiles.noTariff') });

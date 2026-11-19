@@ -72,3 +72,12 @@ test('incidents: titles have no em dash, internet losses group per plant day', (
   assert.match(eventItem(cut), /<use href="\/icons.svg#zap-off"\/>/);
   assert.doesNotMatch(eventItem({ ...cut, names: ['<b>'] , kind: 'other' }), /<b>/);
 });
+
+test('ledger columns fill every row when they can', async () => {
+  const { ledgerColumns } = await import('../public/js/ui.js');
+  assert.equal(ledgerColumns(4, 5), 4);
+  assert.equal(ledgerColumns(9, 5), 3, '3 by 3, not 5 and 4');
+  assert.equal(ledgerColumns(8, 5), 4);
+  assert.equal(ledgerColumns(10, 5), 5);
+  assert.equal(ledgerColumns(7, 5), 4, 'no exact fit: the fullest last row');
+});
