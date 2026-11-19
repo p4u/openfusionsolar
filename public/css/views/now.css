@@ -1,1 +1,54 @@
 /* Now view (task 5). Every class here starts with 'now-'. */
+
+/* flow diagram */
+.now-flow-svg { display: block; width: 100%; max-width: 460px; margin-inline: auto; height: auto; }
+.now-node circle { fill: var(--surface-card); stroke-width: 3; }
+.now-n-pv circle { stroke: var(--chart-sun); }
+.now-n-grid circle { stroke: var(--chart-grid); }
+.now-n-home circle { stroke: var(--chart-home); }
+.now-n-bat circle { stroke: var(--chart-battery); }
+.now-node .icon { color: var(--ink); }
+.now-node text { text-anchor: middle; font-family: var(--font-sans); fill: var(--ink); }
+.now-node-label { font-size: 14px; fill: var(--muted); }
+.now-node-value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.now-node-sub { font-size: 14px; fill: var(--muted); }
+.now-link { fill: none; stroke: var(--hairline-strong); stroke-width: 2; }
+.now-on { stroke-width: 4; stroke-dasharray: 6 10; stroke-linecap: round; animation: now-dash 0.9s linear infinite; }
+.now-from-pv { stroke: var(--chart-sun); }
+.now-from-grid { stroke: var(--chart-grid); }
+.now-from-bat { stroke: var(--chart-battery); }
+.now-arrow { display: none; stroke: none; }
+.now-arrow.now-from-pv { fill: var(--chart-sun); stroke: none; }
+.now-arrow.now-from-grid { fill: var(--chart-grid); stroke: none; }
+.now-arrow.now-from-bat { fill: var(--chart-battery); stroke: none; }
+@keyframes now-dash { to { stroke-dashoffset: -16; } }
+@media (prefers-reduced-motion: reduce) {
+  .now-on { animation: none; stroke-dasharray: none; }
+  .now-arrow { display: inline; }
+}
+.now-sentence { margin-top: var(--sp-base); max-width: 65ch; }
+
+/* battery card */
+.now-soc {
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-hero);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.now-soc-bar { position: relative; height: 10px; margin-block: var(--sp-base); border-radius: 5px; background: var(--surface-strong); }
+.now-soc-fill { display: block; height: 100%; border-radius: 5px; background: var(--chart-battery); }
+.now-soc-reserve { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); }
+.now-bat-autonomy { margin-top: var(--sp-xs); }
+.now-limits-title { margin-top: var(--sp-lg); font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.now-limits { margin-top: var(--sp-xs); }
+.now-limit { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 var(--sp-base); padding-block: var(--sp-xs); border-top: 1px solid var(--hairline); }
+.now-limit dt { color: var(--body); }
+.now-limit dd { margin: 0; text-align: right; color: var(--ink); }
+.now-src { display: inline-block; }
+
+.now-more { margin-top: var(--sp-sm); }
+.now-more a { display: inline-flex; align-items: center; gap: var(--sp-xxs); color: var(--ink); font-weight: 500; }
+.now-grid { margin-top: var(--sp-sm); }
