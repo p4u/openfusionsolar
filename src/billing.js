@@ -119,6 +119,7 @@ const invoiceView = (inv, compare) => {
 function powerCard(store, { prices, yearFrom, today, dataDays }) {
   const latest = store.listInvoices({ status: 'confirmed' }).filter((i) => !i.superseded_by).at(-1);
   const fromBill = latest && (latest.contracted_p1_kw != null || latest.contracted_p2_kw != null);
+  // shortcut: the configured POWER_* values arrive only with the energy prices (pricesFromEnv); read them alone if a bill-less install without prices needs the card
   if (dataDays < MIN_POWER_DAYS || (!fromBill && !prices)) return null;
   const contracted = fromBill ? [num(latest.contracted_p1_kw), num(latest.contracted_p2_kw)] : [num(prices.contractedP1), num(prices.contractedP2)];
   const price = fromBill ? [num(latest.power_price_p1), num(latest.power_price_p2)] : [num(prices.powerP1), num(prices.powerP2)];
