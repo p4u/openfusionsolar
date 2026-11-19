@@ -2,7 +2,7 @@
 import { register, t, locale } from '../i18n.js';
 import dict from '../i18n/incidents.js';
 import { esc, icon, emptyState, loadBlock, every } from '../ui.js';
-import { getEvents, getSeries } from '../api.js';
+import { getEvents } from '../api.js';
 import { parseRange, rangeLabel } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
@@ -16,7 +16,7 @@ register(dict);
 
 const SHOWN = 8; // rows before "Show all"
 const MAX_DAYS = 800; // /api/events limit
-const KINDS = ['gridCut', 'noProduction', 'network', 'batteryLow', 'overload', 'other'];
+const KINDS = ['gridCut', 'noProduction', 'network', 'noData', 'batteryLow', 'overload', 'other'];
 // one chart series per group of kinds; colour is status here. Internet losses last far longer than the rest and
 // would flatten them, so they get their own small chart.
 const GROUPS = [
@@ -24,7 +24,7 @@ const GROUPS = [
   { key: 'stopped', kinds: ['noProduction'], entity: 'warn' },
   { key: 'other', kinds: ['batteryLow', 'overload', 'other'], entity: 'home' },
 ];
-const NETWORK = [{ key: 'network', kinds: ['network'], entity: 'muted' }];
+const NETWORK = [{ key: 'network', kinds: ['network'], entity: 'muted' }, { key: 'noData', kinds: ['noData'], entity: 'warn' }];
 
 // One list row as a <details>: the shared row markup is the summary, the raw alarm names and the link to the day are the body.
 function row(e, all) {
@@ -87,21 +87,14 @@ export async function render(root, ctx) {
         return `<button type="button" class="pill pill-outline incidents-chip" data-kind="${k}" aria-pressed="${on}">${esc(t(`incidents.kind.${k}`))} <span class="num">${all.filter((e) => e.kind === k).length}</span></button>`;
       }).join('')}</div>` : '';
     const summary = events_.length ? t('incidents.summary', { period: label, list: summarize(events_) }) : t(picked.length ? 'incidents.noneFiltered' : 'incidents.none');
-    el.innerHTML = `<p class="lead incidents-summary">${esc(summary)}</p><p class="hint incidents-reassure" hidden></p>${chips}${clamped ? `<p class="hint">${esc(t('incidents.clamped', { date: fmtDate(from, { day: 'numeric', month: 'short', year: 'numeric' }) }))}</p>` : ''}`;
+    // many internet losses read as alarming: the reassurance (were their readings filled in?) leads, the count follows
+    const recovered = lossesRecovered(events_);
+    const lead = recovered ? `<p class="lead incidents-reassure">${esc(t(`incidents.recovered.${recovered}`))}</p><p class="incidents-summary">${esc(summary)}</p>`
+      : `<p class="lead incidents-summary">${esc(summary)}</p>`;
+    el.innerHTML = `${lead}${chips}${clamped ? `<p class="hint">${esc(t('incidents.clamped', { date: fmtDate(from, { day: 'numeric', month: 'short', year: 'numeric' }) }))}</p>` : ''}`;
     if (!events_.length) {
       el.insertAdjacentHTML('beforeend', emptyState({ title: t('core.empty.title'), body: t('incidents.noneHint') }));
       return;
-    }
-    // many internet losses read as alarming: say whether the installation's readings came back afterwards
-    if (events_.some((e) => e.kind === 'network')) {
-      const sFrom = [from, status.firstSampleDay, addDays(range.to, -749)].filter(Boolean).reduce((a, b) => (b > a ? b : a));
-      getSeries({ from: sFrom, to: range.to, bucket: '1d' }, { signal }).then((s) => {
-        const r = lossesRecovered(events_, s);
-        const p = el.querySelector('.incidents-reassure');
-        if (!r || !p) return;
-        p.textContent = t(`incidents.recovered.${r}`);
-        p.hidden = false;
-      }).catch(() => {}); // only a reassurance: the list stands without it
     }
     // network losses are one row per day; the rest stays one row per event, most recent first
     const items = groupNetwork(groupEpisodes(events_));

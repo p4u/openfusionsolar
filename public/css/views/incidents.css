@@ -1,6 +1,6 @@
 /* Incidents view (task 8). Every class here starts with 'incidents-'. */
 .incidents-main { display: flex; flex-direction: column; gap: var(--sp-base); }
-.incidents-summary { max-width: 70ch; margin: 0; }
+.incidents-summary, .incidents-reassure { max-width: 70ch; margin: 0; }
 .incidents-chips { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
 .incidents-chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface-card); }
 .incidents-list { margin: 0; padding: 0; list-style: none; }

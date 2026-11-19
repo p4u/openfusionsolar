@@ -180,7 +180,7 @@ export function startServer({
         if (!r) return RANGE_ERROR;
       }
       const kinds = query.get('kinds')?.split(',');
-      const events = buildEvents(store.alarms(...r), store.samples(...r));
+      const events = buildEvents(store.alarms(...r), store.samples(...r), Date.now(), { from: r[0], to: r[1], since: store.firstSampleTs() });
       return [200, kinds ? events.filter((e) => kinds.includes(e.kind)) : events];
     },
     'GET /api/series': ({ query }) => {

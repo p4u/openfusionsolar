@@ -9,6 +9,7 @@ const LOOK = {
   overload: ['plug-zap', 'alarm'],
   batteryLow: ['battery-warning', 'warn'],
   noProduction: ['sun', 'warn'],
+  noData: ['eye-off', 'warn'],
   network: ['wifi-off', 'muted'],
   networkDay: ['wifi-off', 'muted'],
   other: ['triangle-alert', 'warn'],
@@ -23,6 +24,7 @@ export function eventTitle(e) {
   if (e.kind === 'batteryLow') return t('core.ev.batteryLow');
   if (e.kind === 'overload') return t('core.ev.overload');
   if (e.kind === 'noProduction') return t('core.ev.noProduction');
+  if (e.kind === 'noData') return t('core.ev.noData');
   return t('core.ev.other', { name: (e.names ?? []).join(', ') });
 }
 
@@ -39,6 +41,7 @@ export function summarize(events) {
     line('cut', 'gridCut', true),
     line('stopped', 'noProduction', true),
     line('network', 'network', true),
+    line('noData', 'noData', true),
     line('battery', 'batteryLow'),
     line('overload', 'overload'),
     line('other', 'other'),
@@ -56,7 +59,7 @@ export function eventItem(e) {
   const [name, tone] = LOOK[e.kind] ?? LOOK.other;
   const mark = `<span class="event-icon event-${tone}">${icon(name, { size: 16 })}</span>`;
   if (e.kind === 'networkDay') {
-    const text = t(e.n === 1 ? 'core.ev.networkDayOne' : 'core.ev.networkDay', { n: e.n, d: duration(e.total) });
+    const text = t(`core.ev.networkDay${e.recovered ? 'Recovered' : ''}${e.n === 1 ? 'One' : ''}`, { n: e.n, d: duration(e.total) });
     return `<li class="event event-kind-networkDay">${mark}<div class="event-body"><p class="event-when">${esc(fmtDate(e.start))}</p><p class="event-title">${esc(text)}</p></div></li>`;
   }
   const related = e.related?.length
@@ -96,8 +99,9 @@ export function groupNetwork(events) {
       continue;
     }
     const day = dayOf(e.start);
-    if (!days.has(day)) days.set(day, { kind: 'networkDay', day, start: e.start, end: e.end, total: 0, n: 0 });
+    if (!days.has(day)) days.set(day, { kind: 'networkDay', day, start: e.start, end: e.end, total: 0, n: 0, recovered: true });
     const g = days.get(day);
+    g.recovered &&= e.recovered === true; // the server's flag: that loss's readings were filled in afterwards
     g.start = Math.min(g.start, e.start);
     g.end = Math.max(g.end, e.end);
     g.total += e.end - e.start;

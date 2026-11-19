@@ -58,3 +58,32 @@ test('internet losses are reassuring only when the readings of those days came b
   assert.equal(lossesRecovered([ev('gridCut', d1, d1 + H)], series), null, 'no internet loss, nothing to say');
   assert.equal(lossesRecovered(losses, { t: [], coverage: [] }), null);
 });
+
+test('without a series the server flag says whether internet losses were filled in, per loss and per day row', () => {
+  const d1 = dayStart('2026-11-10');
+  const a = ev('network', d1 + H, d1 + 2 * H, { recovered: true });
+  const b = ev('network', d1 + 5 * H, d1 + 6 * H, { recovered: false });
+  assert.equal(lossesRecovered([a]), 'all');
+  assert.equal(lossesRecovered([a, b]), 'partial');
+  assert.equal(lossesRecovered([ev('noData', d1, d1 + 2 * H)]), null);
+  assert.equal(groupNetwork([a]).find((e) => e.kind === 'networkDay').recovered, true);
+  assert.equal(groupNetwork([a, b]).find((e) => e.kind === 'networkDay').recovered, false);
+});
+
+test('periods without data are counted, titled and never raise the alarm headline', async () => {
+  const { register, setLang, t } = await import('../public/js/i18n.js');
+  const { default: core } = await import('../public/js/i18n/core.js');
+  register(core);
+  const { summarize, eventTitle } = await import('../public/js/incidents.js');
+  const { headline } = await import('../public/js/views/now-model.js');
+  const d1 = dayStart('2026-11-13');
+  setLang('ca');
+  const gap = ev('noData', d1, d1 + 30 * H);
+  assert.match(summarize([gap]), /^1 període sense dades/);
+  assert.match(eventTitle(gap), /^Sense dades/);
+  const now = d1 + 30 * H;
+  const h = headline({ lastSampleTs: now - 60e3 }, [{ ...gap, ongoing: true }], now);
+  assert.notEqual(h.state, 'alarm');
+  setLang('en');
+  assert.ok(t('core.ev.networkDayRecovered', { n: 2, d: '1 h' }).endsWith('data recovered.'));
+});

@@ -27,7 +27,7 @@ export function headline(status, events = [], now = Date.now()) {
   const rt = status?.realtime;
   const bat = status?.battery ?? {};
   const found = [];
-  const ongoing = events.filter((e) => e.ongoing && e.kind !== 'network' && e.kind !== 'noProduction');
+  const ongoing = events.filter((e) => e.ongoing && !['network', 'noProduction', 'noData'].includes(e.kind)); // no data: the stale line says it
   if (ongoing.some((e) => e.kind === 'gridCut')) found.push({ state: 'alarm', key: 'now.head.cut', vars: {} });
   else if (ongoing.length) found.push({ state: 'alarm', key: 'now.head.alarm', vars: { names: [...new Set(ongoing.map(eventTitle))].join(', ') } });
   if (!last) found.push({ state: 'waiting', key: 'now.head.waiting', vars: {} });
