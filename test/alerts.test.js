@@ -2,7 +2,7 @@ process.env.TZ = 'Europe/Madrid';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Store } from '../src/db.js';
-import { RULES, DEFAULT_CONFIG, validateConfig, evaluate, createAlertEngine } from '../src/alerts.js';
+import { RULES, DEFAULT_CONFIG, validateConfig, evaluate, schedule, createAlertEngine, QUEUE_MAX } from '../src/alerts.js';
 import { render } from '../src/alert-texts.js';
 import { createTransport, smtpInfo } from '../src/mailer.js';
 import { startTestServer } from './helpers.js';
@@ -109,6 +109,21 @@ test('quiet hours queue normal alerts into one 08:00 digest while gridCut is sen
   assert.equal(s.engine.history()[0].event, 'digest');
   await s.run(at(19, 8, 5));
   assert.equal(s.transport.sent.length, 2);
+});
+
+test('the quiet-hours queue keeps the newest 100 alerts and logs the dropped ones as skipped', () => {
+  const night = at(19, 2);
+  const actions = Array.from({ length: QUEUE_MAX + 3 }, (_, i) => ({ rule: 'noData', key: `k${i}`, event: 'fired', at: night }));
+  const { state, deliveries } = schedule(actions, DEFAULT_CONFIG, {}, night);
+  assert.equal(state._meta.queue.length, QUEUE_MAX);
+  assert.deepEqual(state._meta.queue.map((a) => a.key).slice(0, 2), ['k3', 'k4']);
+  const dropped = deliveries.filter((d) => d.delivery === 'skipped');
+  assert.deepEqual(dropped.map((d) => [d.key, d.reason]), [['k0', 'queueFull'], ['k1', 'queueFull'], ['k2', 'queueFull']]);
+  assert.equal(deliveries.filter((d) => d.delivery === 'queued').length, QUEUE_MAX + 3);
+  // a later night run drops the next oldest
+  const next = schedule([{ rule: 'noData', key: 'late', event: 'fired', at: night }], DEFAULT_CONFIG, state, night + MIN);
+  assert.equal(next.state._meta.queue.length, QUEUE_MAX);
+  assert.deepEqual(next.deliveries.map((d) => [d.key, d.delivery]), [['late', 'queued'], ['k3', 'skipped']]);
 });
 
 test('no more than 10 emails per hour, the rest logged as skipped', async () => {

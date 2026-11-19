@@ -9,6 +9,7 @@ const MIN = 60e3;
 const HOUR = 60 * MIN;
 const NO_DATA_LAG_MS = 10 * MIN; // samples normally land within 10 min; older than that counts as missing
 const CAP_PER_HOUR = 10;
+export const QUEUE_MAX = 100; // quiet-hours queue; the oldest entries are dropped (they stay in the history)
 const RETRY_PER_RUN = 3;
 const RETRY_WINDOW_MS = 24 * HOUR;
 const KEEP_MS = 72 * HOUR; // ended incidents leave the 48 h snapshot window well before their state is dropped
@@ -268,6 +269,7 @@ export function schedule(actions, config, prev, now) {
     else if (quiet && !a.bypassQuiet) {
       meta.queue.push(a);
       add({ ...a, delivery: 'queued' });
+      while (meta.queue.length > QUEUE_MAX) add({ ...meta.queue.shift(), delivery: 'skipped', reason: 'queueFull' });
     } else add({ ...a, delivery: 'send' });
   }
   return { state, deliveries };
