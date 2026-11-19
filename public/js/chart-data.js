@@ -80,6 +80,26 @@ export function bucketAxis(keys, bucket) {
   return { categories: keys.slice(), title: '' };
 }
 
+// A y axis never narrower than its labels can tell apart: a nearly flat signal (-1.000 to -0.997 kW shown with 2
+// decimals) would get ticks that all read "-1", and the overlapping ones hide. An unstacked chart whose data spans less
+// than a tenth of its size (or four label steps) is widened around it; a fixed end stays where it is.
+// Returns { min, max }: undefined leaves that end to ApexCharts.
+export function yExtent(spec) {
+  const { min, max } = spec.y ?? {};
+  if (spec.stacked || (min != null && max != null)) return { min, max };
+  const time = spec.kind !== 'category';
+  const vals = spec.series.flatMap((s) => s.data.flatMap((p) => { const v = time ? p?.[1] : p; return Array.isArray(v) ? v : [v]; }))
+    .filter((v) => typeof v === 'number' && Number.isFinite(v));
+  if (!vals.length) return { min, max };
+  const lo = Math.min(min ?? Infinity, ...vals);
+  const hi = Math.max(max ?? -Infinity, ...vals);
+  const need = Math.max(Math.abs(lo + hi) / 20, 4 * 10 ** -(spec.y?.decimals ?? 1));
+  if (hi - lo >= need) return { min, max };
+  if (min != null) return { min, max: min + need };
+  if (max != null) return { min: max - need, max };
+  return { min: (lo + hi - need) / 2, max: (lo + hi + need) / 2 };
+}
+
 // Accessible name of a chart, in the app language: what it shows and where the numbers are.
 export function chartLabel(spec) {
   return t('charts.a11y.chart', { names: spec.series.map((s) => s.name).join(', ') });
@@ -263,7 +283,7 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
         },
     // one y axis only: a second unit gets its own strip, synced through `group`
     yaxis: {
-      min: spec.y?.min, max: spec.y?.max, forceNiceScale: true,
+      ...yExtent(spec), forceNiceScale: true,
       title: { text: spec.unit, style: { ...text, fontWeight: 400 } },
       labels: { style: text, minWidth: 48, maxWidth: 48, formatter: (v) => (v == null ? '' : nfAxis(spec.y?.decimals ?? 1).format(v)) },
     },

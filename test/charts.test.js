@@ -299,3 +299,17 @@ test('charts carry a localised accessible name and a legend template ApexCharts 
   assert.equal(tpl.replace(/\{(name|state)\}/g, (_, k) => (k === 'name' ? 'Sol' : 'visible')), 'Sol, visible. Prem Retorn o Espai per mostrar-la o amagar-la.');
   setLang('en');
 });
+
+test('a nearly flat signal gets a y axis wide enough for distinct labels; fixed ends and stacks are kept', async () => {
+  const { yExtent } = await import('../public/js/chart-data.js');
+  const flat = { kind: 'time', y: { decimals: 2 }, series: [{ data: [[0, -1], [1, -0.998], [2, -0.997], [3, null]] }, { type: 'rangeArea', data: [[0, [-1, -0.997]]] }] };
+  const e = yExtent(flat);
+  assert.ok(e.max - e.min >= 0.0998, 'a tenth of the size at least');
+  assert.ok(e.min < -1 && e.max > -0.997, 'the data stays inside');
+  // a real spread is left to ApexCharts
+  assert.deepEqual(yExtent({ kind: 'time', y: { decimals: 1 }, series: [{ data: [[0, 0], [1, 3.2]] }] }), { min: undefined, max: undefined });
+  // a fixed minimum stays; the top is lifted so a quiet night is not one label
+  assert.deepEqual(yExtent({ kind: 'time', y: { min: 0, decimals: 1 }, series: [{ data: [[0, 0], [1, 0.1]] }] }), { min: 0, max: 0.4 });
+  assert.deepEqual(yExtent({ kind: 'category', stacked: true, y: {}, series: [{ data: [1, 1] }] }), { min: undefined, max: undefined });
+  assert.deepEqual(yExtent({ kind: 'time', y: {}, series: [{ data: [] }] }), { min: undefined, max: undefined });
+});
