@@ -114,6 +114,30 @@ test('the totals row adds the real bills typed so far and their difference with 
   assert.deepEqual(realTotals(rows, { '2026-03': 30 }), { real: 30, delta: null, n: 1, m: 4 });
 });
 
+test('period kWh are rounded to add up to the rounded bought total', async () => {
+  const { periodParts } = await import('../public/js/views/bill-model.js');
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const p = periodParts([300.4, 400.4, 385.4], 1086.2);
+  assert.equal(sum(p), 1086);
+  assert.equal(sum(periodParts([0.5, 0.5, 0.5], 1.5)), 2);
+  assert.deepEqual(periodParts([10.4, null, 5.2], 16), [10, null, 5]);
+  assert.deepEqual(periodParts([10.4, 5.2, 1], 30), [10, 5, 1]); // parts that do not account for the total are only rounded
+});
+
+test('an invalid amount keeps the saved value in the message and the totals on the saved bills', async () => {
+  const { t } = await import('../public/js/i18n.js');
+  const { realTotals } = await import('../public/js/views/bill-model.js');
+  for (const lang of ['ca', 'en']) {
+    setLang(lang);
+    assert.match(t('bill.table.realKept', { amount: '90,50 €' }), /90,50 €/);
+  }
+  setLang('ca');
+  assert.match(t('bill.table.realKept', { amount: '90,50 €' }), /^Es manté el valor desat: 90,50 €/);
+  setLang('en');
+  const rows = [{ key: '2026-01', money: { bill: 80 } }];
+  assert.deepEqual(realTotals(rows, { '2026-01': 90.5 }), { real: 90.5, delta: 10.5, n: 1, m: 1 });
+});
+
 test('a month inside a Catalan sentence is lowercase and takes the elided preposition', async () => {
   const { fmtMonth } = await import('../public/js/format.js');
   const { ofPeriod } = await import('../public/js/views/energy-model.js');

@@ -9,7 +9,7 @@ import { figure, chart } from '../charts.js';
 import { addDays } from '../buckets.js';
 import { bucketAxis } from '../chart-data.js';
 import { eur, kwh, kw, nf, fmtDate, fmtMonth, dayOf } from '../format.js';
-import { monthRows, peakVsContracted, monthTotals, parseAmount, billDelta, realTotals } from './bill-model.js';
+import { monthRows, peakVsContracted, monthTotals, parseAmount, billDelta, realTotals, periodParts } from './bill-model.js';
 import { phaseLink } from './signals-model.js';
 import { deltaText, compareLabel, ofPeriod } from './energy-model.js';
 
@@ -219,7 +219,7 @@ export async function render(root, ctx) {
     // cls: 'bill-opt' leaves the phone card, 'bill-wide' shows from 1200 px only (both stay in the chart tables)
     const cols = [
       { key: 'bought', label: t('bill.table.bought'), cell: (r) => kwh(r.bought) },
-      { key: 'periods', label: t('bill.table.periods'), cls: 'bill-opt', cell: (r) => r.byPeriod.map((v) => (v == null ? t('core.unknown') : nf(0).format(v))).join(' / ') },
+      { key: 'periods', label: t('bill.table.periods'), cls: 'bill-opt bill-nowrap', cell: (r) => periodParts(r.byPeriod, r.bought).map((v) => (v == null ? t('core.unknown') : nf(0).format(v))).join(' / ') },
       { key: 'sold', label: t('bill.table.sold'), cls: 'bill-opt', cell: (r) => kwh(r.sold) },
       ...(money ? [
         { key: 'energy', label: t('bill.table.energy'), cls: 'bill-opt bill-wide', cell: (r) => eur(r.money?.energy) },
@@ -268,6 +268,7 @@ export async function render(root, ctx) {
       msg.closest('tr').hidden = !text;
       live.textContent = text;
     };
+    const kept = (month) => (bills[month] == null ? '' : ` ${t('bill.table.realKept', { amount: eur(bills[month]) })}`);
     const setDiff = (input, v) => {
       const diff = input.closest('tr').querySelector('.bill-diff');
       if (diff) diff.textContent = signed(v);
@@ -281,8 +282,7 @@ export async function render(root, ctx) {
       const parsed = parseAmount(input.value);
       if (parsed.error) {
         input.setAttribute('aria-invalid', 'true');
-        setDiff(input, null); // the old difference no longer matches what is typed
-        say(input, t(`bill.table.realError.${parsed.error}`), true);
+        say(input, `${t(`bill.table.realError.${parsed.error}`)}${kept(month)}`, true); // the row keeps the saved value and its difference, like the totals
         input.focus();
         return;
       }
@@ -301,8 +301,7 @@ export async function render(root, ctx) {
       } catch (err) {
         if (err?.name === 'AbortError') return;
         input.setAttribute('aria-invalid', 'true');
-        setDiff(input, null);
-        say(input, t(err instanceof ApiError && err.status === 400 ? 'bill.table.realError.format' : 'bill.table.realError.save'), true);
+        say(input, `${t(err instanceof ApiError && err.status === 400 ? 'bill.table.realError.format' : 'bill.table.realError.save')}${kept(month)}`, true);
       }
     };
   }

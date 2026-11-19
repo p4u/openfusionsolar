@@ -18,7 +18,8 @@
 .bill-msg-row > td:first-child { position: static; box-shadow: none; background: none; }
 .bill-real-msg { color: var(--muted); }
 .bill-real-msg.bill-real-error { color: var(--status-alarm); }
-.bill-real-count { display: block; font-weight: 400; }
+.bill-real-count { display: block; font-weight: 400; white-space: nowrap; }
+.bill-months .bill-nowrap { white-space: nowrap; }
 /* phones: one card per month (month, bought, estimate, real bill, difference) */
 @media (max-width: 639px) {
   .bill-months thead { display: none; }
@@ -28,7 +29,7 @@
   .bill-months tr > * { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-sm); padding: var(--sp-xxs) 0; border: 0; position: static; box-shadow: none; background: none; }
   .bill-months tr > th { color: var(--ink); font-weight: 500; }
   .bill-months td::before { content: attr(data-label); color: var(--muted); text-align: left; }
-  .bill-months .bill-opt { display: none; }
+  .bill-months .bill-opt, .bill-months td:empty { display: none; } /* no real bill: no empty difference row */
   .bill-months .bill-flags { margin-top: 0; }
   .bill-months .bill-foot-real { flex-wrap: wrap; }
   .bill-months .bill-real-count { flex-basis: 100%; text-align: right; }

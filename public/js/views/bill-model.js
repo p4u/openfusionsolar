@@ -85,3 +85,16 @@ export function realTotals(rows, bills) {
 
 // Real bill minus the estimate, in euros; null when either is unknown.
 export const billDelta = (real, estimate) => (real == null || estimate == null ? null : Math.round((real - estimate) * 100) / 100);
+
+// The P1/P2/P3 kWh as whole numbers that add up to the whole kWh bought (largest remainder), so the cells never
+// disagree with the total. Unknown parts stay null; parts that do not account for the total (off by 1 kWh or more) are only rounded.
+export function periodParts(parts, bought) {
+  const known = parts.filter((v) => v != null);
+  const sum = known.reduce((a, v) => a + v, 0);
+  if (bought == null || known.length !== parts.length || Math.abs(sum - bought) >= 1) return parts.map((v) => (v == null ? null : Math.round(v)));
+  const out = parts.map(Math.floor);
+  const order = parts.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0]);
+  const extra = Math.round(bought) - out.reduce((a, v) => a + v, 0);
+  for (let k = 0; k < extra && k < order.length; k++) out[order[k][1]] += 1;
+  return out;
+}
