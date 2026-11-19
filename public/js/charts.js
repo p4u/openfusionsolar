@@ -93,6 +93,7 @@ export function chart(host, initial) {
       legendClick: (_c, i) => {
         const k = spec.series[i].key;
         if (!hidden.delete(k)) hidden.add(k);
+        setTimeout(pressedState); // after ApexCharts has redrawn the legend
       },
       // the view decides what a zoom means (usually a custom range); the chart itself keeps its extent
       beforeZoom: (c, { xaxis }) => {
