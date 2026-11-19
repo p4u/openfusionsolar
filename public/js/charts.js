@@ -11,8 +11,10 @@ import { apexOptions, toCsv } from './chart-data.js';
 
 register(dict);
 
+// Paired series get their own hue (bought/sold, charging/discharging, P1-P3, energy/fixed, DC/AC); see tokens.css.
 const ENTITY_VAR = {
-  sun: '--chart-sun', home: '--chart-home', grid: '--chart-grid', battery: '--chart-battery', p1: '--chart-p1', p2: '--chart-p2',
+  sun: '--chart-sun', home: '--chart-home', grid: '--chart-grid', battery: '--chart-battery', sold: '--chart-sold',
+  discharge: '--chart-discharge', fixed: '--chart-fixed', ac: '--chart-ac', p1: '--chart-p1', p2: '--chart-p2',
   p3: '--chart-p3', ok: '--status-ok', warn: '--status-warn', alarm: '--status-alarm', muted: '--muted',
 };
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -26,19 +28,10 @@ export function readPalette() {
   return p;
 }
 
-const storeKey = (id) => `chart:${id}`;
-function loadHidden(id) {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(storeKey(id)) ?? 'null') ?? []);
-  } catch {
-    return null;
-  }
-}
-function saveHidden(id, set) {
-  try {
-    localStorage.setItem(storeKey(id), JSON.stringify([...set]));
-  } catch { /* storage blocked: the choice holds until reload */ }
-}
+// Series hidden from the legend, per chart id. Kept in memory while the user stays on a view (the view redraws its
+// charts every minute), and reset when they leave it, so a hidden series never stays hidden without them knowing.
+const legendState = new Map();
+export const resetLegends = () => legendState.clear();
 
 export function figure(parent, { title, caption = '', csvName = 'data' } = {}) {
   const el = document.createElement('figure');
@@ -63,9 +56,10 @@ export function figure(parent, { title, caption = '', csvName = 'data' } = {}) {
   return {
     host: q('.chart-host'),
     setCaption: (text) => { q('.chart-caption').textContent = text ?? ''; },
-    // columns: [{ label, unit, decimals }]; rows: arrays of numbers, strings or null
-    setTable(columns, rows) {
-      data = { columns, rows };
+    // columns: [{ label, unit, decimals }]; rows: arrays of numbers, strings or null.
+    // iso (optional): one machine-readable period per row, written as the first CSV column.
+    setTable(columns, rows, iso = null) {
+      data = iso ? { columns: [{ label: t('charts.csv.iso') }, ...columns], rows: rows.map((r, i) => [iso[i], ...r]) } : { columns, rows };
       const cols = columns.map((c) => (typeof c === 'string' ? { label: c } : c));
       const show = (v, c) => (v == null ? t('core.unknown') : typeof v === 'number' ? nf(c.decimals ?? 2).format(v) : String(v));
       q('.table-scroll').innerHTML = `<table class="table"><thead><tr>${cols.map((c) => `<th scope="col">${esc(c.unit ? `${c.label} (${c.unit})` : c.label)}</th>`).join('')}</tr></thead>
@@ -83,7 +77,8 @@ export function chart(host, initial) {
   let apex = null;
   let key = null;
   const mobile = () => matchMedia('(max-width: 639px)').matches;
-  const hidden = loadHidden(spec.id) ?? new Set(spec.series.filter((s) => s.hidden).map((s) => s.key));
+  if (!legendState.has(spec.id)) legendState.set(spec.id, new Set(spec.series.filter((s) => s.hidden).map((s) => s.key)));
+  const hidden = legendState.get(spec.id);
   const zoomOn = () => typeof spec.onZoom === 'function' && matchMedia('(pointer: fine)').matches;
 
   const build = () => {
@@ -94,7 +89,6 @@ export function chart(host, initial) {
       legendClick: (_c, i) => {
         const k = spec.series[i].key;
         if (!hidden.delete(k)) hidden.add(k);
-        saveHidden(spec.id, hidden);
       },
       // the view decides what a zoom means (usually a custom range); the chart itself keeps its extent
       beforeZoom: (c, { xaxis }) => {
@@ -109,7 +103,8 @@ export function chart(host, initial) {
     key?.remove();
     key = null;
     const kinds = new Set((spec.bands ?? []).map((b) => b.kind).filter((k) => KEY_KINDS.includes(k)));
-    const partial = (spec.coverage ?? []).some((c) => c != null && c < 0.9 && c > 0);
+    // only bars are faded (lines and areas are not), so the key shows only when a faded bar is on screen
+    const partial = spec.series.some((s) => s.type === 'bar') && (spec.coverage ?? []).some((c) => c != null && c < 0.9 && c > 0);
     if (!kinds.size && !partial) return;
     key = document.createElement('ul');
     key.className = 'chart-key';

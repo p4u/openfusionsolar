@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { apexOptions, toCsv, gapBands, eventBands, opacityFor, isBelow, legendKey } from '../public/js/chart-data.js';
+import { apexOptions, toCsv, gapBands, eventBands, opacityFor, isBelow, legendKey, timeTick, tooltipHtml, HEIGHTS } from '../public/js/chart-data.js';
+import { setLang } from '../public/js/i18n.js';
+import { setTimeZone, isoLocal, fmtMonthShort, fmtDate } from '../public/js/format.js';
 
 const palette = {
   sun: '#c98500', home: '#2a78d6', grid: '#b0409a', battery: '#199e70', p1: '#7f2c6f', p2: '#b0409a', p3: '#d98fc8',
@@ -48,6 +50,49 @@ test('entities map to palette colours', () => {
   assert.equal(o.annotations.yaxis[0].borderColor, '#dc2626');
   assert.equal(o.annotations.xaxis[0].fillColor, palette.band.cut);
   assert.equal(apexOptions(spec({ series: [{ ...spec().series[0], entity: 'p3' }] }), palette).colors[0], '#d98fc8');
+});
+
+test('csv rounds float noise to 3 decimals and keeps dot decimals', () => {
+  assert.equal(toCsv(['v'], [[168.63999999999993], [0.1 + 0.2], [-0.0004], [2]]), 'v\r\n168.64\r\n0.3\r\n0\r\n2\r\n');
+});
+
+test('csv periods are ISO in the plant zone', () => {
+  setTimeZone('Europe/Madrid');
+  const t = Date.UTC(2026, 7, 10, 10, 15); // 12:15 in Madrid (summer time)
+  assert.equal(isoLocal(t, '15m'), '2026-08-10T12:15');
+  assert.equal(isoLocal(t, '1d'), '2026-08-10');
+  assert.equal(isoLocal(t, '1mo'), '2026-08');
+});
+
+test('time ticks: hours in a day, day at midnight over a few days, months with their year, then years', () => {
+  setLang('en');
+  setTimeZone('Europe/Madrid');
+  const DAY = 86400e3;
+  const midnight = Date.UTC(2026, 7, 9, 22); // 10 Aug 00:00 Madrid
+  assert.equal(timeTick(midnight + 12 * 3600e3, DAY), '12:00');
+  assert.equal(timeTick(midnight, 3 * DAY), fmtDate(midnight));
+  assert.match(timeTick(midnight, 3 * DAY), /10/);
+  assert.equal(timeTick(midnight + 12 * 3600e3, 3 * DAY), '12:00');
+  assert.equal(timeTick(midnight, 30 * DAY), fmtDate(midnight));
+  assert.equal(timeTick(midnight, 400 * DAY), 'Aug 2026');
+  assert.equal(timeTick(midnight, 1000 * DAY), '2026');
+  setLang('ca');
+  assert.equal(fmtMonthShort('2026-01'), 'gen. 2026', 'no "del" inside a tick');
+});
+
+test('tooltips show amounts without sign; the series name says the direction', () => {
+  const s = { id: 't', kind: 'category', unit: 'kWh', y: { decimals: 1 }, x: { categories: ['a'] },
+    series: [{ key: 'sold', name: 'Sold', type: 'bar', entity: 'grid', data: [-222.7] }] };
+  const html = tooltipHtml(s, 0);
+  assert.match(html, /222[.,]7/);
+  assert.doesNotMatch(html, /-222/);
+});
+
+test('y axis ticks have no trailing decimals', () => {
+  const o = apexOptions(spec(), palette);
+  setLang('en');
+  assert.equal(o.yaxis.labels.formatter(2), '2');
+  assert.equal(o.yaxis.labels.formatter(2.5), '2.5');
 });
 
 test('csv has units in headers and empty cells for null', () => {
@@ -113,7 +158,8 @@ test('mixed range, bar and synced strip configs carry what ApexCharts needs', ()
   const b = apexOptions(spec({ id: 'b', group: 'g' }), palette);
   assert.equal(a.chart.type, 'line');
   assert.deepEqual(a.series.map((s) => s.type), ['area', 'bar', 'rangeArea']);
-  assert.equal(a.chart.height, 120);
+  assert.equal(a.chart.height, HEIGHTS.strip);
+  assert.ok(HEIGHTS.strip >= 160, 'strips are tall enough for readable ticks');
   assert.equal(a.chart.group, b.chart.group);
   assert.notEqual(a.chart.id, b.chart.id);
   assert.equal(a.yaxis.labels.minWidth, b.yaxis.labels.minWidth, 'same label width keeps synced plot areas aligned');

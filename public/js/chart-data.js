@@ -2,12 +2,23 @@
 // Data layout: kind 'time' series take [ms, y] pairs, kind 'category' series take y values aligned with
 // x.categories; y is a number, null (a gap) or [min, max] for range types. All series of a chart share one x grid.
 import { t } from './i18n.js';
-import { nf, fmtDate, fmtTime } from './format.js';
+import { nf, nfAxis, fmtDate, fmtTime, fmtMonthShort, dayOf, dayStart } from './format.js';
 import { esc } from './ui.js';
 
 export const PARTIAL = 0.9; // coverage below this is drawn faded and flagged in the tooltip
 const GAP_MIN_MS = 15 * 60e3;
-export const HEIGHTS = { desktop: 340, mobile: 260, strip: 120 };
+export const HEIGHTS = { desktop: 340, mobile: 260, strip: 160 };
+const DAY_MS = 86400e3;
+
+// Tick label of a time axis, chosen by the span shown: hours within a day; over a few days the day at midnight and
+// hours in between (so a day is never repeated); then days, months with their year, and years.
+export function timeTick(ms, span) {
+  if (span <= 1.5 * DAY_MS) return fmtTime(ms);
+  if (span <= 8 * DAY_MS) return Math.abs(dayStart(dayOf(ms)) - ms) < 60e3 ? fmtDate(ms) : fmtTime(ms);
+  if (span <= 120 * DAY_MS) return fmtDate(ms);
+  if (span <= 800 * DAY_MS) return fmtMonthShort(ms);
+  return dayOf(ms).slice(0, 4);
+}
 
 export const opacityFor = (coverage) => (coverage == null || coverage >= PARTIAL ? 1 : coverage <= 0 ? null : 0.45);
 
@@ -41,10 +52,13 @@ const cell = (v) => {
   return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 };
 
+// numbers keep at most 3 decimals: no float noise like 168.63999999999993
+const round3 = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 1000) / 1000 + 0 : v);
+
 // RFC 4180: CRLF lines, quotes doubled, header "Label (unit)", dot decimals, empty for null.
 export function toCsv(columns, rows) {
   const head = columns.map((c) => (typeof c === 'string' ? c : c.unit ? `${c.label} (${c.unit})` : c.label));
-  return [head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
+  return [head, ...rows.map((r) => r.map(round3))].map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
 }
 
 function rgba(hex, alpha) {
@@ -95,7 +109,8 @@ export function tooltipHtml(spec, i, hidden = new Set(), palette = {}) {
   const show = (p) => {
     if (p == null) return t('core.unknown');
     const v = spec.kind === 'time' ? p[1] : p;
-    return Array.isArray(v) ? `${num(v[0])} – ${num(v[1])} ${esc(spec.unit)}` : v == null ? t('core.unknown') : `${num(v)} ${esc(spec.unit)}`;
+    // the series name carries the direction (sold, discharged), so values below zero read as amounts
+    return Array.isArray(v) ? `${num(v[0])} – ${num(v[1])} ${esc(spec.unit)}` : v == null ? t('core.unknown') : `${num(Math.abs(v))} ${esc(spec.unit)}`;
   };
   const head = spec.x?.label ? spec.x.label(i) : spec.kind === 'category' ? spec.x.categories[i] : '';
   const rows = spec.series.filter((s) => !hidden.has(s.key)).map((s) => {
@@ -147,6 +162,11 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
       foreColor: palette.text,
       fontFamily: palette.fontFamily,
       parentHeightOffset: 0,
+      // ApexCharts' own screen-reader texts (legend items) in the app language
+      locales: [{ name: 'app', options: { a11y: {
+        legendItem: t('charts.a11y.legendItem'), visible: t('charts.a11y.visible'), hidden: t('charts.a11y.hidden'),
+      } } }],
+      defaultLocale: 'app',
     },
     series,
     colors,
@@ -162,14 +182,17 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
       ? {
           type: 'datetime', min: spec.x?.min, max: spec.x?.max, tooltip: { enabled: false },
           axisBorder: { color: palette.hairline }, axisTicks: { color: palette.hairline },
-          labels: { style: text, datetimeUTC: false, formatter: (v) => (span <= 2 * 86400e3 ? fmtTime(Number(v)) : fmtDate(Number(v))) },
+          labels: { style: text, datetimeUTC: false, rotate: 0, hideOverlappingLabels: true, formatter: (v) => timeTick(Number(v), span) },
         }
-      : { type: 'category', categories: spec.x?.categories ?? [], tooltip: { enabled: false }, axisBorder: { color: palette.hairline }, axisTicks: { color: palette.hairline }, labels: { style: text } },
+      : {
+          type: 'category', categories: spec.x?.categories ?? [], tooltip: { enabled: false }, axisBorder: { color: palette.hairline }, axisTicks: { color: palette.hairline },
+          labels: { style: text, rotate: 0, hideOverlappingLabels: true, trim: true },
+        },
     // one y axis only: a second unit gets its own strip, synced through `group`
     yaxis: {
       min: spec.y?.min, max: spec.y?.max, forceNiceScale: true,
       title: { text: spec.unit, style: { ...text, fontWeight: 400 } },
-      labels: { style: text, minWidth: 48, maxWidth: 48, formatter: (v) => (v == null ? '' : nf(spec.y?.decimals ?? 1).format(v)) },
+      labels: { style: text, minWidth: 48, maxWidth: 48, formatter: (v) => (v == null ? '' : nfAxis(spec.y?.decimals ?? 1).format(v)) },
     },
     tooltip: {
       shared: true,

@@ -24,7 +24,7 @@ export function renderRangeBar(container, { range, ctx, mode = null, compare = t
       <span class="range-label num" aria-live="polite">${esc(rangeLabel(range, locale()))}</span>
       <button type="button" class="pill pill-outline pill-icon" data-step="1" aria-label="${esc(t('charts.range.next'))}"${next ? '' : ' disabled'}>${icon('chevron-right')}</button>
     </div>
-    ${compare ? `<div class="field range-field"><label for="${id}-cmp">${esc(t('charts.compare.label'))}</label>
+    ${compare ? `<div class="field range-field"><label class="sr-only" for="${id}-cmp">${esc(t('charts.compare.label'))}</label>
       <select id="${id}-cmp">${COMPARES.map((c) => opt(c, t(`charts.compare.${c}`), range.cmp)).join('')}</select></div>` : ''}
     ${mode ? `<details class="disclosure range-advanced"><summary><span>${esc(t('charts.advanced'))}</span>${icon('chevron-down', { size: 16 })}</summary>
       <div class="field range-field"><label for="${id}-b">${esc(t('charts.bucket.label'))}</label>
@@ -43,6 +43,10 @@ export function renderRangeBar(container, { range, ctx, mode = null, compare = t
 
   const q = (s) => container.querySelector(s);
   const dialog = q('dialog');
+  // on a phone the presets scroll sideways: keep the chosen one in view
+  const presets = q('.range-presets');
+  const chosen = q(`input[name="${id}"]:checked`)?.parentElement;
+  if (chosen && presets.scrollWidth > presets.clientWidth) presets.scrollLeft = chosen.offsetLeft - (presets.clientWidth - chosen.offsetWidth) / 2;
   const emit = (r) => onChange(rangeParams(r));
   // a new period resets the bucket: a legal one for the old span may be illegal for the new one
   const keep = { cmp: range.cmp, b: 'auto' };

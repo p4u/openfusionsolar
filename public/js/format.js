@@ -27,6 +27,8 @@ const dateFmt = (opts, timeZone = zone) => intl(Intl.DateTimeFormat, { ...opts, 
 const unknown = (v) => v == null || Number.isNaN(v);
 
 export const nf = (digits) => intl(Intl.NumberFormat, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+// axis ticks: up to `digits` decimals, no trailing zeros ("2", "2,5", never "2,00")
+export const nfAxis = (digits) => intl(Intl.NumberFormat, { maximumFractionDigits: digits });
 export const kw = (v) => (unknown(v) ? t('core.unknown') : `${nf(2).format(v)}${NB}kW`);
 export const kwh = (v, digits = 1) => (unknown(v) ? t('core.unknown') : `${nf(digits).format(v)}${NB}kWh`);
 export const eur = (v) => (unknown(v) ? t('core.unknown') : intl(Intl.NumberFormat, { style: 'currency', currency: 'EUR' }).format(v));
@@ -50,6 +52,25 @@ export function fmtMonth(month) {
   const [y, m] = month.split('-').map(Number);
   const s = dateFmt({ month: 'long', year: 'numeric' }, 'UTC').format(Date.UTC(y, m - 1, 15));
   return s.charAt(0).toLocaleUpperCase(locale()) + s.slice(1);
+}
+
+// Short month with its year for ticks and month buckets: "gen. 2026" / "Jan 2026". 'YYYY-MM' or an instant.
+export function fmtMonthShort(v) {
+  if (unknown(v)) return t('core.unknown');
+  const day = typeof v === 'string';
+  const ts = day ? Date.UTC(Number(v.slice(0, 4)), Number(v.slice(5, 7)) - 1, 15) : v;
+  const parts = dateFmt({ month: 'short', year: 'numeric' }, day ? 'UTC' : zone).formatToParts(ts);
+  const get = (k) => parts.find((p) => p.type === k)?.value ?? '';
+  return `${get('month')} ${get('year')}`;
+}
+
+// Machine-readable period of a bucket start for CSV: 'YYYY-MM-DD' for day buckets, else 'YYYY-MM-DDTHH:mm' (plant time).
+export function isoLocal(ts, bucket) {
+  if (unknown(ts)) return '';
+  if (bucket === '1mo') return dayOf(ts).slice(0, 7);
+  if (bucket === '1y') return dayOf(ts).slice(0, 4);
+  if (bucket === '1d') return dayOf(ts);
+  return `${dayOf(ts)}T${dateFmt({ hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).format(ts)}`;
 }
 
 export function duration(ms) {
