@@ -66,3 +66,11 @@
 .settings-glossary dt { color: var(--ink); font-weight: 500; }
 .settings-glossary dd { margin: var(--sp-xxs) 0 0; }
 @media (pointer: coarse) { .settings-inline { height: 44px; } }
+
+/* assistant and bills */
+.settings-ai { display: grid; gap: var(--sp-sm); }
+.settings-ai p { margin: 0; }
+.settings-ai-usage { color: var(--ink); font-size: var(--fs-title-sm); font-weight: 500; }
+.settings-ai-notice h3 { margin: var(--sp-xs) 0 var(--sp-xxs); color: var(--ink); font-size: var(--fs-body); font-weight: 500; }
+.settings-ai-notice p { max-width: 68ch; }
+.settings-ai-actions { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }

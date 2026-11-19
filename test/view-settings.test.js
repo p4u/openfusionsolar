@@ -192,3 +192,13 @@ test('setField writes into a recipient object', () => {
   setField(cfg, 'recipients.0.lang', 'en');
   assert.deepEqual(cfg.recipients[0], { email: 'z@b.cc', lang: 'en', alerts: [] });
 });
+
+test('usage text formats dollars in both languages', async () => {
+  const { usageText, usd } = await import('../public/js/views/settings-model.js');
+  assert.equal(usageText({ spentUsd: 0.42, budgetUsd: 5 }, 'ca'), 'Aquest mes: 0,42\u00a0$ de 5\u00a0$');
+  assert.equal(usageText({ spentUsd: 0.42, budgetUsd: 5 }, 'en'), 'This month: $0.42 of $5');
+  assert.equal(usageText({ spentUsd: 0, budgetUsd: 0.25 }, 'ca'), 'Aquest mes: 0,00\u00a0$ de 0,25\u00a0$');
+  assert.equal(usageText({ spentUsd: 1234.5, budgetUsd: 2000 }, 'en'), 'This month: $1,234.50 of $2,000');
+  assert.equal(usd(0.0084, 'ca'), '<\u00a00,01\u00a0$');
+  assert.equal(usd(0.0084, 'en'), '<\u00a0$0.01');
+});

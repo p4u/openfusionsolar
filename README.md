@@ -15,8 +15,11 @@ It is generic: plant name, capacity, battery size and limits come from FusionSol
 - **Battery**: charge level, limits (each one says whether it comes from FusionSolar or `.env`), charge and
   discharge, equivalent cycles, round-trip efficiency, hours below the reserve.
 - **Panels**: production, peak power, kWh per kWp, year on year, per-string and inverter temperature details.
-- **Bill**: estimated bill, savings and surplus income for the Spanish 2.0TD tariff when prices are set; kWh only
-  otherwise.
+- **Billing**: your real electricity bills (PDF or photo, read automatically or typed by hand), what you paid
+  month by month, whether each bill matches what the installation measured over the same days, and advice in euros.
+  **Forecast** keeps the estimated bill, savings and surplus income for the Spanish 2.0TD tariff when prices are
+  set; kWh only otherwise.
+- **Assistant** (optional): ask about your bills and your installation in your own words; answers come with charts.
 - **Incidents**: power cuts, internet losses, stopped panels and device alarms, grouped and explained.
 - **Technical data**: any stored device signal over any range.
 - **Settings**: alert recipients and what each one gets, alert rules, quiet hours, test email, alert history, plant
@@ -60,6 +63,9 @@ or disabled.
 | `PRICE_*`, `POWER_P*_KW`, `TAX_*` | no | Tariff (2.0TD, Península). Without `PRICE_P1..P3` the app shows kWh only. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` (or `SMTP_PASSWORD`), `SMTP_FROM` | no | Outgoing mail for alerts. `SMTP_SECURE` defaults to on for port 465, off otherwise. Credentials are never shown in the app or logged. |
 | `ALERT_TO` | no | First alert recipients, comma separated, until Settings is saved once. Each gets the "Everything important" alerts in the app language. |
+| `AI_API_KEY` | no | OpenRouter key for reading bills and for the assistant. Without it the assistant is hidden and bills are typed by hand. |
+| `AI_MODEL_EXTRACT`, `AI_MODEL_CHAT` | no | OpenRouter models for reading bills and for the assistant (default `google/gemini-3.1-flash-lite` for both). |
+| `AI_MONTHLY_BUDGET_USD` | no | Monthly spending limit in US dollars (default 5). |
 
 ## Alerts
 
@@ -99,6 +105,40 @@ the on/off switch of each rule are shared by everyone.
 - Upgrading keeps a saved configuration: older plain address lists become addresses with the "Everything important"
   alerts, and the retired FusionSolar low-battery alert is dropped.
 
+## Bills and assistant
+
+Upload your electricity bills in Billing, Bills (PDF, or photos of a paper bill). With `AI_API_KEY` set, each file
+is read by a language model through [OpenRouter](https://openrouter.ai): the figures are checked with the bill's own
+arithmetic (totals, taxes, kWh, prices, days) and a bill that adds up is confirmed on its own; anything else waits for
+you to review it next to the original. Without the key the files are stored and you type the figures yourself.
+Billing then compares each bill with what the installation measured over the same days.
+
+The assistant (the speech bubble in the header) answers questions about your bills and your plant in Catalan or
+English. It reads the data through read-only tools and draws charts from the app's own data; it cannot change or
+delete anything. A bill can be attached to a question.
+
+- **Keys**: `AI_API_KEY` (an OpenRouter key), `AI_MODEL_EXTRACT` and `AI_MODEL_CHAT` (default
+  `google/gemini-3.1-flash-lite` for both; any OpenRouter model that takes PDFs and tools works),
+  `AI_MONTHLY_BUDGET_USD` (default 5). At the limit, uploads are still stored and can be filled in by hand, and the
+  assistant pauses until the next month. Settings, Assistant and bills shows this month's spending.
+- **What is sent** to OpenRouter: the whole bill file (it carries your name, tax id, address and supply number), your
+  questions, and the figures the tools return (with the supply number masked). Requests ask for providers that do
+  not keep or train on the data. **Never sent**: the app password, the FusionSolar credentials, e-mail addresses
+  or the API key. The app shows this notice before the first upload or question.
+- **Where files are kept**: next to the database, in `data/bills` (named by their hash), never under `public/`.
+  Logs carry status codes only, never bill contents.
+- **Deleting**: one bill from its page; all bills, or all assistant conversations, from Settings, Assistant and
+  bills. Deleting a bill removes its original file too.
+- **Costs** with the default model: about 0.005 USD per bill and 0.0003 to 0.004 USD per question, so a normal
+  month stays well under 1 USD.
+
+A live check against OpenRouter (it reads `AI_API_KEY` from `.env` and spends about one cent) is skipped by `npm
+test`; run it on purpose with:
+
+```sh
+AI_SMOKE=1 node --disable-warning=ExperimentalWarning --test test/smoke-llm.test.js
+```
+
 ## Install on a phone
 
 Behind the HTTPS proxy the app installs like a native one: in Chrome on Android use "Install app" (or "Add to
@@ -116,7 +156,8 @@ checks the lists).
 
 Everything lives in `./data` (mounted into the container): `openfusionsolar.db` (readings, incidents, alert
 settings and history) and `.session.json` (the FusionSolar portal session). Back up that folder to keep your history.
-Nothing is sent anywhere except to FusionSolar (to read your plant) and your SMTP server (alerts).
+Uploaded bills are kept in `./data/bills`. Nothing is sent anywhere except to FusionSolar (to read your plant), your
+SMTP server (alerts) and, only when `AI_API_KEY` is set, OpenRouter (bills and assistant questions, see above).
 
 If the FusionSolar login fails, the collector pauses logins for 30 minutes to avoid locking the account; Settings
 shows when it will try again.

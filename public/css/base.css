@@ -390,6 +390,7 @@ main:focus { outline: none; }
 .sheet-list { display: flex; flex-direction: column; }
 .sheet .menu-item { min-height: 52px; font-size: var(--fs-body); border-radius: var(--r-md); }
 .sheet-close { width: 100%; margin-top: var(--sp-sm); }
+.sheet .actions { display: flex; flex-wrap: wrap; gap: var(--sp-xs); margin-top: var(--sp-base); } /* confirm and notice dialogs */
 @media (min-width: 640px) {
   .sheet {
     width: min(100% - 2 * var(--sp-base), 440px);

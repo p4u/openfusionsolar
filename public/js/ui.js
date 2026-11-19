@@ -86,6 +86,26 @@ export function statusLine({ state = 'ok', title, details = [], link = null }) {
   </div>`;
 }
 
+// Modal question with two buttons; resolves true on `yes`, false on `no`, Escape or close. Labels are plain text.
+export function confirmDialog({ title, body, yes, no }) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'sheet';
+    dialog.setAttribute('aria-labelledby', 'confirm-title');
+    dialog.innerHTML = `<h2 id="confirm-title" class="view-title">${esc(title)}</h2>${body ? `<p>${esc(body)}</p>` : ''}
+      <div class="actions"><button type="button" class="pill pill-primary" data-yes>${esc(yes)}</button>
+      <button type="button" class="pill pill-outline" data-no>${esc(no)}</button></div>`;
+    let answer = false;
+    dialog.addEventListener('click', (e) => {
+      if (e.target.closest('[data-yes]')) answer = true;
+      if (e.target.closest('[data-yes], [data-no]')) dialog.close();
+    });
+    dialog.addEventListener('close', () => { dialog.remove(); resolve(answer); });
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+}
+
 // Skeleton while fn runs; on failure an error with a retry that runs fn again. fn fills el itself.
 export async function loadBlock(el, height, fn) {
   el.innerHTML = skeleton(height);
