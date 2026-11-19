@@ -276,7 +276,7 @@ async function detail(body, ctx, id) {
             <label class="invoices-check"><input type="checkbox" data-nonumber${(typed ? typed.noNumber : inv.invoice_number === '') ? ' checked' : ''}> <span>${esc(t('invoices.noNumber'))}</span></label>
             ${confirmed ? '' : `<p class="hint">${esc(t('invoices.saveHint'))}</p>`}
             <div class="invoices-bar">
-              <div class="field-error invoices-message" role="alert"${message ? '' : ' hidden'}><p>${esc(message)}</p>
+              <div class="field-error invoices-message"${message ? '' : ' hidden'}><p>${esc(message)}</p>
                 ${failed.notes.length ? `<ul class="invoices-fails">${failed.notes.map((n) => `<li><a href="#f-${n.col}" data-goto="${n.col}">${esc(t(`invoices.col.${n.col}`))}</a>: ${esc(n.text)}</li>`).join('')}</ul>` : ''}
                 ${showForce ? `<p>${esc(t('invoices.forceHint'))}</p>` : ''}</div>
               <div class="actions">
@@ -319,11 +319,12 @@ async function detail(body, ctx, id) {
     // act: save | confirm | force; revert: columns to put back to the value read from the bill
     async function submit(act, revert = null) {
       const keep = snapshot();
+      if (revert) errors = {};
       const fields = revert ? {} : collect();
       message = '';
       saved = '';
       failed = { notes: [], byCol: {} };
-      if (Object.keys(errors).length) { typed = keep; message = t('invoices.err.fix'); return paint(); }
+      if (Object.keys(errors).length) { typed = keep; message = t('invoices.err.fix'); paint(); live.textContent = message; return; }
       try {
         d = await saveInvoice(id, fields, { confirm: act !== 'save', force: act === 'force', noNumber: keep.noNumber, revert }, { signal });
         forceable = false;
