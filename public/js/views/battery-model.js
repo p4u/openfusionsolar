@@ -16,6 +16,23 @@ export function clampFrom(from, to, firstSampleDay, maxDays = 750) {
 export const seriesBucket = (range) => (legalSeriesBuckets(range.days).includes(range.b) ? range.b : autoSeriesBucket(range.days));
 export const energyBucket = (range) => (legalEnergyBuckets(range.days).includes(range.b) ? range.b : autoEnergyBucket(range.days, range.r === 'all'));
 
+// Where the present flow takes the battery, and how long it would take at this rate. Giving power: down to the
+// minimum charge. Charging from the grid (buying while the sun covers less than the charge): up to the grid-charge
+// cutoff, where the grid stops. Charging from the sun: up to the end-of-charge level (100 % when unknown).
+// { kind: 'min' | 'grid' | 'sun', target, hours } or null (idle, unknown, already there, or over 48 hours).
+const ACTIVE_KW = 0.05;
+export function chargeEta(rt, b = {}) {
+  const soc = rt?.soc;
+  const bat = rt?.battery_kw;
+  if (soc == null || bat == null || !(b.capacityKwh > 0) || Math.abs(bat) <= ACTIVE_KW) return null;
+  const fromGrid = bat > 0 && (rt.grid_kw ?? 0) > ACTIVE_KW && (rt.pv_kw ?? 0) < bat;
+  const kind = bat < 0 ? 'min' : fromGrid && b.gridChargeCutoffPct != null ? 'grid' : 'sun';
+  const target = kind === 'min' ? b.minPct ?? 0 : kind === 'grid' ? b.gridChargeCutoffPct : b.endOfChargePct ?? 100;
+  if (kind === 'min' ? soc <= target : soc >= target) return null;
+  const hours = ((Math.abs(target - soc) / 100) * b.capacityKwh) / Math.abs(bat);
+  return hours > 48 ? null : { kind, target, hours };
+}
+
 // Equivalent full cycles: discharged energy over capacity. null without both.
 export const cycles = (dischargeKwh, capacity) => (dischargeKwh == null || !(capacity > 0) ? null : dischargeKwh / capacity);
 

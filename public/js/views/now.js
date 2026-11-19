@@ -94,7 +94,7 @@ function flowCard(status) {
 // ---------- battery card ----------
 const hoursFloor = (b) => (b.minPct ? t('now.bat.autonomyFloor', { min: b.minPct }) : '');
 
-function batteryCard(status) {
+function batteryCard(status, open = false) {
   const rt = status.realtime;
   const b = status.battery ?? {};
   const soc = rt?.soc ?? null;
@@ -125,7 +125,7 @@ function batteryCard(status) {
     <p class="now-soc">${esc(pct(soc))}</p>${bar}
     <p class="now-bat-state">${esc(soc == null ? t('now.bat.noReading') : state)}</p>
     ${autonomy ? `<p class="now-bat-autonomy">${esc(autonomy)}</p>` : ''}
-    ${why.length || limits.length ? `<details class="disclosure now-bat-more"><summary><span>${esc(t('now.bat.more'))}</span>${icon('chevron-down', { size: 16 })}</summary>
+    ${why.length || limits.length ? `<details class="disclosure now-bat-more"${open ? ' open' : ''}><summary><span>${esc(t('now.bat.more'))}</span>${icon('chevron-down', { size: 16 })}</summary>
       ${why.map((w) => `<p class="hint">${esc(w)}</p>`).join('')}
       ${limits.length ? `<dl class="now-limits">${limits.map(([k, , v, extra]) => `<div class="now-limit"><dt>${esc(t(`now.bat.${k}`))}</dt>
       <dd><span class="num">${esc(v)}</span>${extra ? ` <span class="hint">${esc(extra)}</span>` : ''}</dd></div>`).join('')}</dl>` : ''}</details>` : ''}
@@ -165,8 +165,10 @@ async function fillTop(el, ctx, shared) {
     col?.authBlockedUntil > now && t('now.authPaused', { time: fmtTime(col.authBlockedUntil) }),
   ].filter(Boolean);
   const link = recent.length ? { href: '#/incidents', label: t('now.head.seeIncidents') } : null;
+  // beside the tall flow card the limits are open on wide screens; a refresh keeps what the user chose
+  const batOpen = el.querySelector('.now-bat-more')?.open ?? matchMedia('(min-width: 1024px)').matches;
   el.innerHTML = `${statusLine({ state: h.state, title: t(`${h.key}.title`), details, link })}${heroFacts(status, month.total, year.total)}
-    <div class="grid now-grid">${flowCard(status)}${batteryCard(status)}</div>`;
+    <div class="grid now-grid">${flowCard(status)}${batteryCard(status, batOpen)}</div>`;
   ctx.fresh.textContent = status.lastSampleTs ? t('now.dataFrom', { time: fmtTime(status.lastSampleTs) }) : '';
 }
 

@@ -56,3 +56,27 @@ test('the reserve only counts and draws from the day it was set', async () => {
   assert.deepEqual(reserveMarks(50, 2 * H, t), { mode: 'part', data: [[0, null], [H, null], [2 * H, 50], [3 * H, 50]] });
   assert.deepEqual(reserveMarks(null, 0, t), { mode: 'none' });
 });
+
+test('the time estimate aims at the grid cutoff when the grid charges, at the end of charge when the sun does', async () => {
+  const { chargeEta } = await import('../public/js/views/battery-model.js');
+  const b = { capacityKwh: 10, minPct: 10, gridChargeCutoffPct: 50 };
+  // the round-3 case: 43 %, 1 kW from the grid at night, cutoff 50 %: 0.7 kWh, about 42 minutes, never "full"
+  const grid = chargeEta({ soc: 43, battery_kw: 1, grid_kw: 1.4, pv_kw: 0, load_kw: 0.4 }, b);
+  assert.equal(grid.kind, 'grid');
+  assert.equal(grid.target, 50);
+  assert.ok(Math.abs(grid.hours - 0.7) < 1e-9);
+  // the sun covers the charge: up to the end of charge, 100 % when unknown, or the level FusionSolar reports
+  const sunRt = { soc: 43, battery_kw: 1, grid_kw: -0.5, pv_kw: 2.5, load_kw: 1 };
+  assert.deepEqual([chargeEta(sunRt, b).kind, chargeEta(sunRt, b).target], ['sun', 100]);
+  assert.equal(chargeEta(sunRt, { ...b, endOfChargePct: 90 }).target, 90);
+  // giving power: down to the minimum charge
+  const give = chargeEta({ soc: 30, battery_kw: -2, grid_kw: 0, pv_kw: 0, load_kw: 2 }, b);
+  assert.deepEqual([give.kind, give.target, give.hours], ['min', 10, 1]);
+  // already at the cutoff, idle, unknown capacity, or more than two days: nothing to say
+  assert.equal(chargeEta({ soc: 50, battery_kw: 1, grid_kw: 1.2, pv_kw: 0 }, b), null);
+  assert.equal(chargeEta({ soc: 43, battery_kw: 0.01 }, b), null);
+  assert.equal(chargeEta({ soc: 43, battery_kw: 1 }, { gridChargeCutoffPct: 50 }), null);
+  assert.equal(chargeEta({ soc: 11, battery_kw: -0.06, grid_kw: 0, pv_kw: 0 }, { capacityKwh: 1000, minPct: 10 }), null);
+  // grid charging with an unknown cutoff falls back to the end of charge
+  assert.equal(chargeEta({ soc: 43, battery_kw: 1, grid_kw: 1.4, pv_kw: 0 }, { capacityKwh: 10 }).kind, 'sun');
+});

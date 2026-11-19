@@ -11,7 +11,12 @@
 .battery-mark-name { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
 .battery-mark-name.at-start { transform: translateX(-1px); }
 .battery-mark-name.at-end { transform: translateX(calc(-100% + 1px)); }
-.battery-mark-name.second { top: 1.5em; }
+.battery-mark-names.two-rows .battery-mark-name.second { top: 1.5em; }
+/* phones: the second name always gets its own row, so "Minimum charge 10 %" and "Reserve 60 %" never touch */
+@media (max-width: 639px) {
+  .battery-mark-names:has(.second) { height: 3em; }
+  .battery-mark-name.second { top: 1.5em; }
+}
 /* today's totals sit at the foot of the card, so it is not half empty next to the limits */
 .card:has(> .battery-now) { display: flex; flex-direction: column; }
 .battery-now { flex: 1 1 auto; }
@@ -21,6 +26,10 @@
 .battery-today dd { margin: 0; color: var(--ink); font-size: var(--fs-title-sm); font-weight: 500; }
 /* limits: label left, value and its source right, one row each (the same pattern as the Now battery card) */
 .battery-limits { margin: var(--sp-xs) 0 0; }
+/* beside the taller now card the rows share the card's height instead of leaving its foot empty */
+.card:has(> .battery-limits) { display: flex; flex-direction: column; }
+.battery-limits { display: flex; flex: 1 1 auto; flex-direction: column; }
+.battery-limit { flex: 1 1 auto; align-items: center; }
 .battery-limit { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 var(--sp-base); padding-block: var(--sp-xs); border-top: 1px solid var(--hairline); }
 .battery-limit dt { color: var(--body); }
 .battery-limit dd { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: 0 var(--sp-xs); margin: 0; text-align: right; }

@@ -3,13 +3,13 @@ import { register, t } from '../i18n.js';
 import dict from '../i18n/battery.js';
 import { esc, icon, ledger, loadBlock, emptyState } from '../ui.js';
 import { getSeries, getEnergy, getSignals, getSignalHistory } from '../api.js';
-import { kw, kwh, pct, nf, fmtDate, fmtDateTime, fmtMonthShort, isoLocal, dayStart } from '../format.js';
+import { kw, kwh, pct, nf, duration, fmtDate, fmtDateTime, fmtMonthShort, isoLocal, dayStart } from '../format.js';
 import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { defaultMode } from '../buckets.js';
 import { figure, chart } from '../charts.js';
 import { gapBands, bucketAxis } from '../chart-data.js';
-import { BUCKET_MS, clampFrom, seriesBucket, energyBucket, cycles, roundTrip, daysAtMin, hoursBelow, reserveMarks } from './battery-model.js';
+import { BUCKET_MS, chargeEta, clampFrom, seriesBucket, energyBucket, cycles, roundTrip, daysAtMin, hoursBelow, reserveMarks } from './battery-model.js';
 
 register(dict);
 
@@ -45,11 +45,11 @@ function nowCard(status) {
   const marks = [[b.minPct, t('battery.ref.min', { v: b.minPct })], [b.reservePct, t('battery.ref.reserve', { v: b.reservePct })]]
     .filter(([v]) => v != null).sort((x, y) => x[0] - y[0]);
   const close = marks.length === 2 && marks[1][0] - marks[0][0] < 30;
-  const names = marks.map(([v, text], i) => `<span class="battery-mark-name${v < 15 ? ' at-start' : v > 85 ? ' at-end' : ''}${close && i === 1 ? ' second' : ''}" style="left:${at(v)}%">${esc(text)}</span>`).join('');
-  // how long the current flow would take to reach the minimum or a full battery
-  const hours = bat == null || soc == null || b.capacityKwh == null ? null
-    : bat < -0.05 ? usable / -bat : bat > 0.05 ? ((100 - soc) / 100) * b.capacityKwh / bat : null;
-  const eta = hours == null || hours > 48 ? '' : t(bat < 0 ? 'battery.now.toMin' : 'battery.now.toFull', { h: nf(1).format(hours) });
+  const names = marks.map(([v, text], i) => `<span class="battery-mark-name${v < 15 ? ' at-start' : v > 85 ? ' at-end' : ''}${i === 1 ? ' second' : ''}" style="left:${at(v)}%">${esc(text)}</span>`).join('');
+  // how long the current flow would take to reach its next limit (never "full" when the grid stops before)
+  const e = chargeEta(rt, b);
+  const eta = !e ? '' : t(e.kind === 'min' ? 'battery.now.toMin' : e.kind === 'grid' ? 'battery.now.toCutoff' : e.target >= 100 ? 'battery.now.toFull' : 'battery.now.toEnd',
+    { d: duration(e.hours * 3600e3), pct: e.target });
   return `<div class="battery-now">
     <div class="battery-now-main">
       <span class="tile-label">${icon('battery-medium', { size: 16 })}<span>${esc(t('battery.now.charge'))}</span></span>

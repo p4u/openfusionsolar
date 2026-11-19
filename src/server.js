@@ -60,6 +60,7 @@ export function batteryInfo(store, cfg) {
     reserveSince: reserve?.since ?? null,
     chargeFromGrid: fs.chargeFromGrid ?? null,
     gridChargeCutoffPct: fs.gridChargeCutoffPct ?? null,
+    endOfChargePct: fs.endOfChargePct ?? null,
     maxChargeKw: fs.maxChargeKw ?? null,
     maxDischargeKw: fs.maxDischargeKw ?? null,
     source: {
