@@ -1,4 +1,5 @@
 // Pure helpers of the Panels view.
+import { addMonths } from '../buckets.js';
 
 export const kwhPerKwp = (kwh, kwp) => (kwh == null || !(kwp > 0) ? null : kwh / kwp);
 
@@ -24,6 +25,13 @@ export function stringPairs(signals) {
 export const stringPower = (v, a) => (v == null || a == null ? null : (v * a) / 1000);
 
 // 12 rows for Jan to Dec; a month missing from either list stays null. Inputs are 1mo energy buckets { key: 'YYYY-MM', pv_kwh }.
+// Days of the year-on-year chart: a year still in progress is compared with the same days of the year before (to the
+// same date), never a partial month with a complete one. { thisTo, lastTo, partial }.
+export function yoySpan(year, today) {
+  const partial = Number(today.slice(0, 4)) === year;
+  return { thisTo: partial ? today : `${year}-12-31`, lastTo: partial ? addMonths(today, -12) : `${year - 1}-12-31`, partial };
+}
+
 export function yoyMonths(thisYear, lastYear) {
   const pick = (list) => {
     const m = new Map((list ?? []).map((b) => [Number(b.key.slice(5, 7)), b.pv_kwh ?? null]));

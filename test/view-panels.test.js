@@ -44,3 +44,10 @@ test('stopped hours clip events to the range and run open ones to now', () => {
   const ev = [{ kind: 'noProduction', start: 0, end: 3 * H }, { kind: 'noProduction', start: 9 * H, end: null }, { kind: 'gridCut', start: 0, end: 99 * H }];
   assert.equal(stoppedHours(ev, 1 * H, 10 * H, 12 * H), 2 + 1);
 });
+
+test('year on year compares a year in progress with the same days of the year before', async () => {
+  const { yoySpan } = await import('../public/js/views/panels-model.js');
+  assert.deepEqual(yoySpan(2026, '2026-11-19'), { thisTo: '2026-11-19', lastTo: '2025-11-19', partial: true });
+  assert.deepEqual(yoySpan(2025, '2026-11-19'), { thisTo: '2025-12-31', lastTo: '2024-12-31', partial: false });
+  assert.equal(yoySpan(2028, '2028-02-29').lastTo, '2027-02-28');
+});

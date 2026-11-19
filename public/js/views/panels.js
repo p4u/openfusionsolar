@@ -10,7 +10,7 @@ import { defaultMode, addDays } from '../buckets.js';
 import { figure, chart } from '../charts.js';
 import { gapBands, eventBands, bucketAxis } from '../chart-data.js';
 import { BUCKET_MS, clampFrom, seriesBucket, energyBucket } from './battery-model.js';
-import { kwhPerKwp, peak, stringPairs, stringPower, yoyMonths, stoppedHours } from './panels-model.js';
+import { kwhPerKwp, peak, stringPairs, stringPower, yoyMonths, yoySpan, stoppedHours } from './panels-model.js';
 
 register(dict);
 
@@ -143,13 +143,14 @@ export async function render(root, ctx) {
 
   loadBlock(q('yoy'), 340, async (el) => {
     const year = Number(range.to.slice(0, 4));
-    const get = (y) => getEnergy({ from: `${y}-01-01`, to: `${y}-12-31`, bucket: '1mo' }, { signal });
-    const [a, b] = await Promise.all([get(year), get(year - 1)]);
+    const span = yoySpan(year, ctx.today);
+    const get = (y, to) => getEnergy({ from: `${y}-01-01`, to, bucket: '1mo' }, { signal });
+    const [a, b] = await Promise.all([get(year, span.thisTo), get(year - 1, span.lastTo)]);
     const rows = yoyMonths(a.buckets, b.buckets);
     if (!rows.some((m) => m.thisYear != null || m.lastYear != null)) return void (el.innerHTML = emptyState({ title: t('panels.yoy.title'), body: t('panels.yoy.none') }));
     const cats = bucketAxis(rows.map((m) => `${year}-${String(m.month).padStart(2, '0')}`), '1mo').categories;
     draw(el, {
-      title: t('panels.yoy.title'), caption: t('panels.yoy.caption', { year, last: year - 1 }), csv: 'panels-year-on-year',
+      title: t('panels.yoy.title'), caption: span.partial ? t('panels.yoy.captionToDate', { year, last: year - 1, date: fmtDate(ctx.today, { day: 'numeric', month: 'long' }) }) : t('panels.yoy.caption', { year, last: year - 1 }), csv: 'panels-year-on-year',
       spec: {
         id: 'panels-yoy', kind: 'category', unit: 'kWh', x: { categories: cats }, y: { min: 0, decimals: 0 },
         series: [
