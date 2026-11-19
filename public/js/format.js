@@ -49,10 +49,11 @@ export function fmtDate(dayOrTs, opts = { day: 'numeric', month: 'short' }) {
   return dateFmt(opts).format(dayOrTs);
 }
 
-export function fmtMonth(month) {
+// "Gener del 2026" to start a line; { mid: true } keeps the language's own case inside a sentence ("gener del 2026").
+export function fmtMonth(month, { mid = false } = {}) {
   const [y, m] = month.split('-').map(Number);
   const s = dateFmt({ month: 'long', year: 'numeric' }, 'UTC').format(Date.UTC(y, m - 1, 15));
-  return s.charAt(0).toLocaleUpperCase(locale()) + s.slice(1);
+  return mid ? s : s.charAt(0).toLocaleUpperCase(locale()) + s.slice(1);
 }
 
 // Short month with its year for ticks and month buckets: "gen. 2026" / "Jan 2026". 'YYYY-MM' or an instant.

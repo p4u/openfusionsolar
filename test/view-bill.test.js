@@ -100,3 +100,30 @@ test('real bill amounts are read the way people type them, and wrong ones are na
   assert.equal(billDelta(null, 58.1), null);
   assert.equal(billDelta(50, null), null);
 });
+
+test('the totals row adds the real bills typed so far and their difference with the estimate', async () => {
+  const { realTotals } = await import('../public/js/views/bill-model.js');
+  const rows = [
+    { key: '2026-01', money: { bill: 80.5 } },
+    { key: '2026-02', money: { bill: 40 } },
+    { key: '2026-03', money: null }, // no estimate: its real amount is summed, not compared
+    { key: '2026-04', money: { bill: 20 } },
+  ];
+  assert.deepEqual(realTotals(rows, { '2026-01': 82.1, '2026-02': 39.95, '2026-03': 30 }), { real: 152.05, delta: 1.55, n: 3, m: 4 });
+  assert.deepEqual(realTotals(rows, {}), { real: null, delta: null, n: 0, m: 4 });
+  assert.deepEqual(realTotals(rows, { '2026-03': 30 }), { real: 30, delta: null, n: 1, m: 4 });
+});
+
+test('a month inside a Catalan sentence is lowercase and takes the elided preposition', async () => {
+  const { fmtMonth } = await import('../public/js/format.js');
+  const { ofPeriod } = await import('../public/js/views/energy-model.js');
+  const { t } = await import('../public/js/i18n.js');
+  setLang('ca');
+  const label = (m) => t('bill.table.realFor', { month: ofPeriod(fmtMonth(m, { mid: true })) });
+  assert.match(label('2026-04'), /^Factura real d’abril (de |del )2026, en euros$/);
+  assert.match(label('2026-05'), /^Factura real de maig (de |del )2026/);
+  assert.match(label('2025-10'), /^Factura real d’octubre/);
+  assert.match(fmtMonth('2026-01'), /^Gener/, 'a month that starts a line keeps its capital');
+  setLang('en');
+  assert.match(label('2026-04'), /^Real bill for April 2026/);
+});

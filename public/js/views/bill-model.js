@@ -69,5 +69,19 @@ export function parseAmount(text) {
   return value > 1e6 ? { error: 'range' } : { value };
 }
 
+// The real-bill cells of the totals row: the sum of the real amounts typed so far, the real-minus-estimate over the
+// months that have both, and n (months with a real amount) of m (months shown). Null sums when there is nothing to add.
+export function realTotals(rows, bills) {
+  const round = (v) => Math.round(v * 100) / 100;
+  const withReal = rows.filter((r) => bills?.[r.key] != null);
+  const both = withReal.filter((r) => r.money?.bill != null);
+  return {
+    real: withReal.length ? round(withReal.reduce((a, r) => a + bills[r.key], 0)) : null,
+    delta: both.length ? round(both.reduce((a, r) => a + bills[r.key] - r.money.bill, 0)) : null,
+    n: withReal.length,
+    m: rows.length,
+  };
+}
+
 // Real bill minus the estimate, in euros; null when either is unknown.
 export const billDelta = (real, estimate) => (real == null || estimate == null ? null : Math.round((real - estimate) * 100) / 100);

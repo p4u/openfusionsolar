@@ -160,7 +160,7 @@ export async function render(root, ctx) {
     const value = (s, i) => (hourly ? s.data[i][1] : s.data[i]);
     const fig = figure(figs, { title: t('energy.chart.energy'), csvName: `energy-${from}_${to}` });
     // buckets with production but no meter readings: the bars are missing there, the production point is real
-    const noMeter = hourly ? [] : m.buckets.map((b, i) => (b.pv_kwh != null && b.load_kwh == null && b.import_kwh == null ? m.label(i) : null)).filter(Boolean);
+    const noMeter = hourly ? [] : m.buckets.map((b, i) => (b.pv_kwh != null && b.load_kwh == null && b.import_kwh == null ? (data.energy.bucket === '1mo' ? fmtMonth(b.key, { mid: true }) : m.label(i)) : null)).filter(Boolean);
     fig.setCaption(`${t('energy.caption.energy', {
       produced: kwh(data.energy.total.pv_kwh), consumed: kwh(data.energy.total.load_kwh),
       bought: kwh(data.energy.total.import_kwh), sold: kwh(data.energy.total.export_kwh),

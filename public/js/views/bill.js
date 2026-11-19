@@ -9,9 +9,9 @@ import { figure, chart } from '../charts.js';
 import { addDays } from '../buckets.js';
 import { bucketAxis } from '../chart-data.js';
 import { eur, kwh, kw, nf, fmtDate, fmtMonth, dayOf } from '../format.js';
-import { monthRows, peakVsContracted, monthTotals, parseAmount, billDelta } from './bill-model.js';
+import { monthRows, peakVsContracted, monthTotals, parseAmount, billDelta, realTotals } from './bill-model.js';
 import { phaseLink } from './signals-model.js';
-import { deltaText, compareLabel } from './energy-model.js';
+import { deltaText, compareLabel, ofPeriod } from './energy-model.js';
 
 register(dict);
 
@@ -216,55 +216,93 @@ export async function render(root, ctx) {
     reset(el);
     if (!rows.length) return empty(el);
     const money = rows.some((r) => r.money);
-    const head = [t('bill.table.month'), t('bill.table.bought'), ...['p1', 'p2', 'p3'].map((p) => t(`bill.period.${p}`)), t('bill.table.sold'),
-      ...(money ? ['energy', 'fixed', 'bill', 'savings'].map((k) => t(`bill.table.${k}`)) : []), t('bill.table.real'), ...(money ? [t('bill.table.diff')] : [])];
-    const num = (s, cls = '') => `<td class="num${cls}">${esc(s)}</td>`;
+    // cls: 'bill-opt' leaves the phone card, 'bill-wide' shows from 1200 px only (both stay in the chart tables)
+    const cols = [
+      { key: 'bought', label: t('bill.table.bought'), cell: (r) => kwh(r.bought) },
+      { key: 'periods', label: t('bill.table.periods'), cls: 'bill-opt', cell: (r) => r.byPeriod.map((v) => (v == null ? t('core.unknown') : nf(0).format(v))).join(' / ') },
+      { key: 'sold', label: t('bill.table.sold'), cls: 'bill-opt', cell: (r) => kwh(r.sold) },
+      ...(money ? [
+        { key: 'energy', label: t('bill.table.energy'), cls: 'bill-opt bill-wide', cell: (r) => eur(r.money?.energy) },
+        { key: 'fixed', label: t('bill.table.fixed'), cls: 'bill-opt bill-wide', cell: (r) => eur(r.money?.fixed) },
+        { key: 'bill', label: t('bill.table.bill'), cell: (r) => eur(r.money?.bill) },
+        { key: 'savings', label: t('bill.table.savings'), cls: 'bill-opt', cell: (r) => eur(r.money?.savings) },
+      ] : []),
+    ];
+    const realLabel = t('bill.table.real');
+    const diffLabel = t('bill.table.diff');
+    const span = 1 + cols.length + 1 + (money ? 1 : 0);
+    const td = (label, html, cls = '') => `<td class="num${cls ? ` ${cls}` : ''}" data-label="${esc(label)}">${html}</td>`;
+    const cells = (r) => cols.map((c) => td(c.label, esc(c.cell(r)), c.cls)).join('');
     const signed = (v) => (v == null ? '' : `${v > 0 ? '+' : ''}${eur(v)}`);
-    const cells = (r) => `${num(kwh(r.bought))}${r.byPeriod.map((v) => num(kwh(v))).join('')}${num(kwh(r.sold))}${money ? [r.money?.energy, r.money?.fixed, r.money?.bill, r.money?.savings].map((v) => num(eur(v))).join('') : ''}`;
     const realCell = (r) => {
       const v = bills[r.key];
       const id = `bill-real-${r.key}`;
-      return `<td class="num"><input id="${id}" class="input bill-real" type="text" inputmode="decimal" autocomplete="off" data-month="${esc(r.key)}"
-        value="${v == null ? '' : esc(nf(2).format(v))}" aria-label="${esc(t('bill.table.realFor', { month: monthLabel(r.key) }))}" aria-describedby="${id}-msg">
-        <span id="${id}-msg" class="bill-real-msg hint" role="status"></span></td>`;
+      const month = ofPeriod(fmtMonth(r.key, { mid: true }));
+      return td(realLabel, `<input id="${id}" class="input bill-real" type="text" inputmode="decimal" autocomplete="off" data-month="${esc(r.key)}"
+        value="${v == null ? '' : esc(nf(2).format(v))}" aria-label="${esc(t('bill.table.realFor', { month }))}" aria-describedby="${id}-msg">`);
     };
-    const diffCell = (r) => (money ? num(signed(billDelta(bills[r.key], r.money?.bill)), ' bill-diff') : '');
+    const diffCell = (r) => (money ? td(diffLabel, esc(signed(billDelta(bills[r.key], r.money?.bill))), 'bill-diff') : '');
+    // the message of a month spans its whole row, under it, so it never squeezes into the narrow input cell
+    const msgRow = (r) => `<tr class="bill-msg-row" hidden><td colspan="${span}"><span id="bill-real-${esc(r.key)}-msg" class="bill-real-msg"></span></td></tr>`;
     const body = rows.map((r) => {
-      const flags = [r.provisional ? badge(t('core.badge.provisional'), 'provisional') : '', r.daysExpected > r.days ? badge(t('bill.table.partial'), 'warn') : ''].join(' ');
-      return `<tr data-month="${esc(r.key)}"><th scope="row">${esc(fmtMonth(r.key))} ${flags}</th>${cells(r)}${realCell(r)}${diffCell(r)}</tr>`;
+      const flags = [r.provisional ? badge(t('core.badge.provisional'), 'provisional') : '', r.daysExpected > r.days ? badge(t('bill.table.partial'), 'warn') : ''].join(' ').trim();
+      return `<tr data-month="${esc(r.key)}"><th scope="row"><span>${esc(fmtMonth(r.key))}</span>${flags ? `<span class="bill-flags">${flags}</span>` : ''}</th>${cells(r)}${realCell(r)}${diffCell(r)}</tr>${msgRow(r)}`;
     });
+    // real-bill totals over the months that have one: "3 of 11 months"
+    const footReal = () => {
+      const rt = realTotals(rows, bills);
+      const count = rt.n && rt.n < rt.m ? `<span class="hint bill-real-count">${esc(t('bill.table.realCount', { n: rt.n, m: rt.m }))}</span>` : '';
+      return `${td(realLabel, `${rt.real == null ? '' : esc(eur(rt.real))}${count}`, 'bill-foot-real')}${money ? td(diffLabel, esc(signed(rt.delta)), 'bill-foot-diff') : ''}`;
+    };
     const tot = monthTotals(rows);
-    el.innerHTML = `<h2 class="card-title">${esc(t('bill.table.title'))}</h2><p class="hint">${esc(t('bill.table.realHint'))}</p><div class="table-scroll"><table class="table">
-      <thead><tr>${head.map((h, i) => `<th scope="col"${i ? ' class="num"' : ''}>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body.join('')}</tbody>
-      <tfoot><tr><th scope="row">${esc(t('bill.table.total'))}</th>${cells(tot)}<td></td>${money ? '<td></td>' : ''}</tr></tfoot></table></div>`;
+    el.innerHTML = `<h2 class="card-title">${esc(t('bill.table.title'))}</h2><p class="hint">${esc(t('bill.table.realHint'))}</p><div class="table-scroll"><table class="table bill-months">
+      <thead><tr><th scope="col">${esc(t('bill.table.month'))}</th>${cols.map((c) => `<th scope="col" class="num${c.cls ? ` ${c.cls}` : ''}">${esc(c.label)}</th>`).join('')}<th scope="col" class="num">${esc(realLabel)}</th>${money ? `<th scope="col" class="num">${esc(diffLabel)}</th>` : ''}</tr></thead>
+      <tbody>${body.join('')}</tbody>
+      <tfoot><tr><th scope="row">${esc(t('bill.table.total'))}</th>${cells(tot)}${footReal()}</tr></tfoot></table></div>
+      <p class="sr-only bill-live" role="status"></p>`;
+    const live = el.querySelector('.bill-live');
+    const say = (input, text, error = false) => {
+      const msg = el.querySelector(`#${input.id}-msg`);
+      msg.textContent = text;
+      msg.classList.toggle('bill-real-error', error);
+      msg.closest('tr').hidden = !text;
+      live.textContent = text;
+    };
+    const setDiff = (input, v) => {
+      const diff = input.closest('tr').querySelector('.bill-diff');
+      if (diff) diff.textContent = signed(v);
+    };
     // saved when the field is left; checked here first so a wrong amount never reaches the server
     el.onchange = async (e) => {
       const input = e.target.closest('.bill-real');
       if (!input) return;
-      const msg = el.querySelector(`#${input.id}-msg`);
       const month = input.dataset.month;
+      const r = rows.find((x) => x.key === month);
       const parsed = parseAmount(input.value);
       if (parsed.error) {
         input.setAttribute('aria-invalid', 'true');
-        msg.textContent = t(`bill.table.realError.${parsed.error}`);
+        setDiff(input, null); // the old difference no longer matches what is typed
+        say(input, t(`bill.table.realError.${parsed.error}`), true);
         input.focus();
         return;
       }
       input.removeAttribute('aria-invalid');
-      msg.textContent = t('bill.table.realSaving');
+      say(input, t('bill.table.realSaving'));
       try {
         const saved = await putBill(month, parsed.value, { signal });
         Object.keys(bills).forEach((k) => delete bills[k]);
         Object.assign(bills, saved);
         input.value = bills[month] == null ? '' : nf(2).format(bills[month]);
-        msg.textContent = t('bill.table.realSaved');
-        const r = rows.find((x) => x.key === month);
-        const diff = input.closest('tr').querySelector('.bill-diff');
-        if (diff) diff.textContent = signed(billDelta(bills[month], r?.money?.bill));
+        say(input, t('bill.table.realSaved'));
+        setDiff(input, billDelta(bills[month], r?.money?.bill));
+        const foot = el.querySelector('tfoot tr');
+        foot.querySelectorAll('.bill-foot-real, .bill-foot-diff').forEach((c) => c.remove());
+        foot.insertAdjacentHTML('beforeend', footReal());
       } catch (err) {
         if (err?.name === 'AbortError') return;
         input.setAttribute('aria-invalid', 'true');
-        msg.textContent = t(err instanceof ApiError && err.status === 400 ? 'bill.table.realError.format' : 'bill.table.realError.save');
+        setDiff(input, null);
+        say(input, t(err instanceof ApiError && err.status === 400 ? 'bill.table.realError.format' : 'bill.table.realError.save'), true);
       }
     };
   }
