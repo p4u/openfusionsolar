@@ -215,3 +215,12 @@ test('the web search line: available, or no key, no balance, bad key; a failed c
   ];
   for (const [web, key] of cases) assert.equal(webKey(web), `settings.ai.web.${key}`, JSON.stringify(web));
 });
+
+test('the install row sits in the always-shown About card, not in the assistant card (spec 4.2)', async () => {
+  const src = await import('node:fs').then((fs) => fs.readFileSync(new URL('../public/js/views/settings.js', import.meta.url), 'utf8'));
+  const drawAi = src.slice(src.indexOf('async function drawAi('), src.indexOf('function plantHtml('));
+  assert.ok(drawAi.length > 0);
+  assert.doesNotMatch(drawAi, /data-install|installEntry/);
+  const about = src.slice(src.indexOf("t('settings.about.title')"), src.indexOf('</div></section>`;'));
+  assert.match(about, /data-install/);
+});

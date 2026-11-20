@@ -28,8 +28,17 @@ export async function render(root, ctx) {
     <section class="band"><h2 class="section-title">${esc(t('settings.glossary.title'))}</h2><div class="card">${glossaryHtml()}</div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.about.title'))}</h2><div class="card">
       <p>${esc(t('settings.about.version', { version: status.version ?? t('core.unknown') }))}</p>
-      <p class="hint">${esc(t('settings.about.text'))}</p></div></section>`;
+      <p class="hint">${esc(t('settings.about.text'))}</p>
+      <p data-install hidden><button type="button" class="pill pill-outline">${icon('download', { size: 16 })}${esc(t('core.install.action'))}</button></p></div></section>`;
   const q = (name) => root.querySelector(`[data-block="${name}"]`);
+
+  // the install row (spec 4.2), in the always-shown About card: only where installing is possible and not done yet;
+  // the browser's prompt may come later
+  const install = root.querySelector('[data-install]');
+  const showInstall = () => { install.hidden = !ENTRY_MODES.includes(installEntry().mode); };
+  showInstall();
+  document.addEventListener('installchange', showInstall, { signal });
+  install.addEventListener('click', () => installEntry().run());
 
   // appearance
   root.querySelector('.settings-appearance').addEventListener('change', (e) => {
@@ -88,14 +97,7 @@ async function drawAi(el, status, signal) {
     <div class="actions settings-ai-actions">
       <button type="button" class="pill pill-outline" data-wipe="Bills">${icon('trash-2', { size: 16 })}${esc(t('settings.ai.deleteBills'))}</button>
       <button type="button" class="pill pill-outline" data-wipe="Chats">${icon('trash-2', { size: 16 })}${esc(t('settings.ai.deleteChats'))}</button></div>
-    <p class="hint" role="status" data-wipe-msg></p>
-    <p data-install hidden><button type="button" class="pill pill-outline">${icon('download', { size: 16 })}${esc(t('core.install.action'))}</button></p>`;
-  // the install row (spec 4.2): only where installing is possible and not done yet; the browser's prompt may come later
-  const install = el.querySelector('[data-install]');
-  const showInstall = () => { install.hidden = !ENTRY_MODES.includes(installEntry().mode); };
-  showInstall();
-  document.addEventListener('installchange', showInstall, { signal });
-  install.addEventListener('click', () => installEntry().run());
+    <p class="hint" role="status" data-wipe-msg></p>`;
   const msg = el.querySelector('[data-wipe-msg]');
   el.querySelector('.settings-ai-actions').addEventListener('click', async (e) => {
     const what = e.target.closest('[data-wipe]')?.dataset.wipe;
