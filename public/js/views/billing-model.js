@@ -21,8 +21,9 @@ function monthName(month, lang) {
 export function statusSentence(summary, lang) {
   const bills = [...(summary?.invoices ?? [])].sort((a, b) => (a.period.to < b.period.to ? -1 : 1));
   if (!bills.length) return null;
-  const { bills: n, months: m } = summary.tiles;
-  const count = t(m === 12 ? 'billing.status.count' : 'billing.status.countPeriod', { n, m });
+  const { bills: n } = summary.tiles;
+  const m = summary.tiles.measuredMonths ?? summary.tiles.months; // months a bill is expected for (measured, billed or missing)
+  const count = t(summary.tiles.months === 12 ? 'billing.status.count' : 'billing.status.countPeriod', { n, m });
   const last = bills.at(-1);
   const c = last.compare;
   const days = c.verdict === 'nodata' ? daysText(Math.max(c.days - c.daysWithData, 0)) : '';
