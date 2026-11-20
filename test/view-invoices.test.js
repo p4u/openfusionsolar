@@ -22,6 +22,8 @@ test('plain words for the sample name every block with its euros and add up to t
     assert.equal(w.sum, Math.round(sample.total_eur * 100) / 100, `${lang}: the blocks add up to the total`);
     for (const p of w.parts) assert.match(p.text, /\d/, 'every sentence carries its euros');
   }
+  const named = plainWords({ ...sample, other_exempt_eur: 1.59, other_taxed_eur: null }, 'ca', [{ section: 'other', concept: 'Donatiu voluntari', amount_eur: 1.59 }, { section: 'other', concept: 'nota', info: 1 }]);
+  assert.match(named.parts.find((p) => p.id === 'other').text, /\(Donatiu voluntari\)/);
   const zero = plainWords({ ...sample, surplus_lost_eur: 0 }, 'ca');
   assert.match(zero.parts.find((p) => p.id === 'surplus').text, /No es perd cap excedent/);
 });

@@ -51,8 +51,8 @@
 
 /* thread */
 .assistant-thread { display: flex; flex-direction: column; gap: var(--sp-lg); min-width: 0; }
-/* phone and tablet: the sticky composer floats over the page end; this room keeps the last answer (a chart table) clear of it */
-@media (max-width: 1023px) { .assistant-thread { padding-bottom: var(--assistant-composer-h, 0px); } }
+/* the sticky composer floats over the page end at every width; this room keeps the last answer (or suggestion) clear of it when scrolled to the end */
+.assistant-thread { padding-bottom: var(--assistant-composer-h, 0px); }
 .assistant-msg { display: flex; flex-direction: column; gap: var(--sp-sm); min-width: 0; scroll-margin: var(--sp-base) 0 220px; }
 .assistant-msg > * { scroll-margin: var(--sp-base) 0 220px; }
 .assistant-msg-user { align-self: flex-end; align-items: flex-end; max-width: min(88%, 640px); }

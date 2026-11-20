@@ -63,6 +63,8 @@ export function reconRows(invoices) {
       missingDays: c.verdict === 'nodata' ? Math.max(c.days - c.daysWithData, 0) : 0,
       diffPct: num(billed) && num(measured) && measured > 0 ? ((billed - measured) / measured) * 100 : null,
       reason, reasonEur, reasonKey: reason == null ? null : `billing.recon.${reason}${way}`,
+      // the whole gap against the app's forecast (what Previsió shows) and its three parts, which add up to it
+      gap: c.verdict !== 'nodata' && d?.total != null ? { total: d.total, kwh: d.kwh ?? 0, prices: d.prices ?? 0, other: d.other ?? 0 } : null,
     };
   });
 }
@@ -131,7 +133,7 @@ export function adviceView(card) {
   }
   // a card may name its own caveat key (power with one bill); an unknown key falls back to the card's usual caveat
   const caveat = typeof card.caveat === 'string' && t(card.caveat) !== card.caveat ? t(card.caveat) : t(k('caveat'));
-  return { id: card.id, state: card.state, title: t(k('title')), text, how: t(k('how'), vars), caveat, lines, period: card.period };
+  return { id: card.id, state: card.state, title: t(k('title')), text, how: t(card.id === 'power' && card.state !== 'lower' ? k('howPeak') : k('how'), vars), caveat, lines, period: card.period };
 }
 
 // "Not compared: October, 12 days of measurements missing." for the bills with too few measured days; '' when all compare.

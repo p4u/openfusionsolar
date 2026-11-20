@@ -62,13 +62,16 @@ export async function render(root, ctx) {
   function recon(summary) {
     const rows = reconRows(summary.invoices);
     const reason = (r) => (r.reasonKey == null ? '' : t(r.reasonKey, { eur: eur(Math.abs(r.reasonEur ?? 0)) }));
+    const signed = (v) => `${v > 0 ? '+' : ''}${eur(v)}`;
+    const gap = (r) => (!r.gap || Math.abs(r.gap.total) < 0.01 ? '' : t(r.gap.total > 0 ? 'billing.recon.gapMore' : 'billing.recon.gapLess', {
+      eur: eur(Math.abs(r.gap.total)), kwh: signed(r.gap.kwh), prices: signed(r.gap.prices), other: signed(r.gap.other) }));
     const td = (label, html, cls = '') => `<td${cls ? ` class="${cls}"` : ''} data-label="${esc(label)}">${html}</td>`;
     const body = rows.map((r) => `<tr>
       <th scope="row"><span>${esc(fmtMonth(r.month))}</span><span class="hint">${esc(`${fmtDate(r.period.from)} - ${fmtDate(r.period.to)}`)}</span></th>
       ${td(t('billing.recon.verdict'), badge(r.verdict === 'nodata' ? t('billing.verdict.nodataDays', { days: t(r.missingDays === 1 ? 'billing.days.one' : 'billing.days.other', { n: r.missingDays }) }) : t(`billing.verdict.${r.verdict}`), VERDICT_BADGE[r.verdict]))}
       ${td(t('billing.recon.billedKwh'), esc(kwh(r.billed)), 'num')}
       ${td(t('billing.recon.measuredKwh'), esc(kwh(r.measured)), 'num')}
-      ${td(t('billing.recon.why'), esc(reason(r)))}
+      ${td(t('billing.recon.why'), esc([gap(r), reason(r)].filter(Boolean).join(' ')))}
       ${aiOn ? td('', askLink(ask(t('billing.ask.bill', { month: fmtMonth(r.month, { mid: true }) }), r.id))) : ''}</tr>`).join('');
     return `<section class="card billing-recon-card"><h2 class="card-title">${esc(t('billing.recon.title'))}</h2>
       <div class="table-scroll"><table class="table billing-recon"><caption class="sr-only">${esc(t('billing.recon.title'))}</caption>

@@ -131,7 +131,7 @@ export function missingText(months, lang) {
 
 // One sentence per block with its euros, from the extracted numbers (no model involved). Blocks add up to the total:
 // fixed + energy + adjust - surplus + taxes + other = total. A missing amount counts as zero.
-export function plainWords(inv, lang) {
+export function plainWords(inv, lang, lines = []) {
   const n = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
   const cents = (v) => Math.round(v * 100) / 100;
   const adjust = n(inv.adjust_eur);
@@ -150,8 +150,10 @@ export function plainWords(inv, lang) {
     ['taxes', taxes, {}],
     ['other', other, {}],
   ];
+  // name the other charges by their bill lines (a voluntary donation is not a supply cost)
+  const named = lines.filter((l) => l.section === 'other' && !l.info && l.concept).map((l) => l.concept);
   const parts = blocks.filter(([id, v]) => v !== 0 || id === 'fixed' || id === 'energy')
-    .map(([id, eur, vars]) => ({ id, eur: cents(eur), text: say(lang, `invoices.plain.${id}`, { ...vars, eur: eurs(lang, Math.abs(cents(eur))) }) }));
+    .map(([id, eur, vars]) => ({ id, eur: cents(eur), text: say(lang, id === 'other' && named.length ? 'invoices.plain.otherNamed' : `invoices.plain.${id}`, { ...vars, eur: eurs(lang, Math.abs(cents(eur))), names: named.join(', ') }) }));
   return { parts, sum: cents(parts.reduce((s, p) => s + p.eur, 0)), total: inv.total_eur ?? null };
 }
 

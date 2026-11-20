@@ -204,12 +204,14 @@ async function detail(body, ctx, id) {
 
     function field(fd, inv, states, checks, errors) {
       const col = fd.col;
-      const st = states[col] ?? 'unverified';
       const label = `${t(`invoices.col.${col}`)}${fd.unit ? ` (${t(`invoices.unit.${fd.unit}`)})` : ''}`;
       const value = typed?.[col] ?? fieldText(col, inv[col], lang);
       const anchor = failed.byCol[col];
       const note = failed.notes.find((n) => n.col === col);
       const invalid = errors[col] || anchor;
+      const st = anchor ? 'suspect' : states[col] ?? 'unverified'; // a field a failed check names never reads as fine
+      const stored = fieldText(col, inv[col], lang);
+      const undo = typed && typed[col] !== undefined && typed[col] !== stored; // typed, refused, not saved
       const described = [errors[col] ? `f-${col}-err` : '', anchor ? `f-${anchor}-check` : ''].filter(Boolean).join(' ');
       const aria = `${invalid ? ' aria-invalid="true"' : ''}${described ? ` aria-describedby="${described}"` : ''}`;
       const edit = inv.edits?.[col];
@@ -226,7 +228,8 @@ async function detail(body, ctx, id) {
       }
       return `<div class="field invoices-field invoices-state-${st}"><label for="f-${col}">${esc(label)}</label>${GLOSS[col] ? gloss(GLOSS[col]) : ''}${input}
         <span class="invoices-state">${esc(t(stateLabel(st)))}${why ? ` ${esc(why)}` : ''}</span>
-        ${edit ? `<button type="button" class="link invoices-revert" data-revert="${col}" aria-label="${esc(t('invoices.revertLabel', { field: t(`invoices.col.${col}`), value: from }))}">${icon('rotate-ccw', { size: 16 })}<span>${esc(t('invoices.revert', { value: from }))}</span></button>` : ''}
+        ${undo ? `<button type="button" class="link invoices-revert" data-undo="${col}">${icon('rotate-ccw', { size: 16 })}<span>${esc(t('invoices.undo', { value: stored || t('invoices.revertEmpty') }))}</span></button>` : ''}
+        ${edit && !undo ? `<button type="button" class="link invoices-revert" data-revert="${col}" aria-label="${esc(t('invoices.revertLabel', { field: t(`invoices.col.${col}`), value: from }))}">${icon('rotate-ccw', { size: 16 })}<span>${esc(t('invoices.revert', { value: from }))}</span></button>` : ''}
         ${errors[col] ? `<span class="field-error" id="f-${col}-err">${esc(t(`invoices.err.field.${errors[col]}`))}</span>` : ''}
         ${note ? `<span class="field-error" id="f-${col}-check">${esc(note.text)}</span>` : ''}</div>`;
     }
@@ -239,7 +242,7 @@ async function detail(body, ctx, id) {
     let saved = ''; // short status after a successful save
     function view(dd, c) {
       const { invoice: inv, lines, readings, checks, states, files } = dd;
-      const words = plainWords(inv, lang);
+      const words = plainWords(inv, lang, lines);
       const hardFail = checks.some((x) => x.hard && x.outcome === 'fail');
       const dup = inv.status === 'draft' && Boolean(inv.duplicate_of);
       const confirmed = inv.status === 'confirmed';
@@ -363,6 +366,14 @@ async function detail(body, ctx, id) {
       form.addEventListener('click', (e) => {
         const col = e.target.closest('[data-revert]')?.dataset.revert;
         if (col) submit(d.invoice.status === 'confirmed' ? 'confirm' : 'save', [col]);
+        const back = e.target.closest('[data-undo]')?.dataset.undo;
+        if (back) { // drop the refused value: the stored one comes back and the old error goes (saving checks again)
+          typed = { ...snapshot(), [back]: fieldText(back, d.invoice[back], lang) };
+          failed = { notes: [], byCol: {} };
+          message = '';
+          paint();
+          el.querySelector(`#f-${back}`)?.focus();
+        }
         const to = e.target.closest('[data-goto]')?.dataset.goto;
         if (to) { e.preventDefault(); el.querySelector(`#f-${to}`)?.focus(); }
       });
