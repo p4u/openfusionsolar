@@ -261,8 +261,14 @@ test('10 rounds at most, then a plain apology', async (t) => {
   assert.deepEqual(r.events.map((e) => e.type), [...Array(20).fill('status'), 'text', 'done']);
   assert.deepEqual(r.events.slice(0, 2).map((e) => e.tool), ['thinking', 'get_invoice']);
   assert.match(r.events[20].text, /^Ho sento/);
-  // the model got a reason for every refused call (there is no bill 1)
-  assert.match(JSON.parse(fake.calls[9].messages.at(-1).content).error, /no bill/);
+  // the model got a reason for every refused call: no bill 1 for the first four, then the per-tool cap (fix-1)
+  const results = fake.calls[9].messages.filter((m) => m.role === 'tool').map((m) => JSON.parse(m.content).error);
+  assert.equal(results.length, 9);
+  for (const e of results.slice(0, 4)) assert.match(e, /no bill/);
+  for (const e of results.slice(4)) assert.match(e, /^already called \d times this turn/);
+  // round 10 is sent without tools and with the note; this model ignores it and calls a tool anyway
+  assert.equal(fake.calls[9].tool_choice, 'none');
+  assert.match(fake.calls[9].messages.at(-1).content, /^Answer now with what you have/);
 });
 
 test('a closed connection aborts the upstream request', async (t) => {

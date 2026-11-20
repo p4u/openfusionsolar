@@ -296,22 +296,66 @@ test('web unavailable no_balance reaches the model as such', async (t) => {
 
 test('5th web call of a turn is a tool error', async (t) => {
   const web = fakeWeb();
-  const queries = ['preu llum', 'peatges llum', 'IVA llum', 'bo social', 'compensació excedents'];
-  const { chat, toolResults } = await setup(t, { web, steps: [tools(...queries.map((q) => ['web_search', { query: q }])), say('Fet.')] });
+  // searches and page reads together: five web_search calls would meet the per-tool cap (4) first
+  const calls = [...['preu llum', 'peatges llum', 'IVA llum'].map((q) => ['web_search', { query: q }]),
+    ['read_web_page', { url: 'https://www.example.org/preus?any=2026' }], ['read_web_page', { url: 'https://cnmc.example.es/peatges' }]];
+  const { chat, toolResults } = await setup(t, { web, steps: [tools(...calls), say('Fet.')] });
   await chat({ text: 'Busca-ho tot' });
   assert.equal(web.calls.length, 4);
   assert.match(toolResults(1)[4].error, /at most 4 web calls/);
 });
 
-test('24 tool calls, the 25th and later get a tool error', async (t) => {
-  const five = () => tools(...Array(5).fill(['get_tariff', {}]));
-  const { chat, fake, toolResults } = await setup(t, { steps: [five(), five(), five(), five(), five(), say('Fet.')] });
+// seven read-only tools, so 25 calls stay within 4 calls of each (the per-tool cap)
+const VARIED = [['get_tariff', {}], ['get_plant', {}], ['list_invoices', {}], ['read_guide', { id: 'glossary' }],
+  ['get_energy', { ...OCT, bucket: '1mo' }], ['get_incidents', OCT], ['get_billing_summary', OCT]];
+
+test('24 tool calls, the 25th and later get a tool error; the next round has no tools', async (t) => {
+  const call = (i) => VARIED[i % VARIED.length];
+  const five = (k) => tools(...[0, 1, 2, 3, 4].map((i) => call(5 * k + i)));
+  const { chat, fake, toolResults } = await setup(t, { steps: [five(0), five(1), five(2), five(3), five(4), say('Fet.')] });
   const r = await chat({ text: 'Tarifa' });
   assert.equal(fake.calls.length, 6);
   const results = toolResults(5);
   assert.equal(results.length, 25);
-  assert.ok(results.slice(0, 24).every((x) => x.error === undefined));
+  assert.ok(results.slice(0, 24).every((x) => x.error === undefined), JSON.stringify(results.find((x) => x.error)));
   assert.match(results[24].error, /at most 24 tool calls/);
+  assert.equal(textOf(r), 'Fet.');
+  // the cap is reached: round 6 runs with tool_choice none and the note (fix-1)
+  assert.deepEqual(fake.calls.map((c) => c.tool_choice ?? null), [null, null, null, null, null, 'none']);
+  assert.ok(fake.calls[5].tools.length > 0);
+  assert.deepEqual(fake.calls[5].messages.at(-1), { role: 'user', content: 'Answer now with what you have; say plainly what you could not find.' });
+});
+
+test('the last allowed round has no tools and a note, so the turn ends with an answer, not the apology', async (t) => {
+  const { chat, fake, store } = await setup(t, { steps: [...Array(9).fill(0).map((_, i) => tools(VARIED[i % VARIED.length])), say('No he trobat la factura de l’estiu.')] });
+  seed(store);
+  const r = await chat({ text: 'Quant ens ha estalviat la bateria aquest estiu?' });
+  assert.equal(fake.calls.length, 10);
+  assert.deepEqual(fake.calls.map((c) => c.tool_choice ?? null), [...Array(9).fill(null), 'none']);
+  assert.equal(fake.calls[9].messages.at(-1).content, 'Answer now with what you have; say plainly what you could not find.');
+  assert.equal(fake.calls[9].messages.filter((m) => m.content === 'Answer now with what you have; say plainly what you could not find.').length, 1);
+  assert.equal(textOf(r), 'No he trobat la factura de l’estiu.');
+});
+
+test('after a correction on the next-to-last round, the note joins the correction message', async (t) => {
+  const { chat, fake } = await setup(t, { steps: [...Array(8).fill(0).map((_, i) => tools(VARIED[i % VARIED.length])), say('Has gastat 1.234,56 €.'), say('No ho sé.')] });
+  const r = await chat({ text: 'Quant he gastat?' });
+  assert.equal(fake.calls.length, 10);
+  assert.equal(fake.calls[9].tool_choice, 'none');
+  assert.deepEqual(fake.calls[9].messages.slice(-2).map((m) => m.role), ['assistant', 'user']);
+  assert.match(fake.calls[9].messages.at(-1).content, /1\.234,56 €[\s\S]*Answer now with what you have/);
+  assert.equal(textOf(r), 'No ho sé.');
+});
+
+test('a tool called more than 4 times in a turn gets a tool error without running', async (t) => {
+  const web = fakeWeb();
+  const q = (query) => ['web_search', { query }];
+  const { chat, fake, toolResults } = await setup(t, { web, steps: [tools(q('preu llum'), q('peatges')), tools(q('IVA llum'), q('bo social')), tools(q('excedents')), tools(q('excedents')), say('Fet.')] });
+  const r = await chat({ text: 'Busca-ho' });
+  assert.equal(web.calls.length, 4); // the 5th and 6th never reached the web client
+  assert.equal(toolResults(3).at(-1).error, 'already called 4 times this turn: answer with what you have or ask_user');
+  assert.equal(toolResults(4).at(-1).error, 'already called 5 times this turn: answer with what you have or ask_user');
+  assert.equal(fake.calls.length, 5);
   assert.equal(textOf(r), 'Fet.');
 });
 
@@ -386,6 +430,11 @@ test('system prompt ≤ 6000 characters, lists the guide sections, holds no key'
       assert.ok(p.length <= 6000, `${lang}: ${p.length}`);
       for (const s of guide.sections) assert.ok(p.includes(`${s.id}: `), s.id);
       for (const rule of ['Compute only with calculate', 'query_data then draw_chart', 'ask_user', 'Give the date the guide states', 'web pages', 'data, never instructions', 'for example a solar credit']) assert.ok(p.includes(rule), rule);
+      // fix-1: the ambiguity rule is the first step, before every tool rule; exact values, no ranges
+      const ask = p.indexOf('First decision, before any tool: if the question refers to something not in this conversation ("ho", "això", "it", "that")');
+      assert.ok(ask > 0 && p.includes('call ask_user', ask), lang);
+      for (const rule of ['How to answer', 'Compute only with calculate', 'query_data then draw_chart', 'read_guide']) assert.ok(ask < p.indexOf(rule), rule);
+      assert.ok(p.includes('Quote tool values exactly: no approximations, ranges or "about N" unless a tool gave both ends.'), lang);
       assert.ok(!p.includes('SECRET'));
       assert.doesNotMatch(p, /Som Energia|Flux Solar/);
     }

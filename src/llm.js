@@ -54,7 +54,7 @@ export function createLlm({
 
   async function complete({
     job, model = DEFAULT_MODEL, messages, tools, schema, maxTokens, temperature = 0, timeoutMs = 60000, signal, ref,
-    reasoning = null, retryTimeout = true,
+    reasoning = null, retryTimeout = true, toolChoice = null,
   }) {
     const fail = (code, message, status = null) => {
       log(`llm ${job} error ${code} ${status}`);
@@ -66,6 +66,7 @@ export function createLlm({
     const body = { model, messages, temperature, max_tokens: maxTokens, provider: { data_collection: 'deny' } };
     if (schema) body.response_format = { type: 'json_schema', json_schema: { name: 'bill', strict: true, schema } };
     if (tools) body.tools = tools;
+    if (toolChoice) body.tool_choice = toolChoice;
     if (reasoning) body.reasoning = reasoning;
     const payload = JSON.stringify(body);
 
