@@ -146,6 +146,7 @@ export async function buildDataset(args, { store, config = {}, now = Date.now, m
 
   const priced = metrics.filter(readsMarket);
   let unavailableDays = [];
+  let uncoveredDays = []; // import_cost_pvpc_eur: days with import but no hourly import priced, left out of its total
   if (priced.length) {
     // REE publishes a day the afternoon before: later days are never asked for, and come back unavailable (null), never 0
     const tomorrow = addDays(localDay(t), 1);
@@ -172,6 +173,9 @@ export async function buildDataset(args, { store, config = {}, now = Date.now, m
         const s = hourly();
         const pvpc = got.pvpc;
         const sums = byKey(s.t.flatMap((ts, j) => (s.kwh.imp[j] != null && pvpc.has(ts) ? [[ts, s.kwh.imp[j] * pvpc.get(ts)]] : [])));
+        const covered = new Set(s.t.flatMap((ts, j) => (s.kwh.imp[j] != null && pvpc.has(ts) ? [localDay(ts)] : [])));
+        const unpriced = new Set(unavailableDays); // already reported as unpublished
+        uncoveredDays = store.days(from, to).filter((r) => r.import_kwh > 0 && !covered.has(r.day) && !unpriced.has(r.day)).map((r) => r.day);
         values = x.values.map((k) => sums.get(k)?.[0] ?? null);
       } else if (bucket === '1h') {
         values = x.values.map((ts) => got[MARKET[n]].get(ts) ?? null);
@@ -186,5 +190,5 @@ export async function buildDataset(args, { store, config = {}, now = Date.now, m
   let ds = { args: norm, source: [...new Set(metrics.flatMap((n) => METRICS[n].source))], x, columns };
   if (group === 'ratio') ds = withRatios(ds);
   if (norm.group_by) ds = groupDataset(ds, norm.group_by, norm.agg);
-  return unavailableDays.length ? { ...ds, unavailableDays } : ds;
+  return { ...ds, ...(unavailableDays.length && { unavailableDays }), ...(uncoveredDays.length && { uncoveredDays }) };
 }

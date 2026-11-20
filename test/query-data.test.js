@@ -288,4 +288,22 @@ test('query_data says import_cost_pvpc_eur is the energy term only; its unit is 
   assert.match(out.result.note, /energy term only .*chart notes/);
   const plain = await runTool('query_data', { ...args, metrics: ['import_kwh'] }, { ...deps(), datasets: createDatasets() });
   assert.equal(plain.result.note, undefined);
+  assert.equal(out.result.uncoveredDays, undefined);
+});
+
+test('import_cost_pvpc_eur reports days with daily import but no hourly data as uncoveredDays (gate F5)', async () => {
+  const { runTool } = await import('../src/assistant-tools.js');
+  const { createDatasets } = await import('../src/datasets.js');
+  // June has daily rows only, July has 5-minute samples too
+  const args = { metrics: ['import_cost_pvpc_eur'], from: '2026-06-29', to: '2026-07-02', bucket: '1d' };
+  const ds = await buildDataset(args, deps());
+  assert.deepEqual(ds.uncoveredDays, ['2026-06-29', '2026-06-30']);
+  assert.deepEqual(column(ds, 'import_cost_pvpc_eur').map((v) => v != null), [false, false, true, true]);
+  const out = await runTool('query_data', args, { ...deps(), datasets: createDatasets() });
+  assert.deepEqual(out.result.uncoveredDays, ['2026-06-29', '2026-06-30']);
+  assert.match(out.result.note, /leaves out uncoveredDays .*partial/);
+  // a day REE has not published is reported once, as unavailable, not also as uncovered
+  const late = await buildDataset(args, deps({ market: fakeMarket({ lastPublished: '2026-06-29' }) }));
+  assert.deepEqual(late.unavailableDays, ['2026-06-30', '2026-07-01', '2026-07-02']);
+  assert.deepEqual(late.uncoveredDays, ['2026-06-29']);
 });

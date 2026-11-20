@@ -337,8 +337,12 @@ const TOOL_FNS = {
     const notes = [
       ...(ds.unavailableDays ? ['Market prices are not published for unavailableDays (their values are null): say so.'] : []),
       ...(args.metrics.includes('import_cost_pvpc_eur') ? [COST_NOTE] : []),
+      ...(ds.uncoveredDays ? ['import_cost_pvpc_eur leaves out uncoveredDays (no hourly data): say the total is partial.'] : []),
     ];
-    return { ...summary, ...(ds.unavailableDays && { unavailableDays: ds.unavailableDays }), ...(notes.length && { note: notes.join(' ') }) };
+    return {
+      ...summary, ...(ds.unavailableDays && { unavailableDays: ds.unavailableDays }), ...(ds.uncoveredDays && { uncoveredDays: ds.uncoveredDays }),
+      ...(notes.length && { note: notes.join(' ') }),
+    };
   },
 
   draw_chart(args, { datasets, grounded, lang, turn, limits }) {
