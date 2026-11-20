@@ -463,6 +463,8 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
         if (v === base[col]) continue;
         patch[col] = v;
         if (!Object.hasOwn(edits, col)) edits[col] = { from: base[col], at: now() };
+        // typed back to what the bill said (empty and null alike): no longer an edit; '' invoice_number means "no number"
+        if (col !== 'invoice_number' && (edits[col].from ?? '') === (v ?? '')) delete edits[col];
       }
       const row = { ...inv, ...patch };
       const confirm = body.confirm === true || inv.status === 'confirmed';

@@ -83,6 +83,9 @@ test('the gap splits into price change and kwh difference, and the donation is o
   assert.ok(cheap.diff.prices > 0);
   assert.equal(same.diff.other, 1.59);
   assert.ok(Math.abs(same.diff.kwh - (59.15 - same.estimateBill - 1.59)) < 0.011);
+  // the whole gap against the app's forecast is its three parts
+  for (const c of [same, dear, cheap]) assert.ok(Math.abs(c.diff.total - (c.diff.kwh + c.diff.prices + c.diff.other)) < 0.021);
+  assert.ok(Math.abs(same.diff.total - (59.15 - same.estimateEnv)) < 0.011);
   assert.ok(Math.abs(same.estimateBill - 57.56) < 1, `${same.estimateBill}`); // the bill without the donation
 });
 

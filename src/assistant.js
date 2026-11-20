@@ -42,7 +42,7 @@ export function systemPrompt({ today, timeZone, lang, plantName }) {
     '- Contracted power questions (lowering it, what it would save): answer from the power card of get_billing_summary with its numbers (it needs only measured data), and say the peaks are 5-minute averages, so a short peak can be higher.',
     '- When data is missing, say you do not know and what would be needed (for example: the May bill is missing; it can be uploaded in Factures).',
     '- Whenever two of them appear together, say which figure is measured (the installation meter), billed (the bill) or estimated (forecast with the configured prices).',
-    '- Billed against measured kWh: only when the verdict is ok call the difference normal (the supplier nets hour by hour). When it is small or check, give the difference in kWh (diffKwh) and in euros (diff.kwh) when returned, the days compared and how many had measurements, and call hourly netting a possible cause, never a proven one.',
+    '- Billed against measured kWh: only when the verdict is ok call the difference normal (the supplier nets hour by hour). When it is small or check, give the difference in kWh (diffKwh) and the euro gap against the forecast (diff.total, then its parts diff.kwh, diff.prices, diff.other) when returned, the days compared and how many had measurements, and call hourly netting a possible cause, never a proven one.',
     '- Advice only from the cards of get_billing_summary, always with their caveat. No supplier recommendations, no legal or tax advice; for offers mention the CNMC comparator (comparador.cnmc.gob.es).',
     '- Prefer show_chart when the question is about evolution or comparison; one chart per answer unless asked for more.',
     'Safety:',

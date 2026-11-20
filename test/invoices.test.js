@@ -423,7 +423,11 @@ test('editing records the original value, re-runs the checks and confirm needs f
 
   // a second edit keeps the first original
   const again = await (await s.post('/api/invoices/save', { id, fields: { total_eur: 59.15 }, force: true })).json();
-  assert.equal(again.invoice.edits.total_eur.from, 59.15);
+  assert.equal(again.invoice.edits.total_eur, undefined, 'typed back to the value read from the bill: no longer an edit');
+  // an emptied text field whose bill value was empty is not an edit either (empty and null alike)
+  const noted = await (await s.post('/api/invoices/save', { id, fields: { notes: null } })).json();
+  assert.equal(noted.invoice.edits.notes, undefined);
+  assert.equal((await (await s.post('/api/invoices/save', { id, fields: { notes: 'checked by hand' } })).json()).invoice.edits.notes.from, null);
   assert.equal(again.invoice.badge, 'confirmed');
 
   // revert: an edited field goes back to the value read from the bill and its edit entry goes; never-edited ones are ignored

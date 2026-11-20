@@ -85,6 +85,8 @@ export function compareInvoice(store, inv, { prices = null } = {}) {
     prices: out.estimateEnv != null && out.estimateBill != null ? cents(out.estimateBill - out.estimateEnv) : null,
     kwh: real != null && out.estimateBill != null ? cents(real - out.estimateBill - other) : null,
     other: cents(other),
+    // the bill against the app's forecast at the configured prices (what Previsió shows) = kwh + prices + other
+    total: real != null && out.estimateEnv != null ? cents(real - out.estimateEnv) : null,
   };
 
   const m = billPrices && periodMoney(rows, billPrices);
@@ -235,7 +237,8 @@ export function billingSummary(store, { from, to, prices = null, today = localDa
     tiles: {
       total: cents(total), average: bills.length ? cents(total / bills.length) : null, pricePerKwh: kwh > 0 ? Math.round((total / kwh) * 1000) / 1000 : null,
       surplusDiscount: cents(part('surplus')), bills: bills.length, months: monthIndex(monthKeys[1]) - monthIndex(monthKeys[0]) + 1,
-      measuredMonths: measuredMonths(measured).filter(inRange).length, // months a bill is expected for (>= 15 measured days)
+      // months a bill is expected for: measured months that are billed or already missing (not the current or grace ones)
+      measuredMonths: measuredMonths(measured).filter(inRange).filter((m) => missing.includes(m) || invoices.some((i) => i.period_from.slice(0, 7) <= m && m <= i.period_to.slice(0, 7))).length,
     },
     crossTiles: {
       homeCostPerKwh: load > 0 ? Math.round((sum(compared.map((b) => num(b.total))) / load) * 1000) / 1000 : null,
