@@ -141,7 +141,8 @@ export function eventBands(events, from, to) {
 
 const cell = (v) => {
   if (v == null) return '';
-  const s = String(v);
+  // a text cell a spreadsheet would read as a formula (labels come from the assistant) gets a leading apostrophe
+  const s = typeof v === 'string' && /^[=+\-@]/.test(v) ? `'${v}` : String(v);
   return /[",\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 };
 
@@ -218,11 +219,78 @@ export function tooltipHtml(spec, i, hidden = new Set(), palette = {}) {
   return `<div class="chart-tip"><div class="chart-tip-head">${esc(head)}</div>${rows}${notes.map((n) => `<div class="chart-tip-note">${esc(n)}</div>`).join('')}</div>`;
 }
 
+// Donut slice tooltip: its name, amount and share of the whole.
+export function sliceTipHtml(spec, i, palette = {}) {
+  const s = spec.series[i];
+  if (!s) return '';
+  const v = s.data[0];
+  const total = spec.series.reduce((a, x) => a + (x.data[0] ?? 0), 0);
+  const share = total > 0 && v != null ? ` (${nf(0).format((100 * v) / total)}\u00a0%)` : '';
+  const value = v == null ? t('core.unknown') : `${nf(spec.y?.decimals ?? 1).format(v)} ${esc(spec.unit)}${share}`;
+  return `<div class="chart-tip"><div class="chart-tip-row"><span class="chart-tip-dot" style="background:${esc(palette[s.entity] ?? 'currentColor')}"></span><span class="chart-tip-name">${esc(s.name)}</span><span class="chart-tip-value num">${value}</span></div></div>`;
+}
+
+// Donut (one slice per series, data [total]) and heatmap (one row per series over x.categories). Both draw their
+// tooltip with esc(): ApexCharts' default tooltip inserts series names as HTML (preflight F8).
+function roundOptions(spec, palette, chart, text, hidden) {
+  const legendMarkers = { size: 8, strokeWidth: 1, customHTML: spec.series.map((s) => { const html = legendKey({ type: 'bar' }, { colour: palette[s.entity] ?? palette.muted }); return () => html; }) };
+  const common = { dataLabels: { enabled: false }, stroke: { width: spec.kind === 'donut' ? 2 : 1, colors: [palette.surface] } };
+  if (spec.kind === 'donut') {
+    return {
+      ...common, chart: { ...chart, type: 'donut' },
+      series: spec.series.map((s) => s.data[0] ?? 0), labels: spec.series.map((s) => s.name),
+      colors: spec.series.map((s) => palette[s.entity] ?? palette.muted),
+      legend: { show: true, position: 'top', horizontalAlign: 'left', fontFamily: palette.fontFamily, labels: { colors: palette.text }, markers: legendMarkers },
+      plotOptions: { pie: { donut: { size: '62%', labels: { show: false } } } },
+      tooltip: { custom: ({ seriesIndex }) => sliceTipHtml(spec, seriesIndex, palette) },
+    };
+  }
+  const cats = spec.x?.categories ?? [];
+  return {
+    ...common, chart: { ...chart, type: 'heatmap' },
+    series: spec.series.map((s) => ({ name: s.name, data: s.data.map((v, i) => ({ x: cats[i], y: v })) })),
+    colors: [palette[spec.series[0]?.entity] ?? palette.muted],
+    legend: { show: false },
+    plotOptions: { heatmap: { enableShades: true, shadeIntensity: 0.85, radius: 0 } },
+    grid: { borderColor: palette.hairline, padding: { left: 8, right: 8 } },
+    xaxis: {
+      type: 'category', categories: cats, tooltip: { enabled: false }, axisBorder: { color: palette.hairline }, axisTicks: { color: palette.hairline },
+      labels: { style: text, rotate: 0, rotateAlways: false, hideOverlappingLabels: true, trim: false },
+      title: { text: spec.x?.title ?? '', style: { ...text, fontWeight: 400 } },
+    },
+    yaxis: { labels: { style: text } },
+    tooltip: { shared: false, intersect: true, custom: ({ dataPointIndex }) => tooltipHtml(spec, dataPointIndex, hidden, palette) },
+  };
+}
+
 // palette: { sun, home, grid, battery, p1..p3, ok, warn, alarm, muted, text, ink, hairline, surface, fontFamily, band: { gap, cut, stopped } }
 // opts: { mobile, hidden (Set of series keys), zoom (true when drag-zoom is on) }
+// spec.kind 'time' | 'category' draw a mixed chart; 'donut' and 'heatmap' draw those ApexCharts types.
 export function apexOptions(spec, palette, { mobile = false, hidden = new Set(), zoom = false } = {}) {
   const time = spec.kind !== 'category';
   const height = spec.height === 'strip' ? HEIGHTS.strip : spec.height ?? (mobile ? HEIGHTS.mobile : HEIGHTS.desktop);
+  const text = { fontFamily: palette.fontFamily, colors: palette.text, fontSize: '12px' };
+  const chart = {
+    id: spec.id,
+    type: 'line', // mixed chart: each series carries its own type
+    height,
+    stacked: !!spec.stacked,
+    animations: { enabled: false },
+    toolbar: { show: false },
+    zoom: { enabled: zoom, type: 'x' },
+    background: 'transparent',
+    foreColor: palette.text,
+    fontFamily: palette.fontFamily,
+    parentHeightOffset: 0,
+    // ApexCharts' own screen-reader texts (legend items) in the app language
+    locales: [{ name: 'app', options: { a11y: {
+      legendItem: legendItemTemplate(), visible: t('charts.a11y.visible'), hidden: t('charts.a11y.hidden'),
+    } } }],
+    defaultLocale: 'app',
+    // the chart's own name: ApexCharts would announce "line chart with 6 data series" in English
+    accessibility: { description: chartLabel(spec) },
+  };
+  if (spec.kind === 'donut' || spec.kind === 'heatmap') return roundOptions(spec, palette, { ...chart, stacked: false, zoom: { enabled: false } }, text, hidden);
   const span = time ? (spec.x?.max ?? 0) - (spec.x?.min ?? 0) : 0;
   const axis = time && spec.x?.min != null && spec.x?.max != null ? timeAxis(spec.x.min, spec.x.max, { mobile }) : null;
   const cats = (spec.x?.categories ?? []).map(twoLines);
@@ -243,28 +311,8 @@ export function apexOptions(spec, palette, { mobile = false, hidden = new Set(),
     return () => html;
   });
   const bands = (spec.bands ?? []).map((b) => ({ x: b.from, x2: b.to, fillColor: palette.band[b.kind], opacity: 1, borderColor: 'transparent' }));
-  const text = { fontFamily: palette.fontFamily, colors: palette.text, fontSize: '12px' };
   const options = {
-    chart: {
-      id: spec.id,
-      type: 'line', // mixed chart: each series carries its own type
-      height,
-      stacked: !!spec.stacked,
-      animations: { enabled: false },
-      toolbar: { show: false },
-      zoom: { enabled: zoom, type: 'x' },
-      background: 'transparent',
-      foreColor: palette.text,
-      fontFamily: palette.fontFamily,
-      parentHeightOffset: 0,
-      // ApexCharts' own screen-reader texts (legend items) in the app language
-      locales: [{ name: 'app', options: { a11y: {
-        legendItem: legendItemTemplate(), visible: t('charts.a11y.visible'), hidden: t('charts.a11y.hidden'),
-      } } }],
-      defaultLocale: 'app',
-      // the chart's own name: ApexCharts would announce "line chart with 6 data series" in English
-      accessibility: { description: chartLabel(spec) },
-    },
+    chart,
     series,
     colors,
     stroke: { width: spec.series.map((s) => (s.type === 'bar' ? 0 : s.width ?? 2)), curve: 'straight', dashArray: spec.series.map((s) => (s.dashed ? 5 : 0)) },

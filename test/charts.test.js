@@ -325,3 +325,53 @@ test('a month label with its year is drawn on two lines, so the year at each cha
   assert.equal(twoLines('2026'), '2026', 'a year bar stays one line');
   setLang('en');
 });
+
+test('toCsv prefixes =, +, -, @ text cells', () => {
+  const csv = toCsv([{ label: 'Day' }, { label: '=HYPERLINK("x")', unit: 'kWh' }, '@me'], [['+1', -5, '-cmd'], ['ok', 2.5, 'a=b']]);
+  assert.equal(csv, 'Day,"\'=HYPERLINK(""x"") (kWh)",\'@me\r\n\'+1,-5,\'-cmd\r\nok,2.5,a=b\r\n');
+});
+
+const XSS = '<img src=x onerror=alert(1)>';
+const round = (kind) => ({
+  id: 'f', kind, unit: 'kWh', y: { decimals: 1 }, x: { categories: ['Mon', 'Tue'], title: '', label: (i) => ['Monday', 'Tuesday'][i] },
+  series: [{ key: 's0', name: XSS, entity: 'sun', data: kind === 'donut' ? [3] : [1, 2] }, { key: 's1', name: 'Grid', entity: kind === 'donut' ? 'home' : 'sun', data: kind === 'donut' ? [1] : [null, 4] }],
+});
+
+test('apexOptions escapes legend names', () => {
+  // preflight F8: ApexCharts' default tooltip inserts series names as HTML, so every kind builds its own with esc();
+  // the legend writes an unchanged name with textContent, so no legend formatter
+  for (const spec of [round('donut'), round('heatmap'), { ...round('category'), series: round('heatmap').series.map((s) => ({ ...s, type: 'bar' })) }]) {
+    const o = apexOptions(spec, palette);
+    assert.equal(typeof o.tooltip.custom, 'function', spec.kind);
+    assert.equal(o.legend.formatter, undefined, spec.kind);
+    for (const [seriesIndex, dataPointIndex] of [[0, 0], [1, 1], [0, 1]]) {
+      const html = o.tooltip.custom({ seriesIndex, dataPointIndex });
+      assert.doesNotMatch(html, /<img/, spec.kind);
+      if (seriesIndex === 0 && spec.kind === 'donut') assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    }
+  }
+});
+
+test('donut and heatmap options', () => {
+  const d = apexOptions(round('donut'), palette);
+  assert.equal(d.chart.type, 'donut');
+  assert.deepEqual(d.series, [3, 1]);
+  assert.deepEqual(d.labels, [XSS, 'Grid']);
+  assert.deepEqual(d.colors, [palette.sun, palette.home]);
+  assert.equal(d.dataLabels.enabled, false);
+  assert.equal(d.legend.show, true);
+  assert.equal(d.chart.animations.enabled, false);
+  assert.match(d.chart.accessibility.description, /Grid/);
+  assert.match(d.tooltip.custom({ seriesIndex: 0 }), /3\.0 kWh \(75\s%\)/);
+
+  const h = apexOptions(round('heatmap'), palette);
+  assert.equal(h.chart.type, 'heatmap');
+  assert.deepEqual(h.series, [{ name: XSS, data: [{ x: 'Mon', y: 1 }, { x: 'Tue', y: 2 }] }, { name: 'Grid', data: [{ x: 'Mon', y: null }, { x: 'Tue', y: 4 }] }]);
+  assert.deepEqual(h.colors, [palette.sun]);
+  assert.equal(h.dataLabels.enabled, false);
+  assert.equal(h.legend.show, false);
+  assert.equal(h.plotOptions.heatmap.enableShades, true);
+  assert.deepEqual(h.xaxis.categories, ['Mon', 'Tue']);
+  assert.match(h.chart.accessibility.description, /Grid/);
+  assert.match(h.tooltip.custom({ seriesIndex: 1, dataPointIndex: 1 }), /Tuesday.*Grid.*4\.0 kWh/s);
+});
