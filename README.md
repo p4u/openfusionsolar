@@ -131,6 +131,9 @@ delete anything. A bill can be attached to a question.
   bills. Deleting a bill removes its original file too.
 - **Costs** with the default model: about 0.005 USD per bill and 0.0003 to 0.004 USD per question, so a normal
   month stays well under 1 USD.
+- **Behind a reverse proxy**: allow request bodies of at least 12 MB for uploads (nginx: `client_max_body_size 12m`;
+  its default is 1 MB). The assistant streams its answer and sends a keep-alive line every 15 s, so the default read
+  timeouts are enough; with nginx the app already asks for no response buffering.
 
 A live check against OpenRouter (it reads `AI_API_KEY` from `.env` and spends about one cent) is skipped by `npm
 test`; run it on purpose with:
