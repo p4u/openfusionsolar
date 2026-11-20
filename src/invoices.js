@@ -280,11 +280,14 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
     const edits = inv.edits ? JSON.parse(inv.edits) : {};
     const unreadable = ex?.result_json ? JSON.parse(ex.result_json).unreadable ?? [] : [];
     const { cups, contract_number: _contract, ...shown } = inv;
+    // the supply number and contract never leave the server, also not as an edit's original or a check's term
+    const hide = (col, v) => (col === 'cups' ? maskCups(v) : col === 'contract_number' ? null : v);
+    const shownEdits = Object.fromEntries(Object.entries(edits).map(([c, e]) => [c, { ...e, from: hide(c, e.from) }]));
     return {
-      invoice: { ...shown, edits, cups_masked: maskCups(cups), badge: badge(inv) },
+      invoice: { ...shown, edits: shownEdits, cups_masked: maskCups(cups), badge: badge(inv) },
       lines,
       readings,
-      checks: list,
+      checks: list.map((c) => ({ ...c, terms: c.terms?.map((x) => ({ ...x, value: hide(x.col, x.value) })) })),
       states: fieldStates(inv, list, { unreadable, edits }),
       files: inv.group_id ? store.billFiles(inv.group_id).map(({ id, kind, pos }) => ({ id, kind, pos })) : [],
       extraction: ex ? { status: ex.status, model: ex.model, attempt: ex.attempt } : null,
@@ -468,7 +471,15 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
       }
       const row = { ...inv, ...patch };
       const confirm = body.confirm === true || inv.status === 'confirmed';
-      if (body.confirm === true && inv.status === 'draft' && inv.duplicate_of) return [409, { error: 'duplicate_unresolved' }];
+      if (body.confirm === true && inv.status === 'draft') {
+        // a draft that matches a confirmed bill (flagged at extraction, or by a number typed now) is settled by its three
+        // choices, never confirmed beside it: keep the edits as a draft and flag it
+        const dup = inv.duplicate_of ?? duplicateOf(row, inv.id)?.id ?? null;
+        if (dup) {
+          store.updateInvoice(inv.id, { ...patch, duplicate_of: dup, ...(Object.keys(patch).length && { edits: JSON.stringify(edits), auto_confirmed: 0 }) });
+          return [409, { error: 'duplicate_unresolved' }];
+        }
+      }
       if (confirm) {
         const list = checks(row, { readings: store.invoiceReadings(inv.id), today: today(), previous: previousOf(row, inv.id) });
         const refused = confirmError(row, list, body.force === true);

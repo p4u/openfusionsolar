@@ -233,6 +233,16 @@ test('the same invoice number becomes a draft marked duplicate', async (t) => {
   assert.equal(s.store.invoice(newer.id).status, 'draft');
   assert.equal((await s.post('/api/invoices/save', { id: newer.id, fields: { notes: 'same bill' } })).status, 200);
   assert.equal(s.store.invoice(newer.id).status, 'draft');
+  // a hand-made draft given the confirmed bill's number is flagged when it is confirmed, never counted twice
+  const manual = (await (await s.post('/api/invoices/create', {})).json()).id;
+  const typedDup = await s.post('/api/invoices/save', { id: manual, fields: { invoice_number: s.store.invoice(older.id).invoice_number }, confirm: true });
+  assert.equal(typedDup.status, 409);
+  assert.deepEqual([s.store.invoice(manual).status, s.store.invoice(manual).duplicate_of], ['draft', older.id]);
+
+  // the detail never carries the full supply number: not in the invoice, a check term or an edit's original
+  s.store.updateInvoice(newer.id, { edits: JSON.stringify({ cups: { from: 'ES0031000000000001BJ0F', at: 1 } }) });
+  const detail = JSON.stringify(await s.get(`/api/invoices/get?id=${newer.id}`));
+  assert.ok(!detail.includes('ES0031000000000001BJ0F'), 'full CUPS in the detail answer');
 });
 
 test('waitFor returns at once when its signal is aborted', async (t) => {
