@@ -206,6 +206,19 @@ test('bills: one row per bill, a second bill of one month gets (2); power at 1d 
   assert.ok(column(p, 'import_kw_max').every((v) => v > 0));
 });
 
+test('ruling R5: a 366-day import cost at 1mo builds in one market call; a 32-day pvpc_eur_kwh is refused', async () => {
+  const market = fakeMarket();
+  const [from, to] = ['2025-08-01', '2026-07-31']; // 365 days, the seeded year
+  const ds = await buildDataset({ metrics: ['import_cost_pvpc_eur'], from: '2025-07-31', to, bucket: '1mo' }, deps({ market }));
+  assert.deepEqual(market.calls, [['2025-07-31', to]]);
+  assert.equal(ds.x.values.length, 13);
+  const s = aggregate.series(store, { from, to, bucket: '1h', now: NOW });
+  const july = s.t.map((t, j) => [t, j]).filter(([t]) => localDay(t).startsWith('2026-07'));
+  near(column(ds, 'import_cost_pvpc_eur')[ds.x.values.indexOf('2026-07')], july.reduce((a, [t, j]) => a + (s.kwh.imp[j] ?? 0) * price(t), 0), 'July');
+  await assert.rejects(buildDataset({ metrics: ['pvpc_eur_kwh'], from: '2026-06-30', to: '2026-07-31', bucket: '1d' }, deps({ market })), /at most 31 days/);
+  assert.equal(market.calls.length, 1);
+});
+
 test('refusals', async () => {
   const july = { from: '2026-07-01', to: '2026-07-31' };
   const cases = [
@@ -215,7 +228,8 @@ test('refusals', async () => {
     ['1h over 32 days', { metrics: ['pv_kw'], from: '2026-07-01', to: '2026-08-01', bucket: '1h' }, /too many rows over 32 days/],
     ['751 rows', { metrics: ['pv_kwh'], from: '2024-07-01', to: addDays('2024-07-01', 750), bucket: '1d' }, /too many rows over 751 days: use 1mo, 1y/],
     ['market over 31 days', { metrics: ['spot_eur_kwh'], from: '2026-06-01', to: '2026-07-02', bucket: '1d' }, /at most 31 days/],
-    ['import cost over 31 days', { metrics: ['import_cost_pvpc_eur'], from: '2026-01-01', to: '2026-07-31', bucket: '1mo' }, /at most 31 days/],
+    ['import cost over 366 days', { metrics: ['import_cost_pvpc_eur'], from: '2025-07-30', to: '2026-07-31', bucket: '1mo' }, /at most 366 days/],
+    ['pvpc over 31 days beside the import cost', { metrics: ['import_cost_pvpc_eur', 'pvpc_eur_kwh'], from: '2026-06-01', to: '2026-07-02', bucket: '1d' }, /at most 31 days/],
     ['bills with a bucket', { metrics: ['bill_total_eur'], ...july, bucket: '1mo' }, /takes no bucket/],
     ['market with bills', { metrics: ['bill_total_eur', 'pvpc_eur_kwh'], ...july }, /pvpc_eur_kwh needs bucket/],
     ['group_by without agg', { metrics: ['pv_kwh'], ...july, bucket: '1d', group_by: 'weekday' }, /group_by needs agg/],
