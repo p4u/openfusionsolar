@@ -214,6 +214,14 @@ test('no history.replaceState(null in public/js', () => {
   assert.deepEqual(hits, []);
 });
 
+test('every modal dialog opens through overlay(): no showModal() outside ui.js', () => {
+  // Android back closes the top overlay first (spec 4.3): the conversations sheet too (Task 11)
+  const dir = fileURLToPath(new URL('../public/js/', import.meta.url));
+  const hits = fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith('.js') && f !== 'ui.js')
+    .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('.showModal('));
+  assert.deepEqual(hits, []);
+});
+
 test('the old blocksToView drops figure, choice and sources without throwing', () => {
   const view = blocksToViewV1({ role: 'assistant', blocks: [
     figure(), { type: 'choice', options: ['a', 'b'] }, { type: 'sources', items: [{ title: 'x', url: 'https://x.example/' }] }, { type: 'text', text: 'Fet' },

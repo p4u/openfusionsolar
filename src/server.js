@@ -28,6 +28,7 @@ export const PUBLIC_PATHS = new Set([
   '/js/login.js', '/js/i18n.js', '/js/i18n/core.js', '/js/theme.js', '/css/tokens.css', '/css/base.css', '/css/login.css',
   '/favicon.svg', '/manifest.webmanifest', '/sw.js', '/offline.html', '/icons/icon.svg',
   '/icons/icon-180.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png',
+  '/icons/screenshot-narrow.png', '/icons/screenshot-wide.png',
 ]);
 const SECURITY_HEADERS = {
   'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src 'self'",

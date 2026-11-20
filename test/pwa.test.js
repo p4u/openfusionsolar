@@ -99,6 +99,19 @@ test('manifest, worker, offline page and icons have their types and headers', ()
     assert.equal(sw.headers.get('service-worker-allowed'), '/');
     assert.match(sw.headers.get('content-security-policy'), /worker-src 'self'; manifest-src 'self'/);
 
+    // spec 4.2: one narrow and one wide screenshot, PNG of the stated size, served without a session, not precached
+    assert.deepEqual(manifest.screenshots.map((s) => [s.form_factor, s.sizes]), [['narrow', '1080x1920'], ['wide', '1920x1080']]);
+    for (const shot of manifest.screenshots) {
+      assert.ok(shot.label.length > 10, shot.src);
+      assert.ok(PUBLIC_PATHS.has(shot.src) && !PUBLIC_SHELL.includes(shot.src) && !APP_SHELL.includes(shot.src), shot.src);
+      const res = await fetch(base + shot.src);
+      assert.equal(res.status, 200, shot.src);
+      assert.equal(res.headers.get('content-type'), 'image/png', shot.src);
+      const buf = Buffer.from(await res.arrayBuffer());
+      assert.equal(buf.toString('latin1', 1, 4), 'PNG', shot.src);
+      assert.equal(`${buf.readUInt32BE(16)}x${buf.readUInt32BE(20)}`, shot.sizes, shot.src);
+    }
+
     const apple = await fetch(`${base}/icons/icon-180.png`);
     assert.equal(apple.headers.get('content-type'), 'image/png');
     const offline = await fetch(`${base}/offline.html`);

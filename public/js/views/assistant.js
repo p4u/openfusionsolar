@@ -6,7 +6,7 @@
 import { register, t, getLang } from '../i18n.js';
 import dict from '../i18n/assistant.js';
 import invoicesDict from '../i18n/invoices.js';
-import { esc, icon, badge, emptyState, statusLine, loadBlock, confirmDialog } from '../ui.js';
+import { esc, icon, badge, emptyState, statusLine, loadBlock, confirmDialog, overlay } from '../ui.js';
 import { ensureAiNotice } from '../privacy.js';
 import { uploadFiles, groupFiles } from '../upload.js';
 import { ApiError, chatStream, getConversations, getConversation, deleteConversation, getAiUsage, getInvoice } from '../api.js';
@@ -403,7 +403,7 @@ export async function render(root, ctx) {
     } else if (el.dataset.suggest != null) {
       send(t('assistant.suggest')[Number(el.dataset.suggest)]);
     } else if (el.dataset.openList != null) {
-      sheet.showModal();
+      overlay(sheet).open();
     } else if (el.dataset.closeList != null) {
       sheet.close();
     } else if (el.dataset.new != null && location.hash === '#/assistant') {

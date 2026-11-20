@@ -19,11 +19,12 @@ It is generic: plant name, capacity, battery size and limits come from FusionSol
   month by month, whether each bill matches what the installation measured over the same days, and advice in euros.
   **Forecast** keeps the estimated bill, savings and surplus income for the Spanish 2.0TD tariff when prices are
   set; kWh only otherwise.
-- **Assistant** (optional): ask about your bills and your installation in your own words; answers come with charts.
+- **Assistant** (optional): ask about your bills, your installation and the electricity market in your own words;
+  it draws any chart from the app's data, asks when a question is ambiguous and checks every figure it gives.
 - **Incidents**: power cuts, internet losses, stopped panels and device alarms, grouped and explained.
 - **Technical data**: any stored device signal over any range.
 - **Settings**: alert recipients and what each one gets, alert rules, quiet hours, test email, alert history, plant
-  facts, collector state, appearance and a glossary.
+  facts, collector state, assistant spending and web search, app install, appearance and a glossary.
 
 ## Quick start (Docker)
 
@@ -64,7 +65,10 @@ or disabled.
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS` (or `SMTP_PASSWORD`), `SMTP_FROM` | no | Outgoing mail for alerts. `SMTP_SECURE` defaults to on for port 465, off otherwise. Credentials are never shown in the app or logged. |
 | `ALERT_TO` | no | First alert recipients, comma separated, until Settings is saved once. Each gets the "Everything important" alerts in the app language. |
 | `AI_API_KEY` | no | OpenRouter key for reading bills and for the assistant. Without it the assistant is hidden and bills are typed by hand. |
-| `AI_MODEL_EXTRACT`, `AI_MODEL_CHAT` | no | OpenRouter models for reading bills and for the assistant (default `google/gemini-3.1-flash-lite` for both). |
+| `AI_MODEL_EXTRACT`, `AI_MODEL_CHAT` | no | OpenRouter models for reading bills (default `google/gemini-3.1-flash-lite`) and for the assistant (default `google/gemini-3.8-flash`). |
+| `AI_MODEL_CHAT_FALLBACK` | no | Model used when the assistant's model fails on the first round (default `qwen/qwen3.8-27b`; `none` disables it). |
+| `AI_CHAT_REASONING` | no | How much the assistant's model thinks: `off`, `low` (default), `medium` or `high`. |
+| `JINA_API_KEY` | no | [Jina](https://jina.ai) key for the assistant's web search. The account needs balance; without a key, or with none left, the assistant says web search is unavailable. |
 | `AI_MONTHLY_BUDGET_USD` | no | Monthly spending limit in US dollars (default 5). |
 
 ## Alerts
@@ -117,20 +121,39 @@ The assistant (the speech bubble in the header) answers questions about your bil
 English. It reads the data through read-only tools and draws charts from the app's own data; it cannot change or
 delete anything. A bill can be attached to a question.
 
-- **Keys**: `AI_API_KEY` (an OpenRouter key), `AI_MODEL_EXTRACT` and `AI_MODEL_CHAT` (default
-  `google/gemini-3.1-flash-lite` for both; any OpenRouter model that takes PDFs and tools works),
-  `AI_MONTHLY_BUDGET_USD` (default 5). At the limit, uploads are still stored and can be filled in by hand, and the
-  assistant pauses until the next month. Settings, Assistant and bills shows this month's spending.
+- **Keys**: `AI_API_KEY` (an OpenRouter key), `AI_MODEL_EXTRACT` (default `google/gemini-3.1-flash-lite`, any
+  OpenRouter model that takes PDFs), `AI_MODEL_CHAT` (default `google/gemini-3.8-flash`, any model with tools),
+  `AI_MODEL_CHAT_FALLBACK` (default `qwen/qwen3.8-27b`, `none` to disable), `AI_CHAT_REASONING` (`off`, `low`,
+  `medium` or `high`; default `low`), `AI_MONTHLY_BUDGET_USD` (default 5) and `JINA_API_KEY` (web search). At the
+  limit, uploads are still stored and can be filled in by hand, and the assistant pauses until the next month.
+  Settings, Assistant and bills shows this month's spending, whether web search is available and this month's web
+  calls.
+- **Charts and questions**: the assistant draws a chart of any stored measure, bill figure or official market price
+  (PVPC and spot, from Red Eléctrica), with a table and CSV. When a question could mean two things it offers two to
+  four answers to tap. It knows the 2.0TD tariff, self-consumption compensation and the Huawei equipment from a guide
+  shipped with the app (`src/knowledge/guide.md`), and can search the web for what the guide does not cover.
+- **Checked figures**: before an answer is shown, every figure with a unit, a decimal part or of 1000 or more must
+  appear in what the assistant was given in that turn (tool results, the bill, the conversation); otherwise it gets
+  one chance to correct it, and figures still unchecked are replaced by "[xifra no comprovada]". The check proves a
+  figure was given, not that it carries the right label or period. A whole number under 1000 with no unit beside it
+  (for example in a table cell) is not checked, and a figure produced by calculate counts as checked whatever the
+  expression means.
 - **What is sent** to OpenRouter: the whole bill file (it carries your name, tax id, address and supply number), your
   questions, and the figures the tools return (with the supply number masked). Requests ask for providers that do
   not keep or train on the data. **Never sent**: the app password, the FusionSolar credentials, e-mail addresses
   or the API key. The app shows this notice before the first upload or question.
+- **What is sent to Jina** (web search): the search query the assistant writes, and the address of a public page to
+  read (only a search result or a source of the guide; page reads also work without a key). A query is refused before
+  it leaves when it holds a figure from your data or bills, the plant or device names, a bill, contract or supply
+  number, a tax id, an IBAN, an e-mail address or a phone number. **Sent to Red Eléctrica** (market prices): only the
+  dates asked for. Past days' prices are kept in the database and not asked for again.
 - **Where files are kept**: next to the database, in `data/bills` (named by their hash), never under `public/`.
   Logs carry status codes only, never bill contents.
 - **Deleting**: one bill from its page; all bills, or all assistant conversations, from Settings, Assistant and
   bills. Deleting a bill removes its original file too.
-- **Costs** with the default model: about 0.005 USD per bill and 0.0003 to 0.004 USD per question, so a normal
-  month stays well under 1 USD.
+- **Costs** with the default models: about 0.005 USD per bill and about 0.007 USD per short question; a question that
+  draws charts or reads many bills can take 0.02 to 0.04 USD. Ten short questions a day come to about 2 USD a month,
+  so the default limit stays at 5 USD. Higher reasoning costs more (`medium` about 0.016 USD per short question).
 - **Behind a reverse proxy**: allow request bodies of at least 12 MB for uploads (nginx: `client_max_body_size 12m`;
   its default is 1 MB). The assistant streams its answer and sends a keep-alive line every 15 s, so the default read
   timeouts are enough; with nginx the app already asks for no response buffering.
@@ -142,12 +165,25 @@ test`; run it on purpose with:
 AI_SMOKE=1 node --disable-warning=ExperimentalWarning --test test/smoke-llm.test.js
 ```
 
+The assistant's live check asks 11 questions on a copy of a real database (never commit or share it) and spends at
+most 0.30 USD; it writes the answers under `~/.cache/openfusionsolar/smoke/` and prints only pass or fail per question:
+
+```sh
+AI_SMOKE=1 AI_SMOKE_DB=/path/to/copy.db node --disable-warning=ExperimentalWarning --test test/smoke-assistant.test.js
+```
+
 ## Install on a phone
 
-Behind the HTTPS proxy the app installs like a native one: in Chrome on Android use "Install app" (or "Add to
-Home screen"), in Safari on iOS use Share, then "Add to Home Screen". The icon is labelled "Solar": the manifest is a
-static file, so it cannot carry the plant name. Service workers need a secure context, so this only works over HTTPS
-(or on `localhost`).
+Behind the HTTPS proxy the app installs like a native one. The menu (More, on a phone) and Settings show "Install the
+app" wherever installing is possible, and from the second day a banner offers it once.
+
+- **Android, Chrome**: tap "Install the app" and confirm, or use the browser menu, "Install app" (or "Add to Home
+  screen"). Firefox: menu, "Install" (or "Add to Home screen").
+- **iPhone and iPad, Safari**: tap Share, then "Add to Home Screen".
+
+The icon is labelled "Solar": the manifest is a static file, so it cannot carry the plant name. Service workers need a
+secure context, so this only works over HTTPS (or on `localhost`). The store-style screenshots in the manifest come
+from invented demo data: `node scripts/screenshots.js` rebuilds them (it needs a Chromium).
 
 Offline, the app opens from its cache and the Now view shows the last status it received, marked "Offline, data from
 HH:MM"; the other views need the server. Nothing else from `/api` is kept on the device, and logging out deletes that
@@ -160,7 +196,8 @@ checks the lists).
 Everything lives in `./data` (mounted into the container): `openfusionsolar.db` (readings, incidents, alert
 settings and history) and `.session.json` (the FusionSolar portal session). Back up that folder to keep your history.
 Uploaded bills are kept in `./data/bills`. Nothing is sent anywhere except to FusionSolar (to read your plant), your
-SMTP server (alerts) and, only when `AI_API_KEY` is set, OpenRouter (bills and assistant questions, see above).
+SMTP server (alerts) and, only when `AI_API_KEY` is set, OpenRouter (bills and assistant questions), Jina (the
+assistant's web searches and page reads) and Red Eléctrica (market prices); see above.
 
 If the FusionSolar login fails, the collector pauses logins for 30 minutes to avoid locking the account; Settings
 shows when it will try again.

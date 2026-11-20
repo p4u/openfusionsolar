@@ -205,3 +205,13 @@ test('usage text formats dollars in both languages', async () => {
   assert.equal(usd(0.0084, 'ca'), '<\u00a00,01\u00a0USD');
   assert.equal(usd(0.0084, 'en'), '<\u00a00.01\u00a0USD');
 });
+
+test('the web search line: available, or no key, no balance, bad key; a failed call keeps it available', async () => {
+  const { webKey } = await import('../public/js/views/settings-model.js');
+  const cases = [
+    [{ available: true, lastError: null }, 'on'], [{ available: true, lastError: 'error' }, 'error'],
+    [{ available: false, lastError: null }, 'noKey'], [{ available: false, lastError: 'error' }, 'noKey'],
+    [{ available: false, lastError: 'no_balance' }, 'noBalance'], [{ available: false, lastError: 'bad_key' }, 'badKey'], [undefined, 'noKey'],
+  ];
+  for (const [web, key] of cases) assert.equal(webKey(web), `settings.ai.web.${key}`, JSON.stringify(web));
+});
