@@ -141,7 +141,7 @@ test('the assistant answers the benchmark and AC1 questions live, within 0.30 US
     const done = events.find((e) => e.type === 'done');
     const blocks = events.filter((e) => !['status', 'ping', 'done'].includes(e.type));
     const figs = events.filter((e) => e.type === 'figure');
-    const checks = { answered: Boolean(done) && Boolean(answer), noPlaceholder: !answer.includes(MARK.ca) };
+    const checks = { answered: Boolean(done) && Boolean(answer), notApology: !answer.startsWith('Ho sento, no he pogut respondre'), noPlaceholder: !answer.includes(MARK.ca) };
     if (id === 'q9' || id === 'q10') checks.choice = blocks.at(-1)?.type === 'choice';
     else if (refs[id]) checks.keyFigures = refs[id].map((alts) => alts.some((ref) => has(answer, ref)));
     else if (id.startsWith('ac1')) checks.figures = await Promise.all(figs.map((f) => figureMatches(f, deps)));
