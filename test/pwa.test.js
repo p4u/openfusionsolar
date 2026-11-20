@@ -50,7 +50,7 @@ test('the precache before login holds only public paths', () => {
 });
 
 test('the cache name carries the version, so an update clears the old shell', () => {
-  assert.match(SW, /^const VERSION = 5;$/m); // bumped once for assistant 2 and the mobile shell
+  assert.match(SW, /^const VERSION = 6;$/m); // bumped for assistant 2 and the mobile shell, again for its fix-2 shell files
   assert.match(SW, /const SHELL = `ofs-shell-v\$\{VERSION\}`;/);
   assert.match(SW, /name\.startsWith\('ofs-'\) && name !== SHELL && name !== DATA/);
 });

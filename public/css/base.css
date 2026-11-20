@@ -28,7 +28,7 @@ button { cursor: pointer; }
 /* no double-tap zoom wait on what is tapped; pinch zoom stays */
 a, button, input, select, textarea, label, summary { touch-action: manipulation; }
 /* a native app shows its own pressed state, not the browser's grey flash */
-a, button { -webkit-tap-highlight-color: transparent; }
+html { -webkit-tap-highlight-color: transparent; }
 p, li, dd { text-wrap: pretty; }
 [hidden] { display: none !important; }
 
@@ -172,8 +172,12 @@ main:focus { outline: none; }
   margin-inline: auto;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: 44px;
+  min-height: 44px;
   max-width: 18rem;
   color: var(--ink);
   text-decoration: none;
@@ -183,7 +187,12 @@ main:focus { outline: none; }
   line-height: 1.2;
   letter-spacing: -0.005em;
 }
-.brand-name { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.brand-mark { flex: none; }
+.brand-name { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 1024-1279 px: the links fill the row, so the brand is its mark only (the name stays for screen readers) */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .brand-name { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
+}
 
 .nav-links {
   display: flex;
@@ -321,7 +330,6 @@ main:focus { outline: none; }
   line-height: 1.2;
   letter-spacing: 0;
   text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
   transition: color var(--dur) var(--ease);
 }
 .tab-icon {
@@ -751,8 +759,11 @@ a.card:hover, .card-link:hover { border-color: var(--hairline-strong); box-shado
 .field-affix input:not([type="checkbox"]) { padding-right: 52px; }
 .field-affix-btn { position: absolute; top: 2px; right: 2px; width: 40px; height: 40px; } /* inside the 44 px field */
 
-@media (pointer: coarse) {
+/* a phone-width window gets touch-sized segments too: a touch screen does not always report pointer: coarse */
+@media (pointer: coarse), (max-width: 639px) {
   .segmented > button, .segmented > a, .segmented > label { height: 44px; }
+}
+@media (pointer: coarse) {
   /* iOS zooms into a field whose text is under 16 px */
   input, select, textarea { font-size: max(16px, 1em); }
   /* the 24 px switch is reached on a 46 px band */

@@ -1,7 +1,7 @@
 // Service worker (scope /): the app shell offline, the last /api/status for the Now view, nothing else from /api.
 // Bump VERSION when the shell list changes; a changed file makes the browser install the new worker, and the app
 // offers "New version available" until the user accepts (no skipWaiting on install).
-const VERSION = 5;
+const VERSION = 6;
 const SHELL = `ofs-shell-v${VERSION}`;
 const DATA = 'ofs-data'; // the last good /api/status only; dropped on logout and on a 401
 const STATUS = '/api/status';
