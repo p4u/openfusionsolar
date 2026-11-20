@@ -50,7 +50,7 @@ test('the precache before login holds only public paths', () => {
 });
 
 test('the cache name carries the version, so an update clears the old shell', () => {
-  assert.match(SW, /^const VERSION = \d+;$/m);
+  assert.match(SW, /^const VERSION = 6;$/m); // bumped for assistant 2 and the mobile shell, again for its fix-2 shell files
   assert.match(SW, /const SHELL = `ofs-shell-v\$\{VERSION\}`;/);
   assert.match(SW, /name\.startsWith\('ofs-'\) && name !== SHELL && name !== DATA/);
 });
@@ -75,6 +75,10 @@ test('manifest, worker, offline page and icons have their types and headers', ()
       ['OpenFusionSolar', 'Solar', '/', '/', 'standalone'],
     );
     assert.equal(manifest.background_color, '#f5f5f5'); // tokens.css --canvas
+    assert.equal(manifest.description, 'Seguiment de la instal·lació solar, la bateria i les factures');
+    assert.deepEqual(manifest.categories, ['utilities', 'productivity']);
+    assert.deepEqual(manifest.shortcuts.map((s) => [s.name, s.url]), [['Assistent', '/#/assistant'], ['Factures', '/#/money'], ['Ara', '/']]);
+    for (const s of manifest.shortcuts) assert.deepEqual(s.icons.map((i) => i.src), ['/icons/icon-192.png'], s.name);
     for (const size of ['192x192', '512x512']) assert.ok(manifest.icons.some((i) => i.sizes === size && i.purpose === 'any'), size);
     assert.ok(manifest.icons.some((i) => i.purpose === 'maskable' && i.sizes === '512x512'));
     for (const icon of manifest.icons) {
@@ -95,6 +99,19 @@ test('manifest, worker, offline page and icons have their types and headers', ()
     assert.equal(sw.headers.get('service-worker-allowed'), '/');
     assert.match(sw.headers.get('content-security-policy'), /worker-src 'self'; manifest-src 'self'/);
 
+    // spec 4.2: one narrow and one wide screenshot, PNG of the stated size, served without a session, not precached
+    assert.deepEqual(manifest.screenshots.map((s) => [s.form_factor, s.sizes]), [['narrow', '1080x1920'], ['wide', '1920x1080']]);
+    for (const shot of manifest.screenshots) {
+      assert.ok(shot.label.length > 10, shot.src);
+      assert.ok(PUBLIC_PATHS.has(shot.src) && !PUBLIC_SHELL.includes(shot.src) && !APP_SHELL.includes(shot.src), shot.src);
+      const res = await fetch(base + shot.src);
+      assert.equal(res.status, 200, shot.src);
+      assert.equal(res.headers.get('content-type'), 'image/png', shot.src);
+      const buf = Buffer.from(await res.arrayBuffer());
+      assert.equal(buf.toString('latin1', 1, 4), 'PNG', shot.src);
+      assert.equal(`${buf.readUInt32BE(16)}x${buf.readUInt32BE(20)}`, shot.sizes, shot.src);
+    }
+
     const apple = await fetch(`${base}/icons/icon-180.png`);
     assert.equal(apple.headers.get('content-type'), 'image/png');
     const offline = await fetch(`${base}/offline.html`);
@@ -102,6 +119,10 @@ test('manifest, worker, offline page and icons have their types and headers', ()
     assert.match(offline.headers.get('content-type'), /^text\/html/);
     assert.doesNotMatch(await offline.text(), /<script(?![^>]*src="\/js\/theme\.js")/, 'no inline script (CSP)');
   }));
+
+test('the app page lets the keyboard resize the layout (spec 4.1)', () => {
+  assert.match(fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), /name="viewport" content="[^"]*interactive-widget=resizes-content"/);
+});
 
 test('both pages link the manifest, the touch icon and a theme colour per scheme', () => {
   for (const page of ['index.html', 'login.html']) {

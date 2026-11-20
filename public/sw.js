@@ -1,7 +1,7 @@
 // Service worker (scope /): the app shell offline, the last /api/status for the Now view, nothing else from /api.
 // Bump VERSION when the shell list changes; a changed file makes the browser install the new worker, and the app
 // offers "New version available" until the user accepts (no skipWaiting on install).
-const VERSION = 4;
+const VERSION = 6;
 const SHELL = `ofs-shell-v${VERSION}`;
 const DATA = 'ofs-data'; // the last good /api/status only; dropped on logout and on a 401
 const STATUS = '/api/status';
@@ -22,6 +22,7 @@ const APP_SHELL = [
   '/css/views/now.css', '/css/views/panels.css', '/css/views/settings.css', '/css/views/signals.css',
   '/js/alert-catalogue.js', '/js/api.js', '/js/app.js', '/js/buckets.js', '/js/chart-data.js', '/js/chart-presets.js', '/js/charts.js',
   '/js/format.js', '/js/incidents.js', '/js/privacy.js', '/js/range-bar.js', '/js/range.js', '/js/routes.js', '/js/ui.js', '/js/upload.js',
+  '/js/viewport.js', '/js/install.js',
   '/js/i18n/assistant.js', '/js/i18n/battery.js', '/js/i18n/bill.js', '/js/i18n/billing.js', '/js/i18n/charts.js', '/js/i18n/energy.js',
   '/js/i18n/incidents.js', '/js/i18n/invoices.js',
   '/js/i18n/now.js', '/js/i18n/panels.js', '/js/i18n/settings.js', '/js/i18n/signals.js',

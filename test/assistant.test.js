@@ -5,7 +5,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto, { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { Store } from '../src/db.js';
+import { startServer } from '../src/server.js';
+import { createDatasets, KINDS } from '../src/datasets.js';
+import { loadGuide } from '../src/knowledge.js';
 import { createLlm, DEFAULT_MODEL } from '../src/llm.js';
 import { createInvoices } from '../src/invoices.js';
 import { createAssistant, systemPrompt } from '../src/assistant.js';
@@ -38,6 +42,14 @@ function seed(store, { notes = null, concept = null } = {}) {
 function toolStep(name, args) {
   const step = structuredClone(fixture('chat-get-invoice'));
   step.response.choices[0].message.tool_calls[0].function = { name, arguments: JSON.stringify(args) };
+  return step;
+}
+
+// A final answer without figures, for tests about something else: the system prompt's examples no longer ground
+// the fixture's 59,15 € (ruling R6a), and these tests give the model no bill.
+function plainFinal() {
+  const step = structuredClone(fixture('chat-final-ca'));
+  step.response.choices[0].message.content = 'A l’octubre vas pagar la factura de l’1 al 31 d’octubre.';
   return step;
 }
 
@@ -78,11 +90,12 @@ test('a turn streams status, chart and text in order and stores the conversation
   const r = await chat({ text: 'Quant vaig pagar a l’octubre?' });
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-type'), /application\/x-ndjson/);
-  assert.deepEqual(r.events.map((e) => e.type), ['status', 'status', 'chart', 'text', 'done']);
-  assert.deepEqual(r.events.slice(0, 2).map((e) => e.tool), ['get_billing_summary', 'show_chart']);
-  assert.deepEqual(r.events[2].chart, { type: 'bill_breakdown', from: '2026-10-01', to: '2026-10-31' });
-  assert.match(r.events[3].text, /59,15/);
-  const done = r.events[4];
+  // spec 3.1 and 3.6: 'thinking' before each model round, 'checking' before the answer is shown
+  assert.deepEqual(r.events.map((e) => e.type), ['status', 'status', 'status', 'chart', 'status', 'status', 'text', 'done']);
+  assert.deepEqual(r.events.filter((e) => e.type === 'status').map((e) => e.tool), ['thinking', 'get_billing_summary', 'show_chart', 'thinking', 'checking']);
+  assert.deepEqual(r.events[3].chart, { type: 'bill_breakdown', from: '2026-10-01', to: '2026-10-31' });
+  assert.match(r.events[6].text, /59,15/);
+  const done = r.events[7];
   assert.deepEqual(done.usage, { tokensIn: 5300, tokensOut: 100, costUsd: 0.001475 });
 
   const list = await get('/api/assistant/conversations');
@@ -104,7 +117,8 @@ test('the assistant message with reasoning details is sent back verbatim with on
   assert.equal(fake.calls.length, 2);
   const [first, second] = fake.calls;
   assert.deepEqual(first.messages.map((m) => m.role), ['system', 'user']);
-  assert.equal(first.max_tokens, 1200);
+  assert.equal(first.max_tokens, 4000); // spec 3.1: 4000 without reasoning
+  assert.equal(first.reasoning, undefined);
   assert.deepEqual(first.tools, TOOLS);
   assert.deepEqual(second.messages.map((m) => m.role), ['system', 'user', 'assistant', 'tool', 'tool']);
   assert.deepEqual(second.messages[2], fixture('chat-summary-chart').response.choices[0].message);
@@ -115,7 +129,7 @@ test('the assistant message with reasoning details is sent back verbatim with on
   assert.deepEqual(JSON.parse(second.messages[4].content).shown.type, 'bill_breakdown');
 });
 
-test('tools reject bad arguments with a reason and never write', () => {
+test('tools reject bad arguments with a reason and never write', async () => {
   const store = new Store(':memory:');
   const id = seed(store);
   store.setKv('station', { name: 'Casa', capacity: 6.6, batteryKwh: 10 });
@@ -143,7 +157,7 @@ test('tools reject bad arguments with a reason and never write', () => {
     ['get_plant', []],
   ];
   for (const [name, args] of bad) {
-    const { result, block } = runTool(name, args, deps);
+    const { result, block } = await runTool(name, args, deps);
     assert.equal(typeof result.error, 'string', `${name} ${JSON.stringify(args)}`);
     assert.ok(result.error.length > 5);
     assert.equal(block, undefined);
@@ -154,14 +168,14 @@ test('tools reject bad arguments with a reason and never write', () => {
     ['get_invoice', { id }], ['compare_invoice', { id }], ['get_billing_summary', { from: '2026-01-01', to: '2026-11-19' }],
     ['get_incidents', { from: '2026-10-01', to: '2026-10-31' }], ['show_chart', { type: 'energy_bars', from: '2026-10-01', to: '2026-10-31' }],
   ];
-  for (const [name, args] of good) assert.equal(runTool(name, args, deps).result.error, undefined, name);
-  assert.equal(runTool('estimate_bill', { from: '2026-10-01', to: '2026-10-31' }, {
+  for (const [name, args] of good) assert.equal((await runTool(name, args, deps)).result.error, undefined, name);
+  assert.equal((await runTool('estimate_bill', { from: '2026-10-01', to: '2026-10-31' }, {
     ...deps, config: { prices: { p1: 0.249, p2: 0.169, p3: 0.15, export: 0.03, adjust: 0, powerP1: 30, powerP2: 3, contractedP1: 4.4, contractedP2: 4.4, socialDay: 0, meterDay: 0, iee: 0.05, vat: 0.21 } },
-  }).result.error, undefined);
+  })).result.error, undefined);
   assert.deepEqual(tableCounts(store), before);
 
   // CUPS masked, no contract number; the numbers come computed
-  const inv = runTool('get_invoice', { id }, deps).result;
+  const inv = (await runTool('get_invoice', { id }, deps)).result;
   assert.equal(inv.cups_masked, 'ES00...BJ0F');
   assert.ok(!JSON.stringify(inv).includes(CUPS));
   assert.equal(inv.contract_number, undefined);
@@ -177,18 +191,18 @@ test('tools reject bad arguments with a reason and never write', () => {
   assert.ok(Math.abs(b.itemsSum - b.total) <= 0.02);
   assert.match(b.howToRead, /never merge/);
   // without lines, one other item from the bill's columns
-  const bare = runTool('get_invoice', { id: store.insertInvoice({ ...sample().row, invoice_number: 'B2', status: 'draft' }) }, deps).result.breakdown;
+  const bare = (await runTool('get_invoice', { id: store.insertInvoice({ ...sample().row, invoice_number: 'B2', status: 'draft' }) }, deps)).result.breakdown;
   assert.deepEqual(bare.items.find((i) => i.key === 'other'), { key: 'other', amount: 1.59 });
   assert.equal(bare.itemsSum, 59.15);
   // a discount after VAT (Flux Solar) is itemised beside the donation; together they are the exempt column
   const s2 = sample();
   const fluxId = store.insertInvoice({ ...s2.row, invoice_number: 'B3', status: 'draft', other_exempt_eur: -0.43, total_eur: 57.13 },
     [...s2.lines, { pos: 99, section: 'discount', concept: 'Descompte per Flux Solar', amount_eur: -2.02, info: 0 }], []);
-  const flux = runTool('get_invoice', { id: fluxId }, deps).result.breakdown;
+  const flux = (await runTool('get_invoice', { id: fluxId }, deps)).result.breakdown;
   assert.deepEqual(flux.items.filter((i) => i.key === 'other').map((i) => [i.concept, i.amount]), [['Donatiu voluntari', 1.59], ['Descompte per Flux Solar', -2.02]]);
   assert.equal(flux.itemsSum, 57.13);
-  assert.equal(runTool('compare_invoice', { id }, deps).result.verdict, 'ok');
-  assert.equal(runTool('list_invoices', {}, deps).result.invoices[0].total_eur, 59.15);
+  assert.equal((await runTool('compare_invoice', { id }, deps)).result.verdict, 'ok');
+  assert.equal((await runTool('list_invoices', {}, deps)).result.invoices[0].total_eur, 59.15);
 
   // read-only by construction
   const src = fs.readFileSync(new URL('../src/assistant-tools.js', import.meta.url), 'utf8');
@@ -199,19 +213,19 @@ test('tools reject bad arguments with a reason and never write', () => {
   for (const x of TOOLS) assert.equal(x.function.parameters.additionalProperties, false);
 });
 
-test('show_chart accepts only whitelisted types and legal ranges', () => {
+test('show_chart accepts only whitelisted types and legal ranges', async () => {
   const store = new Store(':memory:');
   const id = seed(store);
   const deps = { store, config: {}, now: () => NOW };
-  const ok = (args, chart) => {
-    const { result, block } = runTool('show_chart', args, deps);
+  const ok = async (args, chart) => {
+    const { result, block } = await runTool('show_chart', args, deps);
     assert.equal(result.error, undefined, JSON.stringify(args));
     assert.deepEqual(block, { type: 'chart', chart });
   };
-  ok({ type: 'energy_bars', from: '2026-01-01', to: '2026-10-31', bucket: '1mo' }, { type: 'energy_bars', from: '2026-01-01', to: '2026-10-31', bucket: '1mo' });
-  ok({ type: 'power_lines', from: '2026-10-01', to: '2026-10-07' }, { type: 'power_lines', from: '2026-10-01', to: '2026-10-07' });
-  ok({ type: 'battery_soc', from: '2026-10-01', to: '2026-10-02', bucket: '5m' }, { type: 'battery_soc', from: '2026-10-01', to: '2026-10-02', bucket: '5m' });
-  ok({ type: 'bill_kwh_vs_measured', from: '2026-10-01', to: '2026-10-31', invoice_id: id }, { type: 'bill_kwh_vs_measured', from: '2026-10-01', to: '2026-10-31', invoiceId: id });
+  await ok({ type: 'energy_bars', from: '2026-01-01', to: '2026-10-31', bucket: '1mo' }, { type: 'energy_bars', from: '2026-01-01', to: '2026-10-31', bucket: '1mo' });
+  await ok({ type: 'power_lines', from: '2026-10-01', to: '2026-10-07' }, { type: 'power_lines', from: '2026-10-01', to: '2026-10-07' });
+  await ok({ type: 'battery_soc', from: '2026-10-01', to: '2026-10-02', bucket: '5m' }, { type: 'battery_soc', from: '2026-10-01', to: '2026-10-02', bucket: '5m' });
+  await ok({ type: 'bill_kwh_vs_measured', from: '2026-10-01', to: '2026-10-31', invoice_id: id }, { type: 'bill_kwh_vs_measured', from: '2026-10-01', to: '2026-10-31', invoiceId: id });
   const refused = [
     { type: 'pie', from: '2026-10-01', to: '2026-10-31' },
     { type: '<script>', from: '2026-10-01', to: '2026-10-31' },
@@ -227,7 +241,7 @@ test('show_chart accepts only whitelisted types and legal ranges', () => {
     { type: 'energy_bars' },
   ];
   for (const args of refused) {
-    const { result, block } = runTool('show_chart', args, deps);
+    const { result, block } = await runTool('show_chart', args, deps);
     assert.equal(typeof result.error, 'string', JSON.stringify(args));
     assert.equal(block, undefined);
   }
@@ -240,18 +254,27 @@ test('the preset list matches the browser\'s', () => {
   assert.deepEqual(TOOLS.find((x) => x.function.name === 'show_chart').function.parameters.properties.type.enum, list);
 });
 
-test('six rounds at most, then a plain apology', async (t) => {
-  const { chat, fake } = await setup(t, { steps: Array(7).fill(fixture('chat-get-invoice')) });
+test('10 rounds at most, then a plain apology', async (t) => {
+  const { chat, fake } = await setup(t, { steps: Array(11).fill(fixture('chat-get-invoice')) });
   const r = await chat({ text: 'Explica’m la factura' });
-  assert.equal(fake.calls.length, 6);
-  assert.deepEqual(r.events.map((e) => e.type), [...Array(6).fill('status'), 'text', 'done']);
-  assert.match(r.events[6].text, /^Ho sento/);
-  // the model got a reason for every refused call (there is no bill 1)
-  assert.match(JSON.parse(fake.calls[5].messages.at(-1).content).error, /no bill/);
+  assert.equal(fake.calls.length, 11); // spec 3.1: 10 rounds (was 6), plus the one no-tools call (fix-2)
+  assert.deepEqual(r.events.map((e) => e.type), [...Array(20).fill('status'), 'text', 'done']);
+  assert.deepEqual(r.events.slice(0, 2).map((e) => e.tool), ['thinking', 'get_invoice']);
+  assert.match(r.events[20].text, /^Ho sento/);
+  // the model got a reason for every refused call: no bill 1 for the first four, then the per-tool cap (fix-1)
+  const results = fake.calls[9].messages.filter((m) => m.role === 'tool').map((m) => JSON.parse(m.content).error);
+  assert.equal(results.length, 9);
+  for (const e of results.slice(0, 4)) assert.match(e, /no bill/);
+  for (const e of results.slice(4)) assert.match(e, /^already called \d times this turn/);
+  // round 10 is sent without tools and with the note; this model ignores it and calls a tool anyway
+  assert.equal(fake.calls[9].tool_choice, 'none');
+  assert.match(fake.calls[9].messages.at(-1).content, /^Answer now with what you have/);
+  // so one more call goes out with no tools at all; this model calls a tool even then: the apology (fix-2)
+  assert.ok(!('tools' in fake.calls[10]));
 });
 
 test('a closed connection aborts the upstream request', async (t) => {
-  const inner = fakeFetch(['timeout', fixture('chat-final-ca')]);
+  const inner = fakeFetch(['timeout', plainFinal()]);
   const signals = [];
   let called;
   const firstCall = new Promise((r) => { called = r; });
@@ -293,7 +316,7 @@ test('limits: 21st message in 5 minutes and a second turn in flight are 429; the
   while (!busy.fake.calls.length) await new Promise((resolve) => setTimeout(resolve, 5));
   const second = await busy.chat({ text: 'Segona' });
   assert.equal(second.status, 429);
-  assert.equal(second.body.error, 'rate_limited');
+  assert.deepEqual(second.body, { error: 'busy' }); // spec 3.1 (was rate_limited)
   ac.abort();
   await first;
 
@@ -307,7 +330,7 @@ test('limits: 21st message in 5 minutes and a second turn in flight are 429; the
   const off = await setup(t, { apiKey: null });
   const o = await off.chat({ text: 'Hola' });
   assert.deepEqual([o.status, o.body], [409, { error: 'ai_disabled' }]);
-  assert.deepEqual(await off.get('/api/assistant/usage'), { enabled: false, month: '2026-11', spentUsd: 0, budgetUsd: 5 });
+  assert.deepEqual(await off.get('/api/assistant/usage'), { enabled: false, month: '2026-11', spentUsd: 0, budgetUsd: 5, webCalls: 0 });
 
   for (const body of [{ text: '' }, { text: 'x'.repeat(4001) }, { text: 'hola', lang: 'fr' }, { text: 'hola', conversationId: 99 },
     { text: 'hola', invoiceId: 7 }, { text: 'hola', attachments: ['../../etc/passwd'] }, { text: 'hola', attachments: Array(4).fill(randomUUID()) }]) {
@@ -376,7 +399,7 @@ test('an attached bill is waited for and shown as an invoice block', async (t) =
   assert.equal(up.status, 201);
   assert.equal((await post('/api/invoices/process', { group })).status, 202);
   const r = await chat({ text: 'Què em diu aquesta factura?', attachments: [group] });
-  assert.deepEqual(r.events.map((e) => e.type), ['status', 'invoice', 'text', 'done']);
+  assert.deepEqual(r.events.map((e) => e.type), ['status', 'invoice', 'status', 'status', 'text', 'done']);
   assert.equal(r.events[0].tool, 'reading_bill');
   const inv = r.events[1];
   assert.deepEqual([inv.period, inv.total, inv.status], [{ from: '2026-10-01', to: '2026-10-31' }, 59.15, 'confirmed']);
@@ -398,17 +421,17 @@ test('an attached bill is waited for and shown as an invoice block', async (t) =
 });
 
 test('a non-bill attachment is reported', async (t) => {
-  const { chat, fake, srv, post } = await setup(t, { withInvoices: true, steps: [fixture('not-a-bill'), fixture('chat-final-ca')] });
+  const { chat, fake, srv, post } = await setup(t, { withInvoices: true, steps: [fixture('not-a-bill'), plainFinal()] });
   const group = randomUUID();
   await srv.request(`/api/invoices/upload?group=${group}&pos=0&source=chat`, { method: 'POST', headers: { 'content-type': 'application/pdf' }, body: pdf() });
   await post('/api/invoices/process', { group });
   const r = await chat({ text: 'Mira això', attachments: [group] });
-  assert.deepEqual(r.events.map((e) => e.type), ['status', 'text', 'done']);
+  assert.deepEqual(r.events.map((e) => e.type), ['status', 'status', 'status', 'text', 'done']);
   assert.match(fake.calls[1].messages.at(-1).content, /not an electricity bill/);
 });
 
 test('conversations list, open, delete and delete-all', async (t) => {
-  const { chat, get, post, fake } = await setup(t, { steps: Array(3).fill(fixture('chat-final-ca')) });
+  const { chat, get, post, fake, store } = await setup(t, { steps: Array(3).fill(plainFinal()) });
   const a = (await chat({ text: 'Primera pregunta' })).events.at(-1).conversationId;
   const again = await chat({ text: 'I la segona?', conversationId: a });
   assert.equal(again.events.at(-1).conversationId, a);
@@ -431,8 +454,13 @@ test('conversations list, open, delete and delete-all', async (t) => {
   assert.deepEqual(await get('/api/assistant/conversations'), []);
 
   const usage = await get('/api/assistant/usage');
-  assert.deepEqual([usage.enabled, usage.month, usage.budgetUsd], [true, '2026-11', 5]);
+  assert.deepEqual([usage.enabled, usage.month, usage.budgetUsd, usage.webCalls], [true, '2026-11', 5, 0]);
   assert.ok(usage.spentUsd > 0);
+  // this month's web calls: searches and page reads since the 1st, not last month's nor the model calls
+  store.addUsage({ ts: NOW, job: 'web_search', model: 'jina', cost_usd: 0 });
+  store.addUsage({ ts: NOW, job: 'web_read', model: 'jina', cost_usd: 0 });
+  store.addUsage({ ts: Date.parse('2026-10-31T12:00:00Z'), job: 'web_search', model: 'jina', cost_usd: 0 });
+  assert.equal((await get('/api/assistant/usage')).webCalls, 2);
 });
 
 test('everything is 401 without a session', async (t) => {
@@ -448,7 +476,7 @@ test('everything is 401 without a session', async (t) => {
 });
 
 test('compare_invoice on a draft without a period answers nodata and the turn ends', async (t) => {
-  const { store, chat, fake } = await setup(t, { steps: [toolStep('compare_invoice', { id: 1 }), fixture('chat-final-ca')] });
+  const { store, chat, fake } = await setup(t, { steps: [toolStep('compare_invoice', { id: 1 }), plainFinal()] });
   assert.equal(store.insertInvoice({ status: 'draft' }), 1);
   const r = await chat({ text: 'Compara la factura' });
   assert.equal(r.events.at(-1).type, 'done');
@@ -461,7 +489,7 @@ const PRICES = { p1: 0.249, p2: 0.169, p3: 0.15, export: 0.03, adjust: 0.029, po
   socialDay: 0.024839, meterDay: 0.044839, iee: 0.0511269, vat: 0.21 };
 
 test('savings over a range come from estimate_bill with its note; a bill\'s savings say they cover its days only', async (t) => {
-  const steps = [toolStep('estimate_bill', { from: '2026-01-01', to: '2026-11-19' }), toolStep('compare_invoice', { id: 1 }), fixture('chat-final-ca')];
+  const steps = [toolStep('estimate_bill', { from: '2026-01-01', to: '2026-11-19' }), toolStep('compare_invoice', { id: 1 }), plainFinal()];
   const { store, chat, fake } = await setup(t, { steps, config: { prices: PRICES } });
   seed(store);
   for (let i = 1; i <= 31; i++) { // the house used more than it bought
@@ -481,17 +509,119 @@ test('savings over a range come from estimate_bill with its note; a bill\'s savi
   for (const rule of ['call estimate_bill for that range', 'list its breakdown items as given', 'not what the house used', 'power card of get_billing_summary', 'possible cause, never a proven one']) {
     assert.ok(system.includes(rule), rule);
   }
-  const summary = runTool('get_billing_summary', { from: '2026-10-01', to: '2026-10-31' }, { store, config: { prices: PRICES }, now: () => NOW }).result;
+  const summary = (await runTool('get_billing_summary', { from: '2026-10-01', to: '2026-10-31' }, { store, config: { prices: PRICES }, now: () => NOW })).result;
   assert.match(summary.invoices[0].compare.savings.howToRead, /only this bill's days/);
 });
 
 test('a quiet chat stream gets ping lines, and none after the turn ends', async (t) => {
-  const fake = fakeFetch([fixture('chat-final-ca')]);
+  const fake = fakeFetch([plainFinal()]);
   const slow = async (...a) => { await new Promise((r) => setTimeout(r, 120)); return fake.fetch(...a); };
   const { chat } = await setup(t, { fetch: slow, pingMs: 30 });
   const r = await chat({ text: 'Hola' });
   const types = r.events.map((e) => e.type);
   assert.ok(types.filter((x) => x === 'ping').length >= 2, types.join());
-  assert.deepEqual(types.filter((x) => x !== 'ping'), ['text', 'done']);
+  assert.deepEqual(types.filter((x) => x !== 'ping'), ['status', 'status', 'text', 'done']);
   assert.equal(types.at(-1), 'done');
+});
+
+// --- assistant 2 tools (spec 3.2-3.6) ---
+
+const turnDeps = (store, over = {}) => ({
+  store, config: {}, now: () => NOW, lang: 'ca', datasets: createDatasets(), grounded: { all: new Set(), household: new Set() }, guide: loadGuide(),
+  turn: { webCalls: 0, urls: new Set(), sources: [], figures: 0 }, ...over,
+});
+
+test('the tool list: the presets and the new tools, each with a closed argument object', () => {
+  assert.deepEqual(TOOL_NAMES, ['get_plant', 'get_energy', 'get_power', 'get_tariff', 'estimate_bill', 'list_invoices', 'get_invoice', 'compare_invoice',
+    'get_billing_summary', 'get_incidents', 'show_chart', 'query_data', 'draw_chart', 'read_guide', 'web_search', 'read_web_page', 'calculate', 'ask_user']);
+  const series = TOOLS.find((x) => x.function.name === 'draw_chart').function.parameters.properties.series.items;
+  assert.equal(series.additionalProperties, false);
+});
+
+test('get_plant returns battery, bill supplier, tariff and billed contracted power', async () => {
+  const store = new Store(':memory:');
+  store.setKv('station', { name: 'Casa', capacity: 6.6, batteryKwh: 10 });
+  store.setKv('devices', [{ dn: 'NE=1', type: 'Inverter', name: 'Inversor-1', signals: [1, 2] }, { dn: 'NE=2', type: 'Battery', name: 'Bateria-1', signals: [] }]);
+  store.setKv('batteryConfig', { endOfDischargePct: 10, endOfChargePct: 100, chargeFromGrid: false, gridChargeCutoffPct: 50, maxChargeKw: 5, maxDischargeKw: 5 });
+  store.insertInvoice({ ...sample().row, status: 'confirmed', supplier: 'Elèctrica de Prova', tariff: '2.0TD', contracted_p1_kw: 4.6, contracted_p2_kw: 4.6 });
+  const { result } = await runTool('get_plant', {}, { store, config: { prices: PRICES, battery: { reservePct: 20 } }, now: () => NOW });
+  assert.deepEqual(result.devices, [{ type: 'Inverter', name: 'Inversor-1' }, { type: 'Battery', name: 'Bateria-1' }]);
+  assert.deepEqual([result.battery.capacityKwh, result.battery.minPct, result.battery.reservePct, result.battery.endOfChargePct, result.battery.chargeFromGrid,
+    result.battery.gridChargeCutoffPct, result.battery.maxChargeKw, result.battery.maxDischargeKw], [10, 10, 20, 100, false, 50, 5, 5]);
+  assert.deepEqual(result.contractedKw, { p1: 4.4, p2: 4.4, source: 'settings', billed: { p1: 4.6, p2: 4.6, source: 'bill 2026-10' } });
+  assert.deepEqual([result.latestBill.supplier, result.latestBill.tariff, result.latestBill.month], ['Elèctrica de Prova', '2.0TD', '2026-10']);
+  assert.match(result.howToRead, /give both with their source/);
+  const bare = (await runTool('get_plant', {}, { store: new Store(':memory:'), config: {}, now: () => NOW })).result;
+  assert.deepEqual([bare.contractedKw, bare.latestBill, bare.devices], [{ p1: null, p2: null, source: null, billed: null }, null, []]);
+});
+
+test('get_energy rows carry battery kWh, self-sufficiency and say money is euros', async () => {
+  const store = new Store(':memory:');
+  store.saveDaily('2026-10-01', { pv_kwh: 6, load_kwh: 10, import_kwh: 4, export_kwh: 1, charge_kwh: 3, discharge_kwh: 2.5 });
+  const { result } = await runTool('get_energy', { from: '2026-10-01', to: '2026-10-01', bucket: '1d' }, { store, config: {}, now: () => NOW });
+  const [row] = result.buckets;
+  assert.deepEqual([row.charge_kwh, row.discharge_kwh, row.selfSufficiencyPct], [3, 2.5, 60]);
+  assert.match(result.howToRead, /euros, never kWh/);
+});
+
+test('read_guide returns each listed id and refuses any other', async () => {
+  const store = new Store(':memory:');
+  const guide = loadGuide();
+  for (const id of guide.index.keys()) {
+    const { result } = await runTool('read_guide', { id }, turnDeps(store));
+    assert.equal(result.id, id);
+    assert.ok(typeof result.text === 'string' || Array.isArray(result.topics), id);
+  }
+  for (const id of ['nope', '../knowledge/guide.md', 'pv-basics/', null]) {
+    assert.match((await runTool('read_guide', { id }, turnDeps(store))).result.error, /unknown guide id/);
+  }
+});
+
+test('tool errors of every kind reach the model as { error }; any other error is rethrown', async () => {
+  const store = new Store(':memory:');
+  const cases = [
+    ['get_plant', { x: 1 }, /unknown argument/], // ArgError
+    ['query_data', { metrics: ['magic'], from: '2026-10-01', to: '2026-10-31', bucket: '1d' }, /unknown metric/], // DataError
+    ['calculate', { expr: '777 * 2' }, /777 is not a figure/], // CalcError
+    ['read_guide', { id: 'x' }, /unknown guide id/], // GuideError
+    ['draw_chart', { kind: 'bar', title: 'X', series: [{ dataset: 'd9', column: 'pv_kwh', label: 'X' }] }, /call query_data first/],
+  ];
+  for (const [name, args, re] of cases) assert.match((await runTool(name, args, turnDeps(store))).result.error, re, name);
+  assert.deepEqual((await runTool('calculate', { expr: '12 * 2' }, turnDeps(store))).result, { expr: '12 * 2', value: 24, rounded: 24 });
+  const market = { hourly: async () => { throw new TypeError('boom'); } };
+  await assert.rejects(runTool('query_data', { metrics: ['pvpc_eur_kwh'], from: '2026-11-01', to: '2026-11-02', bucket: '1d' }, turnDeps(store, { market })), TypeError);
+});
+
+test('query_data passes unavailableDays and the unavailable market to the model', async () => {
+  const store = new Store(':memory:');
+  const args = { metrics: ['pvpc_eur_kwh'], from: '2026-11-18', to: '2026-11-25', bucket: '1d' };
+  const market = { hourly: async () => ({ pvpc: new Map(), spot: new Map() }) };
+  const { result } = await runTool('query_data', args, turnDeps(store, { market }));
+  assert.equal(result.id, 'd1');
+  assert.ok(result.unavailableDays.includes('2026-11-25'));
+  assert.match(result.note, /not published/);
+  assert.equal((await runTool('query_data', args, turnDeps(store))).result.unavailable, 'ree');
+});
+
+test('FIGURE_KINDS of the browser equals KINDS of src/datasets.js', () => {
+  const src = fs.readFileSync(new URL('../public/js/views/assistant-model.js', import.meta.url), 'utf8');
+  const list = /FIGURE_KINDS\s*=\s*\[([^\]]*)\]/.exec(src)[1].match(/'([a-z_]+)'/g).map((s) => s.slice(1, -1));
+  assert.deepEqual(list, KINDS);
+});
+
+test('/api/status web has only available and lastError', async () => {
+  const store = new Store(':memory:');
+  const leaky = { status: () => ({ available: false, lastError: 'no_balance', apiKey: 'jina_SECRET' }) };
+  for (const [web, want] of [[undefined, { available: false, lastError: null }], [leaky, { available: false, lastError: 'no_balance' }]]) {
+    const server = startServer({ store, config: { password: PASSWORD }, port: 0, host: '127.0.0.1', log: () => {}, failDelayMs: 0, web });
+    await once(server, 'listening');
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const login = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ password: PASSWORD }) });
+    const cookie = login.headers.get('set-cookie').split(';')[0];
+    const raw = await (await fetch(`${base}/api/status`, { headers: { cookie } })).text();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    assert.deepEqual(JSON.parse(raw).web, want);
+    assert.ok(!raw.includes('SECRET'));
+  }
 });

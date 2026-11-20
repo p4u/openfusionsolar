@@ -1,16 +1,18 @@
-// Assistant view: a chat about the bills and the installation. The server streams steps (status, chart, invoice,
-// text, done, error); charts are drawn by reference with the Facturació presets; attached bills go through the
-// bills upload (source 'chat'). #/assistant?c=ID opens a conversation; ?q=...&invoice=ID prefills without sending.
+// Assistant view: a chat about the bills and the installation. The server streams steps (status, chart, figure,
+// choice, sources, invoice, text, done, error); preset charts are drawn by reference with the Facturació presets,
+// figures from the data the server resolved; attached bills go through the bills upload (source 'chat').
+// #/assistant?c=ID opens a conversation; ?q=...&invoice=ID prefills without sending. The view is a column as tall as
+// the visible viewport (assistant.css): the thread scrolls inside it and the composer is its last child.
 import { register, t, getLang } from '../i18n.js';
 import dict from '../i18n/assistant.js';
 import invoicesDict from '../i18n/invoices.js';
-import { esc, icon, badge, emptyState, statusLine, loadBlock, confirmDialog } from '../ui.js';
+import { esc, icon, badge, emptyState, statusLine, loadBlock, confirmDialog, overlay } from '../ui.js';
 import { ensureAiNotice } from '../privacy.js';
 import { uploadFiles, groupFiles } from '../upload.js';
 import { ApiError, chatStream, getConversations, getConversation, deleteConversation, getAiUsage, getInvoice } from '../api.js';
-import { renderPreset } from '../chart-presets.js';
+import { renderPreset, drawModel } from '../chart-presets.js';
 import { fmtDate, fmtDateTime, eur } from '../format.js';
-import { renderSafe, blocksToView, ndjsonError, statusKey, prefill, MAX_TEXT, MAX_ATTACHMENTS } from './assistant-model.js';
+import { renderSafe, blocksToView, ndjsonError, statusKey, prefill, answered, figureModel, MAX_TEXT, MAX_ATTACHMENTS } from './assistant-model.js';
 import { uploadErrorKey } from './invoices-model.js';
 
 register(dict);
@@ -149,6 +151,38 @@ export async function render(root, ctx) {
     return el;
   }
 
+  // Options of an ask_user question: each sends its text as the next question; "something else" goes to the input.
+  function choiceGroup(item) {
+    const el = document.createElement('div');
+    el.className = 'assistant-choice';
+    el.setAttribute('role', 'group');
+    el.setAttribute('aria-label', t('assistant.choice.label'));
+    for (const option of item.options) {
+      const b = Object.assign(document.createElement('button'), { type: 'button', className: 'assistant-chip', textContent: option, disabled: Boolean(item.answered) });
+      b.addEventListener('click', () => send(option));
+      el.append(b);
+    }
+    const other = Object.assign(document.createElement('button'), { type: 'button', className: 'assistant-chip assistant-chip-other', textContent: t('assistant.choice.other'), disabled: Boolean(item.answered) });
+    other.addEventListener('click', () => input.focus());
+    el.append(other);
+    return el;
+  }
+
+  // Pages the server read or found this turn: https links only (assistant-model), text set as text.
+  function sourceList(item) {
+    const el = document.createElement('div');
+    el.className = 'assistant-sources';
+    el.innerHTML = `<p class="assistant-sources-title">${icon('book-open', { size: 16 })}<span>${esc(t('assistant.sources'))}</span></p><ul role="list"></ul>`;
+    for (const s of item.items) {
+      const li = document.createElement('li');
+      const a = Object.assign(document.createElement('a'), { className: 'link', href: s.url, rel: 'noopener noreferrer', target: '_blank', textContent: s.title });
+      a.append(Object.assign(document.createElement('span'), { className: 'sr-only', textContent: ` ${t('assistant.newTab')}` }));
+      li.append(a, Object.assign(document.createElement('span'), { className: 'assistant-source-host', textContent: s.host }));
+      el.querySelector('ul').append(li);
+    }
+    return el;
+  }
+
   function addItem(msg, item) {
     let el;
     if (item.kind === 'question') {
@@ -165,6 +199,16 @@ export async function render(root, ctx) {
       msg.append(el);
       charts.push(renderPreset(el, item.chart, { signal }));
       return el;
+    } else if (item.kind === 'figure') {
+      el = document.createElement('div');
+      el.className = 'assistant-chart';
+      msg.append(el);
+      charts.push(drawModel(el, figureModel(item.figure)));
+      return el;
+    } else if (item.kind === 'choice') {
+      el = choiceGroup(item);
+    } else if (item.kind === 'sources') {
+      el = sourceList(item);
     } else if (item.kind === 'invoice') {
       el = document.createElement('div');
       el.innerHTML = invoiceCard(item);
@@ -183,12 +227,13 @@ export async function render(root, ctx) {
   };
 
   function paintMessages(messages) {
-    for (const m of messages) {
+    const done = answered(messages);
+    messages.forEach((m, i) => {
       const view = blocksToView(m);
-      if (!view.items.length) continue;
+      if (!view.items.length) return;
       const el = addMessage(view.role);
-      for (const item of view.items) addItem(el, item);
-    }
+      for (const item of view.items) addItem(el, item.kind === 'choice' ? { ...item, answered: done.has(i) } : item);
+    });
   }
 
   function resetThread() {
@@ -231,6 +276,8 @@ export async function render(root, ctx) {
       showError(t('assistant.declined'));
       return;
     }
+    // a question sent (tapped or typed) answers any open choice
+    thread.querySelectorAll('.assistant-choice button').forEach((b) => { b.disabled = true; });
     const ctl = new AbortController();
     const leave = () => ctl.abort();
     signal.addEventListener('abort', leave, { once: true });
@@ -244,7 +291,7 @@ export async function render(root, ctx) {
     paintFiles();
     input.value = '';
     fit();
-    if (convId == null) history.replaceState(null, '', '#/assistant'); // the prefill is used: a re-render must not repeat it
+    if (convId == null) history.replaceState(history.state, '', '#/assistant'); // the prefill is used: a re-render must not repeat it
 
     const asked = addMessage('user');
     addItem(asked, { kind: 'question', text });
@@ -281,7 +328,7 @@ export async function render(root, ctx) {
             finished = true;
             if (convId == null && Number.isInteger(ev.conversationId)) {
               convId = ev.conversationId;
-              history.replaceState(null, '', `#/assistant?c=${convId}`);
+              history.replaceState(history.state, '', `#/assistant?c=${convId}`);
             }
           } else {
             for (const item of blocksToView({ role: 'assistant', blocks: [ev] }).items) addItem(bot, item)?.scrollIntoView({ block: 'nearest' });
@@ -312,7 +359,7 @@ export async function render(root, ctx) {
         // a failed first turn still created its conversation on the server: keep asking in it
         if (convId == null && mine === epoch && before && convs?.[0] && !before.has(convs[0].id)) {
           convId = convs[0].id;
-          history.replaceState(null, '', `#/assistant?c=${convId}`);
+          history.replaceState(history.state, '', `#/assistant?c=${convId}`);
           await refreshList();
         }
       }
@@ -356,7 +403,7 @@ export async function render(root, ctx) {
     } else if (el.dataset.suggest != null) {
       send(t('assistant.suggest')[Number(el.dataset.suggest)]);
     } else if (el.dataset.openList != null) {
-      sheet.showModal();
+      overlay(sheet).open();
     } else if (el.dataset.closeList != null) {
       sheet.close();
     } else if (el.dataset.new != null && location.hash === '#/assistant') {
@@ -381,15 +428,10 @@ export async function render(root, ctx) {
   });
   sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
 
-  // keeps the composer above the on-screen keyboard (the layout viewport does not shrink on every phone)
-  const vv = globalThis.visualViewport;
-  const onViewport = () => root.style.setProperty('--assistant-kb', `${Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop))}px`);
-  vv?.addEventListener('resize', onViewport);
-  vv?.addEventListener('scroll', onViewport);
-  // the thread ends with room for the sticky composer, so it never covers the last answer
-  const composer = $('[data-form]');
-  const sized = globalThis.ResizeObserver ? new ResizeObserver(() => root.style.setProperty('--assistant-composer-h', `${composer.offsetHeight}px`)) : null;
-  sized?.observe(composer);
+  // the keyboard shrinks the column (--vvh): keep the end of the last message in sight (viewport.js emits this)
+  const toEnd = () => { thread.scrollTop = thread.scrollHeight; };
+  document.addEventListener('keyboardopen', toEnd);
+  let stick = null;
 
   // ---------- first paint ----------
   setBusy(null);
@@ -409,20 +451,26 @@ export async function render(root, ctx) {
       } catch (err) {
         if (!(err instanceof ApiError && err.status === 404)) throw err;
         convId = null;
-        history.replaceState(null, '', '#/assistant');
+        history.replaceState(history.state, '', '#/assistant');
         resetThread();
         $('[data-intro]').insertAdjacentHTML('afterbegin', `<p class="hint">${esc(t('assistant.notFound'))}</p>`);
       }
     });
-    thread.lastElementChild?.scrollIntoView({ block: 'nearest' });
+    // the end of the conversation, so an unanswered choice is in view; charts draw after this and grow the thread,
+    // so the end stays in view until the user scrolls it
+    toEnd();
+    if (globalThis.ResizeObserver) {
+      stick = new ResizeObserver(toEnd);
+      for (const m of thread.children) stick.observe(m);
+      for (const type of ['pointerdown', 'wheel', 'keydown']) thread.addEventListener(type, () => stick.disconnect(), { once: true, passive: true });
+    }
   }
   if (pre.text) input.focus({ preventScroll: true });
 
   return () => {
     busy?.abort();
     charts.splice(0).forEach((c) => c.destroy());
-    vv?.removeEventListener('resize', onViewport);
-    vv?.removeEventListener('scroll', onViewport);
-    sized?.disconnect();
+    document.removeEventListener('keyboardopen', toEnd);
+    stick?.disconnect();
   };
 }

@@ -4,7 +4,9 @@ import { LANGS, register, t, translate, getLang, setLang } from './i18n.js';
 import core from './i18n/core.js';
 import { getStatus, logout } from './api.js';
 import { setTimeZone } from './format.js';
-import { esc, errorState, getTheme, setTheme, skeleton } from './ui.js';
+import { esc, errorState, getTheme, setTheme, skeleton, overlay } from './ui.js';
+import { watchViewport } from './viewport.js';
+import { ENTRY_MODES, installEntry, offerBanner, watchInstall } from './install.js';
 import { resetLegends } from './charts.js';
 import { ROUTES, PATHS, CARRIED, RANGED, IN_SHEET, PARENT } from './routes.js';
 
@@ -18,6 +20,7 @@ const main = $('#main');
 const sheet = $('#more-sheet');
 const menu = $('#more-menu');
 const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 let status = null;
 let current = null; // { name, controller, cleanup }
@@ -125,6 +128,7 @@ async function render({ focus = false } = {}) {
       console.error(err);
     }
   }
+  const changed = current != null && current.name !== name;
   if (current?.name !== name) resetLegends(); // hidden legend series do not follow the user to another view
   const me = { name, controller: new AbortController(), cleanup: null };
   current = me;
@@ -135,7 +139,12 @@ async function render({ focus = false } = {}) {
   // a fresh root per render: a slow, superseded render writes into a detached node
   const root = document.createElement('div');
   root.className = `view view-${name}`;
-  main.replaceChildren(root);
+  const swap = () => main.replaceChildren(root);
+  // a cross-fade between views only; the root is in the page before the view draws into it (charts measure it)
+  if (changed && document.startViewTransition && !reducedMotion.matches) {
+    await document.startViewTransition(swap).updateCallbackDone.catch(() => {});
+    if (signal.aborted) return;
+  } else swap();
   if (focus) scrollTo(0, 0);
   try {
     const view = await import(`./views/${name}.js`);
@@ -167,14 +176,26 @@ function closeOverlays() {
   } catch { /* no popover support: the menu is never open */ }
 }
 
+// the install row shows only where installing is possible and not done yet
+function updateInstall() {
+  const show = ENTRY_MODES.includes(installEntry().mode);
+  for (const b of $$('[data-action="install"]')) b.hidden = !show;
+}
+
 function wireShell() {
+  overlay(sheet);
+  overlay(menu); // pushes its history entry on the popover's toggle event
   document.addEventListener('click', async (e) => {
     const el = e.target.closest('[data-action]');
     if (!el) return;
     const action = el.dataset.action;
     if (action === 'theme') setTheme(isDark() ? 'light' : 'dark');
     else if (action === 'lang') setLang(nextLang());
-    else if (action === 'sheet') sheet.showModal();
+    else if (action === 'sheet') overlay(sheet).open();
+    else if (action === 'install') {
+      closeOverlays();
+      installEntry().run();
+    }
     else if (action === 'close-sheet') sheet.close();
     else if (action === 'logout') {
       el.disabled = true;
@@ -208,6 +229,7 @@ function wireShell() {
     if (status) render();
   });
   document.addEventListener('themechange', updateActions);
+  document.addEventListener('installchange', updateInstall);
   darkQuery.addEventListener('change', () => {
     if (getTheme() === 'system') document.dispatchEvent(new CustomEvent('themechange', { detail: { mode: 'system' } }));
   });
@@ -224,6 +246,7 @@ async function boot() {
     return;
   }
   render();
+  offerBanner({ today: status.today });
   setInterval(() => refreshStatus().catch((err) => console.error(err)), STATUS_MS);
 }
 
@@ -259,8 +282,11 @@ function registerWorker() {
   }).catch((err) => console.error(err));
 }
 
+watchViewport();
+watchInstall();
 translate();
 updateActions();
 wireShell();
+updateInstall();
 boot();
 registerWorker();

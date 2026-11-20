@@ -8,9 +8,11 @@ import { startServer } from './server.js';
 import { pricesFromEnv } from './tariff.js';
 import { createAlertEngine } from './alerts.js';
 import { createTransport, smtpInfo } from './mailer.js';
-import { createLlm, DEFAULT_MODEL } from './llm.js';
+import { createLlm, DEFAULT_MODEL, CHAT_MODEL, CHAT_FALLBACK, reasoningFromEnv, assertPriced } from './llm.js';
 import { createInvoices } from './invoices.js';
 import { createAssistant } from './assistant.js';
+import { createWeb } from './web.js';
+import { createMarket } from './market.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const env = process.env;
@@ -89,14 +91,26 @@ engine.start();
 // Bill files live next to the DB; the key stays inside the llm closure.
 const billsDir = path.join(path.dirname(DB_PATH), 'bills');
 fs.mkdirSync(billsDir, { recursive: true });
-const budgetUsd = Number(env.AI_MONTHLY_BUDGET_USD || 5);
-if (!Number.isFinite(budgetUsd) || budgetUsd < 0) throw new Error('AI_MONTHLY_BUDGET_USD must be a number of dollars, for example 5');
+// default 10: measured about 0.022 USD per question, so ten a day pass 3 USD a month (spec 3.7)
+const budgetUsd = Number(env.AI_MONTHLY_BUDGET_USD || 10);
+if (!Number.isFinite(budgetUsd) || budgetUsd < 0) throw new Error('AI_MONTHLY_BUDGET_USD must be a number of dollars, for example 10');
+const chatModel = env.AI_MODEL_CHAT || CHAT_MODEL;
+const fallbackModel = env.AI_MODEL_CHAT_FALLBACK === 'none' ? null : env.AI_MODEL_CHAT_FALLBACK || CHAT_FALLBACK;
+// A model without a price would be billed at the wrong rate when usage.cost is missing.
+if (env.AI_API_KEY) [chatModel, fallbackModel].filter(Boolean).forEach(assertPriced);
+const reasoning = reasoningFromEnv(env.AI_CHAT_REASONING);
+const fallbackReasoning = reasoning && { effort: 'medium' };
 const llm = createLlm({ apiKey: env.AI_API_KEY, store, budgetUsd, log });
+// The Jina key stays in the web closure, never in config.
+const web = createWeb({ apiKey: env.JINA_API_KEY, store, log });
+const market = createMarket({ store, log });
 const invoices = createInvoices({ store, llm, dir: billsDir, log, model: env.AI_MODEL_EXTRACT || DEFAULT_MODEL });
 invoices.start();
-const assistant = createAssistant({ store, llm, invoices, config, model: env.AI_MODEL_CHAT || DEFAULT_MODEL, log });
+const assistant = createAssistant({
+  store, llm, invoices, config, model: chatModel, fallbackModel, reasoning, fallbackReasoning, web, market, log,
+});
 startServer({
   store, collector: env.COLLECT === '0' ? null : collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log,
-  alerts: engine, routes: { ...invoices.routes, ...assistant.routes },
+  alerts: engine, routes: { ...invoices.routes, ...assistant.routes }, web,
 });
 if (env.COLLECT !== '0') collector.run({ backfillDays: Number(env.BACKFILL_DAYS ?? 30) });

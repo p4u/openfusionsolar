@@ -6,8 +6,9 @@ import { esc, icon, loadBlock, emptyState, getTheme, setTheme, confirmDialog } f
 import { getAlertsConfig, putAlertsConfig, sendTestEmail, getAlertsHistory, ApiError, getAiUsage, deleteAllInvoices, deleteAllConversations } from '../api.js';
 import { aiNoticeHtml } from '../privacy.js';
 import { kw, nf, pct, fmtDateTime, fmtTime } from '../format.js';
-import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, errorText, authKey, lastFired, deliveryWords, setField, validateAlerts, parseAddresses, usageText } from './settings-model.js';
+import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, errorText, authKey, lastFired, deliveryWords, setField, validateAlerts, parseAddresses, usageText, webKey } from './settings-model.js';
 import { GROUPS, DEFAULT_ON, PRESETS, presetOf } from '../alert-catalogue.js';
+import { ENTRY_MODES, installEntry } from '../install.js';
 
 register(dict);
 
@@ -27,8 +28,17 @@ export async function render(root, ctx) {
     <section class="band"><h2 class="section-title">${esc(t('settings.glossary.title'))}</h2><div class="card">${glossaryHtml()}</div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.about.title'))}</h2><div class="card">
       <p>${esc(t('settings.about.version', { version: status.version ?? t('core.unknown') }))}</p>
-      <p class="hint">${esc(t('settings.about.text'))}</p></div></section>`;
+      <p class="hint">${esc(t('settings.about.text'))}</p>
+      <p data-install hidden><button type="button" class="pill pill-outline">${icon('download', { size: 16 })}${esc(t('core.install.action'))}</button></p></div></section>`;
   const q = (name) => root.querySelector(`[data-block="${name}"]`);
+
+  // the install row (spec 4.2), in the always-shown About card: only where installing is possible and not done yet;
+  // the browser's prompt may come later
+  const install = root.querySelector('[data-install]');
+  const showInstall = () => { install.hidden = !ENTRY_MODES.includes(installEntry().mode); };
+  showInstall();
+  document.addEventListener('installchange', showInstall, { signal });
+  install.addEventListener('click', () => installEntry().run());
 
   // appearance
   root.querySelector('.settings-appearance').addEventListener('change', (e) => {
@@ -68,17 +78,20 @@ export async function render(root, ctx) {
 
   // #/settings?card=ai (the assistant's privacy line links here): bring the card into view once it is drawn
   loadBlock(q('ai'), 160, async (el) => {
-    await drawAi(el, Boolean(status.ai?.enabled), signal);
+    await drawAi(el, status, signal);
     if (ctx.params?.get('card') === 'ai') root.querySelector('#settings-ai').scrollIntoView({ block: 'start' });
   });
 }
 
-async function drawAi(el, on, signal) {
-  const usage = on ? await getAiUsage({ signal }) : null;
+async function drawAi(el, status, signal) {
+  const usage = status.ai?.enabled ? await getAiUsage({ signal }) : null;
   const full = usage && usage.budgetUsd > 0 && usage.spentUsd >= usage.budgetUsd;
   el.innerHTML = `${usage ? `<p class="settings-ai-usage">${esc(usageText(usage, getLang()))}</p>
       <p class="hint">${esc(t(full ? 'settings.ai.limit' : 'settings.ai.usageHint'))}</p>
-      <p class="hint">${esc(t('settings.admin.aiBudget'))}</p>` : `<p>${esc(t('settings.ai.off'))}</p>`}
+      <p class="hint">${esc(t('settings.admin.aiBudget'))}</p>
+      <h3 class="card-title">${esc(t('settings.ai.webTitle'))}</h3>
+      <p>${esc(t(webKey(status.web)))}</p>
+      <p class="hint">${esc(t('settings.ai.webCalls', { n: usage.webCalls ?? 0 }))}</p>` : `<p>${esc(t('settings.ai.off'))}</p>`}
     <div class="settings-ai-notice">${aiNoticeHtml()}</div>
     <p><a class="link" href="#/invoices">${esc(t('settings.ai.manual'))}</a></p>
     <div class="actions settings-ai-actions">
@@ -128,7 +141,7 @@ function plantHtml(status) {
       ${row(t('settings.collector.auth'), t(authKey(c), { when: fmtTime(c.authBlockedUntil) }))}
     </dl>` : `<p class="hint">${esc(t('settings.collector.off'))}</p>`}
     <details class="disclosure settings-admin"><summary><span>${esc(t('settings.admin.title'))}</span>${icon('chevron-down', { size: 16 })}</summary>
-      ${['intro', 'prices', 'battery', 'email', 'collect'].map((k) => `<p class="hint">${esc(t(`settings.admin.${k}`))}</p>`).join('')}</details>`;
+      ${['intro', 'prices', 'battery', 'email', 'collect', 'web'].map((k) => `<p class="hint">${esc(t(`settings.admin.${k}`))}</p>`).join('')}</details>`;
 }
 
 function appearanceHtml() {

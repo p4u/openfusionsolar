@@ -27,6 +27,8 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 button { cursor: pointer; }
 /* no double-tap zoom wait on what is tapped; pinch zoom stays */
 a, button, input, select, textarea, label, summary { touch-action: manipulation; }
+/* a native app shows its own pressed state, not the browser's grey flash */
+html { -webkit-tap-highlight-color: transparent; }
 p, li, dd { text-wrap: pretty; }
 [hidden] { display: none !important; }
 
@@ -170,8 +172,12 @@ main:focus { outline: none; }
   margin-inline: auto;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: 44px;
+  min-height: 44px;
   max-width: 18rem;
   color: var(--ink);
   text-decoration: none;
@@ -181,7 +187,12 @@ main:focus { outline: none; }
   line-height: 1.2;
   letter-spacing: -0.005em;
 }
-.brand-name { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.brand-mark { flex: none; }
+.brand-name { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* 1024-1279 px: the links fill the row, so the brand is its mark only (the name stays for screen readers) */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .brand-name { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
+}
 
 .nav-links {
   display: flex;
@@ -236,8 +247,8 @@ main:focus { outline: none; }
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 44px; /* the touch target floor (spec 4.3), on every pointer */
+  height: 44px;
   padding: 0;
   border: 0;
   border-radius: var(--r-pill);
@@ -319,7 +330,6 @@ main:focus { outline: none; }
   line-height: 1.2;
   letter-spacing: 0;
   text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
   transition: color var(--dur) var(--ease);
 }
 .tab-icon {
@@ -334,6 +344,8 @@ main:focus { outline: none; }
 .tab[aria-current="page"], .tab.is-current { color: var(--ink); }
 .tab[aria-current="page"] .tab-icon, .tab.is-current .tab-icon { background: var(--surface-strong); }
 .tab:focus-visible { outline-offset: -4px; border-radius: var(--r-md); }
+/* the keyboard takes the bottom of the screen: the field typed into keeps it (spec 4.1) */
+.kb-open .tabbar { display: none; }
 
 @media (min-width: 640px) and (max-width: 1023px) {
   .nav-actions { display: none; }
@@ -370,11 +382,12 @@ main:focus { outline: none; }
   max-width: 100%;
   max-height: 85dvh;
   margin: auto 0 0;
-  padding: var(--sp-xs) var(--sp-base) calc(var(--sp-base) + env(safe-area-inset-bottom));
+  padding: var(--sp-xs) max(var(--sp-base), env(safe-area-inset-right, 0px)) calc(var(--sp-base) + var(--safe-bottom)) max(var(--sp-base), env(safe-area-inset-left, 0px));
   border: 0;
   border-radius: var(--r-xxl) var(--r-xxl) 0 0;
   background: var(--surface-card);
   color: var(--ink);
+  overscroll-behavior: contain; /* scrolling a long sheet never scrolls the page behind */
 }
 .sheet[open] { animation: sheet-in 200ms var(--ease); }
 .sheet::backdrop { background: rgba(12, 10, 9, 0.4); } /* literal: ::backdrop does not inherit custom properties everywhere */
@@ -580,7 +593,8 @@ a.card:hover, .card-link:hover { border-color: var(--hairline-strong); box-shado
   align-items: center;
   justify-content: center;
   gap: var(--sp-xs);
-  height: 40px;
+  height: 44px;
+  min-width: 44px;
   padding: 0 var(--sp-md);
   border: 1px solid transparent;
   border-radius: var(--r-pill);
@@ -743,20 +757,22 @@ a.card:hover, .card-link:hover { border-color: var(--hairline-strong); box-shado
 .field-error:has(> span:empty) > .icon { display: none; }
 .field-affix { position: relative; }
 .field-affix input:not([type="checkbox"]) { padding-right: 52px; }
-.field-affix-btn { position: absolute; top: 2px; right: 2px; }
+.field-affix-btn { position: absolute; top: 2px; right: 2px; width: 40px; height: 40px; } /* inside the 44 px field */
 
-@media (pointer: coarse) {
-  .pill { height: 44px; }
-  .icon-btn:not(.field-affix-btn) { width: 44px; height: 44px; }
+/* a phone-width window gets touch-sized segments too: a touch screen does not always report pointer: coarse */
+@media (pointer: coarse), (max-width: 639px) {
   .segmented > button, .segmented > a, .segmented > label { height: 44px; }
+}
+@media (pointer: coarse) {
   /* iOS zooms into a field whose text is under 16 px */
   input, select, textarea { font-size: max(16px, 1em); }
   /* the 24 px switch is reached on a 46 px band */
   .switch::after { content: ''; position: absolute; inset: -11px -1px; }
 }
 
-/* toast: one short message with its action, above the tab bar on phones */
-.toast {
+/* toast: one short message with its action, above the tab bar on phones; the install banner (install.js) sits in the
+   same place and gives way to the update toast and to the keyboard */
+.toast, .install-banner {
   position: fixed;
   left: 50%;
   bottom: calc(var(--sp-lg) + var(--safe-bottom));
@@ -778,9 +794,22 @@ a.card:hover, .card-link:hover { border-color: var(--hairline-strong); box-shado
   animation: toast-in 200ms var(--ease);
 }
 @keyframes toast-in { from { opacity: 0; transform: translateY(var(--sp-xs)); } }
-@media (max-width: 639px) {
-  .toast { bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-sm)); }
+.install-banner {
+  gap: var(--sp-sm);
+  width: min(100% - 2 * var(--gutter-x), 480px);
+  padding: var(--sp-xs) var(--sp-xxs) var(--sp-xs) var(--sp-base);
+  border-radius: var(--r-xl); /* two lines of text on a phone: not a pill */
+  line-height: 1.35;
 }
+.install-banner > .icon { color: var(--body); }
+.install-banner-text { flex: 1 1 auto; min-width: 0; }
+body:has(.toast) .install-banner, .kb-open .install-banner { display: none; }
+@media (max-width: 639px) {
+  .toast, .install-banner { bottom: calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-sm)); }
+}
+
+/* view change (app.js): a short cross-fade of the page; app.js skips it under reduced motion */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--dur); }
 
 /* ---------- lists, tables, disclosures ---------- */
 .table-scroll { overflow-x: auto; }

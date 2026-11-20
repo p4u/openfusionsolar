@@ -2,7 +2,7 @@
 <html lang="ca">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0c0a09" media="(prefers-color-scheme: dark)">
@@ -38,7 +38,7 @@
 
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="#/" id="brand"><span class="brand-name" id="plant-name">OpenFusionSolar</span></a>
+      <a class="brand" href="#/" id="brand"><svg class="icon icon-20 brand-mark" aria-hidden="true"><use href="/icons.svg#sun"/></svg><span class="brand-name" id="plant-name">OpenFusionSolar</span></a>
 
       <nav class="nav-links" data-i18n-aria="core.nav.label">
         <a href="#/" data-route="now" data-i18n="core.nav.now">Ara</a>
@@ -81,6 +81,7 @@
         <hr class="menu-rule">
         <button type="button" class="menu-item" data-action="theme"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#moon"/></svg><span class="action-label"></span></button>
         <button type="button" class="menu-item" data-action="lang"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#languages"/></svg><span class="action-label"></span></button>
+        <button type="button" class="menu-item" data-action="install" hidden><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#download"/></svg><span data-i18n="core.install.action">Instal·la l’aplicació</span></button>
         <button type="button" class="menu-item" data-action="logout"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#log-out"/></svg><span data-i18n="core.logout">Surt</span></button>
       </div>
     </div>
@@ -104,6 +105,7 @@
       <a class="menu-item" href="#/signals" data-route="signals"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#cpu"/></svg><span data-i18n="core.nav.signals">Dades tècniques</span></a>
       <a class="menu-item" href="#/settings" data-route="settings"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#settings"/></svg><span data-i18n="core.nav.settings">Configuració</span></a>
       <hr class="menu-rule">
+      <button type="button" class="menu-item" data-action="install" hidden><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#download"/></svg><span data-i18n="core.install.action">Instal·la l’aplicació</span></button>
       <button type="button" class="menu-item" data-action="logout"><svg class="icon icon-20" aria-hidden="true"><use href="/icons.svg#log-out"/></svg><span data-i18n="core.logout">Surt</span></button>
     </nav>
     <button type="button" class="pill pill-outline sheet-close" data-action="close-sheet" data-i18n="core.close">Tanca</button>
