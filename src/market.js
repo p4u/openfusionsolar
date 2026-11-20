@@ -58,11 +58,12 @@ export function createMarket({ store, fetch = globalThis.fetch, now = Date.now, 
       else missing.push(d);
     }
 
-    // consecutive missing days, at most MAX_DAYS per request
+    // consecutive missing days of one calendar month per request: REE answers 400 to an hourly range longer than a
+    // month (1 Feb - 3 Mar fails, 15 Jan - 14 Feb works), so a request never crosses a month boundary
     const chunks = [];
     for (const d of missing) {
       const last = chunks.at(-1);
-      if (last && nextDay(last.at(-1)) === d && last.length < MAX_DAYS) last.push(d);
+      if (last && nextDay(last.at(-1)) === d && last.length < MAX_DAYS && last[0].slice(0, 7) === d.slice(0, 7)) last.push(d);
       else chunks.push([d]);
     }
     const fail = (code) => {

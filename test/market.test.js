@@ -108,13 +108,22 @@ test('a day with 22 values is not stored', async () => {
   assert.equal(t.calls.length, 2);
 });
 
-test('a 70-day range makes 3 requests of at most 31 days', async () => {
+// REE answers 400 to an hourly range longer than a calendar month (checked live 2026-11-20: 1 Feb - 3 Mar fails)
+test('a 70-day range makes one request per calendar month', async () => {
   const empty = { data: {}, included: [] };
   const t = setup([ok(empty), ok(empty), ok(empty)], AFTER);
   const r = await t.market.hourly('2026-01-01', '2026-03-11');
   assert.deepEqual(r, { pvpc: new Map(), spot: new Map() });
   const spans = t.calls.map((c) => new URL(c.url).searchParams).map((p) => [p.get('start_date'), p.get('end_date')]);
-  assert.deepEqual(spans, [['2026-01-01T00:00', '2026-01-31T23:59'], ['2026-02-01T00:00', '2026-03-03T23:59'], ['2026-03-04T00:00', '2026-03-11T23:59']]);
+  assert.deepEqual(spans, [['2026-01-01T00:00', '2026-01-31T23:59'], ['2026-02-01T00:00', '2026-02-28T23:59'], ['2026-03-01T00:00', '2026-03-11T23:59']]);
+});
+
+test('a range starting mid-month never crosses a month boundary in one request', async () => {
+  const empty = { data: {}, included: [] };
+  const t = setup([ok(empty), ok(empty)], AFTER);
+  await t.market.hourly('2026-01-15', '2026-02-20');
+  const spans = t.calls.map((c) => new URL(c.url).searchParams).map((p) => [p.get('start_date'), p.get('end_date')]);
+  assert.deepEqual(spans, [['2026-01-15T00:00', '2026-01-31T23:59'], ['2026-02-01T00:00', '2026-02-20T23:59']]);
 });
 
 test('timeout, 500, non-JSON and oversize answer unavailable ree', async () => {
