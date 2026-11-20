@@ -82,7 +82,7 @@ export function renderSafe(text) {
 const int = (lo, hi) => (v) => Number.isInteger(v) && v >= lo && v <= hi;
 const key = (re) => (v) => (typeof v === 'string' || typeof v === 'number') && re.test(String(v));
 const X_VALUE = {
-  time: Number.isFinite, day: key(/^\d{4}-\d{2}-\d{2}$/), month: key(/^\d{4}-\d{2}$/), year: key(/^\d{4}$/), bill: key(/^\d{4}-\d{2}$/),
+  time: Number.isFinite, day: key(/^\d{4}-\d{2}-\d{2}$/), month: key(/^\d{4}-\d{2}$/), year: key(/^\d{4}$/), bill: key(/^\d{4}-\d{2}(?: \(\d{1,2}\))?$/),
   hour_of_day: int(0, 23), weekday: int(1, 7), month_of_year: int(1, 12),
 };
 
@@ -173,12 +173,18 @@ const pad2 = (v) => String(v).padStart(2, '0');
 const cap = (s) => s.charAt(0).toLocaleUpperCase() + s.slice(1);
 const weekdayName = (v, weekday) => fmtDate(`2024-01-0${v}`, { weekday }); // 1 January 2024 was a Monday
 const monthName = (v, month) => fmtDate(`2026-${pad2(v)}-15`, { month });
-const BUCKET = { day: '1d', month: '1mo', bill: '1mo', year: '1y' };
+const BUCKET = { day: '1d', month: '1mo', year: '1y' };
 
 // x of a figure: short axis categories (category axes), the full label of each row, and its machine-readable key.
 function xAxis({ type, values }) {
   const keys = values.map(String);
   if (type === 'time') return { labels: values.map(fmtDateTime), iso: values.map((ms) => isoLocal(ms, '1h')) };
+  if (type === 'bill') {
+    const months = keys.map((k) => k.slice(0, 7));
+    const nth = keys.map((k) => k.slice(7)); // '' or ' (2)': another bill of the same month
+    const ax = bucketAxis(months, '1mo');
+    return { categories: ax.categories.map((c, i) => c + nth[i]), title: ax.title, labels: months.map((m, i) => fmtMonth(m) + nth[i]), iso: keys };
+  }
   if (BUCKET[type]) {
     const label = type === 'day' ? (k) => fmtDate(k, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
       : type === 'year' ? (k) => k : (k) => fmtMonth(k);

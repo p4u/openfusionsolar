@@ -116,7 +116,7 @@ export async function buildDataset(args, { store, config = {}, now = Date.now, m
   let x;
   let columns;
   if (group === 'bills') {
-    const bills = billingSummary(store, { from, to, prices, today: localDay(t) }).invoices;
+    const bills = billingSummary(store, { from, to, prices, today: localDay(t) }).invoices.filter((b) => b.month);
     const seen = new Map();
     x = { type: 'bill', values: bills.map((b) => {
       const k = (seen.get(b.month) ?? 0) + 1;

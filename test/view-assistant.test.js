@@ -178,6 +178,15 @@ test('figureModel for each kind', () => {
   assert.deepEqual(model({ x: { type: 'day', values: ['2026-03-09', '2026-03-10'] } }).spec.x.categories, ['9', '10']);
   assert.deepEqual(model({ x: { type: 'year', values: ['2025', '2026'] } }).spec.x.categories, ['2025', '2026']);
   assert.deepEqual(model({ x: { type: 'bill', values: ['2026-01', '2026-02'] } }).spec.x.categories, ['Jan', 'Feb']);
+  // a second bill of one month is keyed `YYYY-MM (2)` by the server (gate F1): drawn, not dropped
+  const twoBills = { type: 'figure', kind: 'bar', title: 't', x: { type: 'bill', values: ['2026-10', '2026-10 (2)'] }, series: [{ label: 'a', values: [1, 2] }], unit: '€', source: ['bills'] };
+  for (const kind of FIGURE_KINDS) assert.equal(one({ ...twoBills, kind }).length, 1, kind);
+  const billRows = figureModel(one(twoBills)[0].figure);
+  assert.equal(billRows.rows.length, 2);
+  assert.notEqual(billRows.rows[0][0], billRows.rows[1][0]);
+  assert.deepEqual(billRows.spec.x.categories, ['Oct', 'Oct (2)']);
+  assert.deepEqual(billRows.iso, ['2026-10', '2026-10 (2)']);
+  assert.equal(one({ ...twoBills, x: { type: 'bill', values: ['2026-10', '2026-10 (x)'] } }).length, 0);
 
   setTimeZone('Europe/Madrid');
   const t0 = Date.UTC(2026, 9, 14, 10);

@@ -209,6 +209,10 @@ test('bills: one row per bill, a second bill of one month gets (2); power at 1d 
   assert.deepEqual(column(ds, 'bill_total_eur'), [59.15, 61.2]);
   assert.deepEqual(column(ds, 'bill_price_p1'), [0.249, 0.249]);
   assert.deepEqual(ds.columns.map((c) => c.unit), ['€', '€/kWh', 'kWh']);
+  // a bill without a month (inverted period) is left out, as the browser would drop the figure (gate F1)
+  s.insertInvoice({ ...row, status: 'confirmed', period_from: '2026-10-20', period_to: '2026-10-10' }, [], readings);
+  const noMonth = await buildDataset({ metrics: ['bill_total_eur'], from: '2026-10-01', to: '2026-10-31' }, deps({ store: s }));
+  assert.deepEqual(noMonth.x, { type: 'bill', values: ['2026-10', '2026-10 (2)'] });
 
   const p = await buildDataset({ metrics: ['import_kw_max', 'soc'], from: '2026-07-01', to: '2026-07-03', bucket: '1d' }, deps());
   assert.deepEqual(p.x, { type: 'day', values: ['2026-07-01', '2026-07-02', '2026-07-03'] });
