@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import dict from '../public/js/i18n/assistant.js';
-import { renderSafe, blocksToView, ndjsonError, prefill, statusKey, ERROR_CODES, STATUS_TOOLS } from '../public/js/views/assistant-model.js';
+import { setLang } from '../public/js/i18n.js';
+import { setTimeZone } from '../public/js/format.js';
+import { renderSafe, blocksToView, ndjsonError, prefill, statusKey, answered, figureModel, ERROR_CODES, STATUS_TOOLS, FIGURE_KINDS } from '../public/js/views/assistant-model.js';
+import { blocksToView as blocksToViewV1 } from './fixtures/assistant-model-v1.js';
 import { TOOL_NAMES } from '../src/assistant-tools.js';
 
 test('renderSafe escapes html and keeps only paragraphs, bold and lists', () => {
@@ -70,4 +76,163 @@ test('prefill reads q and invoice from params', () => {
 test('suggested questions are the same number in both languages', () => {
   assert.ok(Array.isArray(dict.ca['assistant.suggest']) && dict.ca['assistant.suggest'].length >= 4);
   assert.equal(dict.ca['assistant.suggest'].length, dict.en['assistant.suggest'].length);
+});
+
+test('busy has its own message', () => {
+  assert.equal(ndjsonError('busy', 'ca'), 'L’assistent està responent una altra pregunta.');
+  assert.notEqual(ndjsonError('busy', 'en'), ndjsonError('rate_limited', 'en'));
+  for (const tool of ['query_data', 'draw_chart', 'read_guide', 'web_search', 'read_web_page', 'calculate', 'ask_user', 'checking']) assert.ok(STATUS_TOOLS.includes(tool), tool);
+});
+
+// ---------- figure, choice and sources (spec 3.3-3.5) ----------
+
+const figure = (extra = {}) => ({
+  type: 'figure', kind: 'bar', title: 'Consum', x: { type: 'month', values: ['2026-01', '2026-02'] },
+  series: [{ label: 'Casa', values: [10.5, null] }], unit: 'kWh', source: ['measured', 'nope'], notes: 'Nota', query: { metrics: ['load_kwh'] }, ...extra,
+});
+const one = (b) => blocksToView({ role: 'assistant', blocks: [b] }).items;
+
+test('figure, choice and sources blocks become items; a sources url that is not https is dropped', () => {
+  const items = blocksToView({ role: 'assistant', blocks: [
+    figure(),
+    { type: 'choice', options: [' Aquest mes ', 'Aquest any'] },
+    { type: 'sources', items: [
+      { title: 'REE', url: 'https://www.ree.es/es/datos?x=1' },
+      { title: 'plain http', url: 'http://example.com/' },
+      { title: 'script', url: 'javascript:alert(1)' },
+      { title: 'data', url: 'data:text/html,<b>x</b>' },
+      { title: 'bad', url: 'not a url' },
+      { title: 'no url' },
+      { url: 'https://untitled.example/a' },
+      { title: 'Spoof', url: 'https://user:pw@real.example/p', host: 'trusted.example' },
+    ] },
+  ] }).items;
+  assert.deepEqual(items.map((i) => i.kind), ['figure', 'choice', 'sources']);
+  assert.deepEqual(items[0].figure, {
+    kind: 'bar', title: 'Consum', x: { type: 'month', values: ['2026-01', '2026-02'] }, series: [{ label: 'Casa', values: [10.5, null] }],
+    unit: 'kWh', source: ['measured'], notes: 'Nota',
+  });
+  assert.deepEqual(items[1].options, ['Aquest mes', 'Aquest any']);
+  assert.deepEqual(items[2].items, [
+    { title: 'REE', url: 'https://www.ree.es/es/datos?x=1', host: 'www.ree.es' },
+    { title: 'untitled.example', url: 'https://untitled.example/a', host: 'untitled.example' },
+    { title: 'Spoof', url: 'https://user:pw@real.example/p', host: 'real.example' },
+  ]);
+  // malformed blocks are dropped whole
+  const long = Array.from({ length: 751 }, (_, i) => i);
+  for (const bad of [
+    figure({ kind: 'pie' }), figure({ title: 3 }), figure({ x: { type: 'week', values: ['2026-01'] } }), figure({ x: { type: 'month', values: [] } }),
+    figure({ x: { type: 'month', values: ['2026-01', 'enero'] } }), figure({ x: { type: 'hour_of_day', values: [0, 24] } }),
+    figure({ x: { type: 'time', values: long }, series: [{ label: 'a', values: long }] }),
+    figure({ series: [{ label: 'a', values: [1] }] }), figure({ series: [{ label: 'a', values: [1, '2'] }] }), figure({ series: [{ values: [1, 2] }] }),
+    figure({ series: Array.from({ length: 9 }, (_, i) => ({ label: `s${i}`, values: [1, 2] })) }), figure({ series: [] }),
+    { type: 'choice', options: ['only one'] }, { type: 'choice', options: ['a', 'b', 'c', 'd', 'e'] }, { type: 'choice', options: ['a', 'x'.repeat(61)] },
+    { type: 'choice', options: ['a', 2] }, { type: 'choice', options: ['a', '  '] }, { type: 'choice' },
+    { type: 'sources', items: [{ title: 'x', url: 'http://x.example/' }] }, { type: 'sources' },
+  ]) assert.deepEqual(one(bad), [], JSON.stringify(bad).slice(0, 80));
+});
+
+test('figureModel for each kind', () => {
+  setLang('en');
+  const two = { series: [{ label: 'Casa', values: [1, 2] }, { label: 'Xarxa', values: [3, null] }] };
+  const model = (extra) => figureModel(one(figure(extra))[0].figure);
+
+  const bar = model(two);
+  assert.equal(bar.spec.kind, 'category');
+  assert.equal(bar.spec.unit, 'kWh');
+  assert.equal(bar.spec.stacked, false);
+  assert.deepEqual(bar.spec.series.map((s) => [s.key, s.name, s.type, s.entity]), [['s0', 'Casa', 'bar', 'sun'], ['s1', 'Xarxa', 'bar', 'home']]);
+  assert.deepEqual(bar.spec.series[1].data, [3, null]);
+  assert.deepEqual(bar.spec.x.categories, ['Jan', 'Feb']);
+  assert.equal(bar.spec.x.title, '2026');
+  assert.deepEqual(bar.columns, ['Month', { label: 'Casa', unit: 'kWh', decimals: 1 }, { label: 'Xarxa', unit: 'kWh', decimals: 1 }]);
+  assert.deepEqual(bar.rows, [['January 2026', 1, 3], ['February 2026', 2, null]]);
+  assert.deepEqual(bar.iso, ['2026-01', '2026-02']);
+  assert.equal(bar.caption, 'Measured by the installation. Nota');
+  assert.equal(bar.title, 'Consum');
+  assert.equal(bar.id, 'figure-consum');
+
+  assert.equal(model({ ...two, kind: 'stacked_bar' }).spec.stacked, true);
+  assert.equal(model({ ...two, kind: 'stacked_bar' }).spec.series[0].type, 'bar');
+  assert.equal(model({ kind: 'line' }).spec.series[0].type, 'line');
+  assert.equal(model({ kind: 'area' }).spec.series[0].type, 'area');
+  const scatter = model({ kind: 'scatter' }).spec.series[0];
+  assert.deepEqual([scatter.type, scatter.width, scatter.markers], ['line', 0, true]);
+
+  const donut = model({ ...two, kind: 'donut' }).spec;
+  assert.equal(donut.kind, 'donut');
+  assert.deepEqual(donut.series.map((s) => [s.name, s.data]), [['Casa', [3]], ['Xarxa', [3]]]);
+
+  const heat = model({ ...two, kind: 'heatmap', x: { type: 'weekday', values: [1, 7] } });
+  assert.equal(heat.spec.kind, 'heatmap');
+  assert.deepEqual(heat.spec.x.categories, ['Mon', 'Sun']);
+  assert.deepEqual(heat.spec.series.map((s) => [s.name, s.entity, s.data]), [['Casa', 'sun', [1, 2]], ['Xarxa', 'sun', [3, null]]]);
+  assert.deepEqual(heat.rows.map((r) => r[0]), ['Monday', 'Sunday']);
+  assert.equal(heat.spec.x.label(1), 'Sunday');
+
+  const hours = model({ x: { type: 'hour_of_day', values: [0, 13, 23] }, series: [{ label: 'Casa', values: [1, 2, 3] }], unit: '€', source: ['estimate', 'bills', 'ree'], notes: null });
+  assert.deepEqual(hours.spec.x.categories, ['00 h', '13 h', '23 h']);
+  assert.deepEqual(hours.columns, ['Hour', { label: 'Casa', unit: '€', decimals: 2 }]);
+  assert.equal(hours.caption, 'Estimated with your prices. From your bills. Market prices from Red Eléctrica (REE).');
+  assert.deepEqual(model({ x: { type: 'month_of_year', values: [1, 12] } }).spec.x.categories, ['Jan', 'Dec']);
+  assert.deepEqual(model({ x: { type: 'day', values: ['2026-03-09', '2026-03-10'] } }).spec.x.categories, ['9', '10']);
+  assert.deepEqual(model({ x: { type: 'year', values: ['2025', '2026'] } }).spec.x.categories, ['2025', '2026']);
+  assert.deepEqual(model({ x: { type: 'bill', values: ['2026-01', '2026-02'] } }).spec.x.categories, ['Jan', 'Feb']);
+
+  setTimeZone('Europe/Madrid');
+  const t0 = Date.UTC(2026, 9, 14, 10);
+  const time = model({ kind: 'line', x: { type: 'time', values: [t0, t0 + 3600e3] }, unit: 'kW' });
+  assert.equal(time.spec.kind, 'time');
+  assert.deepEqual(time.spec.series[0].data, [[t0, 10.5], [t0 + 3600e3, null]]);
+  assert.deepEqual([time.spec.x.min, time.spec.x.max], [t0, t0 + 7200e3]);
+  assert.deepEqual(time.iso, ['2026-10-14T12:00', '2026-10-14T13:00']);
+  assert.equal(time.spec.y.decimals, 2);
+  setTimeZone(null);
+  for (const kind of FIGURE_KINDS) assert.equal(model({ ...two, kind }).spec.series.length, 2, kind);
+});
+
+test('answered marks a choice followed by a user message', () => {
+  const ask = { role: 'assistant', blocks: [{ type: 'text', text: 'Quin període?' }, { type: 'choice', options: ['Aquest mes', 'Aquest any'] }] };
+  const user = { role: 'user', blocks: [{ type: 'text', text: 'Aquest mes' }] };
+  const reply = { role: 'assistant', blocks: [{ type: 'text', text: 'D’acord' }] };
+  assert.deepEqual([...answered([user, ask, user, reply, ask])], [1]);
+  assert.deepEqual([...answered([ask])], []);
+  assert.deepEqual([...answered([ask, reply])], []);
+  assert.deepEqual([...answered(null)], []);
+});
+
+test('no history.replaceState(null in public/js', () => {
+  // the overlay helper keeps its marker in history.state: every replaceState passes it on (preflight F6)
+  const hits = [];
+  (function walk(dir) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (p.endsWith('.js') && fs.readFileSync(p, 'utf8').includes('history.replaceState(null')) hits.push(p);
+    }
+  })(fileURLToPath(new URL('../public/js/', import.meta.url)));
+  assert.deepEqual(hits, []);
+});
+
+test('the old blocksToView drops figure, choice and sources without throwing', () => {
+  const view = blocksToViewV1({ role: 'assistant', blocks: [
+    figure(), { type: 'choice', options: ['a', 'b'] }, { type: 'sources', items: [{ title: 'x', url: 'https://x.example/' }] }, { type: 'text', text: 'Fet' },
+  ] });
+  assert.deepEqual(view.items.map((i) => i.kind), ['text']);
+});
+
+test('a stored pre-change conversation gives the same items as before', () => {
+  const messages = [
+    { role: 'user', blocks: [{ type: 'text', text: 'Quant vaig pagar al setembre?' }] },
+    { role: 'assistant', blocks: [
+      { type: 'invoice', id: 7, period: { from: '2026-09-01', to: '2026-09-30' }, total: 59.15, status: 'confirmed' },
+      { type: 'chart', chart: { type: 'bill_breakdown', from: '2026-01-01', to: '2026-10-31' } },
+      { type: 'tool_call', name: 'get_invoice' },
+      { type: 'text', text: '**59,15 €** <b>' },
+    ] },
+    { role: 'user', blocks: [{ type: 'text', text: '<i>i l’agost?</i>' }] },
+    { role: 'assistant', blocks: [] },
+  ];
+  for (const m of messages) assert.deepEqual(blocksToView(m), blocksToViewV1(m));
+  assert.deepEqual([...answered(messages)], []);
 });

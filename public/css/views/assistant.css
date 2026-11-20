@@ -1,9 +1,19 @@
-/* Assistant view (task 10). Every class here starts with 'assistant-'. Phone first: one column, the composer sticks
-   above the tab bar (or the on-screen keyboard, --assistant-kb set by the view); from 1024 px the conversations list
-   is a side column instead of a sheet. */
-.assistant { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-lg); }
+/* Assistant view (task 10). Every class here starts with 'assistant-'. The view is a column as tall as the visible
+   viewport below the top bar (--vvh from viewport.js; above the tab bar on phones unless the keyboard is open): the
+   thread scrolls inside it, the composer is its last child (no sticky) and the document does not scroll on this
+   route (spec 4.1). From 1024 px the conversations list is a side column instead of a sheet. */
+:root:has(.view-assistant) { overflow: hidden; }
+:root:has(.view-assistant) main.container { padding-block: 0; }
+.view-assistant { height: calc(var(--vvh, 100dvh) - var(--top-h)); padding-block: var(--sp-lg) calc(var(--sp-base) + var(--safe-bottom)); }
+@media (max-width: 639px) {
+  .view-assistant { height: calc(var(--vvh, 100dvh) - var(--top-h) - var(--tabbar-h) - var(--safe-bottom)); padding-block: var(--sp-base) var(--sp-xs); }
+  /* the tab bar hides with the keyboard (base.css), and so does the view title: the thread keeps the room */
+  .kb-open .view-assistant { height: calc(var(--vvh, 100dvh) - var(--top-h)); }
+  .kb-open .assistant-main > .view-head { display: none; }
+}
+.assistant { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--sp-lg); height: 100%; }
 .assistant-side { display: none; }
-.assistant-main { display: flex; flex-direction: column; gap: var(--sp-base); min-width: 0; }
+.assistant-main { display: flex; flex-direction: column; gap: var(--sp-base); min-width: 0; min-height: 0; }
 .assistant-head-actions { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
 
 /* conversations (side column and sheet) */
@@ -17,16 +27,8 @@
 .assistant-sheet [data-list] { overflow-y: auto; }
 
 @media (min-width: 1024px) {
-  .assistant { grid-template-columns: 280px minmax(0, 1fr); align-items: start; gap: var(--sp-xl); }
-  .assistant-side {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-sm);
-    position: sticky;
-    top: calc(var(--top-h) + var(--sp-base));
-    max-height: calc(100dvh - var(--top-h) - var(--sp-xl));
-    overflow-y: auto;
-  }
+  .assistant { grid-template-columns: 280px minmax(0, 1fr); gap: var(--sp-xl); }
+  .assistant-side { display: flex; flex-direction: column; gap: var(--sp-sm); min-height: 0; overflow-y: auto; }
   .assistant-list-btn { display: none; }
 }
 
@@ -50,11 +52,18 @@
 .assistant-chip:hover { background: var(--surface-strong); }
 
 /* thread */
-.assistant-thread { display: flex; flex-direction: column; gap: var(--sp-lg); min-width: 0; }
-/* the sticky composer floats over the page end at every width; this room keeps the last answer (or suggestion) clear of it when scrolled to the end */
-.assistant-thread { padding-bottom: var(--assistant-composer-h, 0px); }
-.assistant-msg { display: flex; flex-direction: column; gap: var(--sp-sm); min-width: 0; scroll-margin: var(--sp-base) 0 220px; }
-.assistant-msg > * { scroll-margin: var(--sp-base) 0 220px; }
+.assistant-thread {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--sp-lg);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.assistant-msg { display: flex; flex-direction: column; gap: var(--sp-sm); min-width: 0; scroll-margin: var(--sp-sm) 0; }
+.assistant-msg > * { scroll-margin: var(--sp-sm) 0; }
 .assistant-msg-user { align-self: flex-end; align-items: flex-end; max-width: min(88%, 640px); }
 .assistant-q {
   margin: 0;
@@ -88,6 +97,14 @@
   background: var(--surface-card);
   color: var(--ink);
 }
+.assistant-choice { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
+.assistant-chip:disabled { border-color: var(--hairline); background: transparent; color: var(--muted); cursor: default; }
+.assistant-chip-other { border-style: dashed; }
+.assistant-sources { max-width: 68ch; color: var(--ink); font-size: var(--fs-caption); }
+.assistant-sources-title { display: flex; align-items: center; gap: var(--sp-xs); margin: 0 0 var(--sp-xxs); color: var(--muted-on-canvas); }
+.assistant-sources ul { display: grid; gap: var(--sp-xxs); margin: 0; padding: 0; list-style: none; }
+.assistant-sources li { overflow-wrap: anywhere; }
+.assistant-source-host { margin-left: var(--sp-xs); color: var(--muted-on-canvas); }
 .assistant-invoice-body p { margin: 0; }
 .assistant-invoice-title { font-weight: 500; }
 .assistant-invoice-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-xs); margin-top: var(--sp-xxs); }
@@ -101,11 +118,8 @@
 .assistant-dot { width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--ink); animation: assistant-pulse 1.2s var(--ease) infinite; }
 @keyframes assistant-pulse { 50% { opacity: 0.25; } }
 
-/* composer */
+/* composer: the column's last child */
 .assistant-composer {
-  position: sticky;
-  bottom: max(var(--sp-base), var(--assistant-kb, 0px));
-  z-index: 5;
   display: grid;
   gap: var(--sp-xs);
   padding: var(--sp-xs);
@@ -115,9 +129,6 @@
   box-shadow: var(--shadow-float);
 }
 .assistant-composer:focus-within { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink), var(--shadow-float); }
-@media (max-width: 639px) {
-  .assistant-composer { bottom: max(calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-xs)), var(--assistant-kb, 0px)); }
-}
 .assistant-row { display: flex; align-items: flex-end; gap: var(--sp-xxs); }
 .assistant-input {
   flex: 1;
