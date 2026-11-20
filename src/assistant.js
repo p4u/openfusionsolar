@@ -267,7 +267,10 @@ export function createAssistant({
       if (final.toolChoice) {
         // A tool call despite tool_choice 'none' (live smoke q2): the calls are not run. One more call with no tools at
         // all, so no tool-call history goes without tools: the user message carries this turn's results as text.
-        const data = toolLog.map((x) => `${x.name}: ${x.result.slice(0, MAX_GATHERED)}`).join('\n');
+        // web text stays inside tool results (spec 6): never repeated in a user message
+        const kept = toolLog.filter((x) => !['web_search', 'read_web_page'].includes(x.name));
+        const data = kept.map((x) => `${x.name}: ${x.result.slice(0, MAX_GATHERED)}`).join('\n')
+          + (kept.length < toolLog.length ? '\n(Web results are not repeated here.)' : '');
         emit({ type: 'status', tool: 'thinking' });
         const last = await call(current, { tools: undefined, messages: [...prefix, { role: 'user', content: `${userContent}\n\n${GATHERED}\n${data}\n\n${ANSWER_NOW}` }] });
         rounds++;
