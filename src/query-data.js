@@ -109,7 +109,7 @@ export async function buildDataset(args, { store, config = {}, now = Date.now, m
   const t = now();
   const prices = config.prices ?? null;
   if (group === 'money' && !prices) fail('prices are not configured');
-  const base = metrics.filter((n) => METRICS[n].group === group);
+  const base = metrics.filter((n) => METRICS[n].group === group && !readsMarket(n)); // market columns are added below
   let hours = null; // aggregate.series at 1h, read once
   const hourly = () => (hours ??= aggregate.series(store, { from, to, bucket: '1h', now: t }));
 

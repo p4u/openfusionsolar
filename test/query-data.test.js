@@ -117,6 +117,15 @@ test("(c) yesterday's PVPC hour by hour joins the production on the hour", async
   assert.equal(ds.unavailableDays, undefined);
 });
 
+test('a price series alone at 1h has one column and groups by hour of day', async () => {
+  const yesterday = addDays(localDay(NOW), -1);
+  const ds = await buildDataset({ metrics: ['pvpc_eur_kwh'], from: yesterday, to: yesterday, bucket: '1h', group_by: 'hour_of_day', agg: 'avg' }, deps());
+  assert.deepEqual(ds.columns.map((c) => c.name), ['pvpc_eur_kwh']);
+  assert.equal(ds.x.type, 'hour_of_day');
+  assert.equal(ds.columns[0].values.length, 24);
+  assert.ok(ds.columns[0].values.every((v) => typeof v === 'number'));
+});
+
 test('(d) monthly savings this year equal periodMoney per month', async () => {
   const ds = await buildDataset({ metrics: ['savings_eur', 'estimated_eur'], from: '2026-01-01', to: '2026-12-31', bucket: '1mo' }, deps());
   assert.deepEqual(ds.source, ['estimate']);
