@@ -274,6 +274,10 @@ test('the power card needs only measured days: one bill and 40 days', () => {
   const keep = run();
   assert.equal(keep.state, 'keep');
   assert.deepEqual([keep.numbers.billMaxP1Kw, keep.numbers.daysOver, keep.numbers.suggestedKw, keep.numbers.savingsYear], [4.952, 0, null, null]);
+  // each printed maximum against its own period: 5 kW in P1 is over a 4.4 kW P1 even with a larger P2
+  store.updateInvoice(id, { contracted_p1_kw: 4.4, contracted_p2_kw: 6.9, max_demand_p1_kw: 5, max_demand_p2_kw: 3 });
+  assert.equal(run().state, 'keep');
+  store.updateInvoice(id, { contracted_p1_kw: 4.4, contracted_p2_kw: 4.4 });
 
   // no bill: contracted power and power prices from the configuration; none configured, no card
   store.deleteInvoice(id);
@@ -298,4 +302,9 @@ test('missing months need measured days and agree with the data card', () => {
   assert.deepEqual(billingSummary(store, { from: '2026-01-01', to: TODAY, today: TODAY }).missing, [], 'within 45 days of its end');
   confirmed(store);
   assert.deepEqual(billingSummary(store, { from: '2026-01-01', to: TODAY, today: '2026-12-20' }).missing, []);
+  // a bill for a month without measurements still counts: never "1 of 0"
+  const bare = new Store(':memory:');
+  confirmed(bare);
+  const t = billingSummary(bare, { from: '2026-01-01', to: TODAY, today: '2026-12-20' }).tiles;
+  assert.deepEqual([t.bills, t.measuredMonths], [1, 1]);
 });

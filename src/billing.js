@@ -3,7 +3,7 @@
 import { periodMoney } from './tariff.js';
 import { localDay } from './collector.js';
 import * as aggregate from './aggregate.js';
-import { missingMonths, measuredMonths, isDate } from './invoice-schema.js';
+import { missingMonths, isDate } from './invoice-schema.js';
 import { addDays, addMonths, spanDays, billMonth } from '../public/js/buckets.js';
 
 const P = ['p1', 'p2', 'p3'];
@@ -131,8 +131,8 @@ function powerCard(store, { prices, yearFrom, today, dataDays }) {
   if (!maxes.length || !(c > 0)) return null;
   const maxKw = Math.max(...maxes);
   const daysOver = maxes.filter((v) => v > c).length;
-  const billMax = [latest?.max_demand_p1_kw, latest?.max_demand_p2_kw].filter((v) => v != null);
-  const billOver = billMax.some((v) => v > c); // the meter's 15-minute maximum saw more than the 5-minute samples
+  // each printed maximum against its own period's contracted power: the meter's 15-minute maximum saw more than the samples
+  const billOver = [latest?.max_demand_p1_kw, latest?.max_demand_p2_kw].some((v, i) => v != null && contracted[i] > 0 && v > contracted[i]);
   const target = Math.ceil((maxKw / 0.8) * 10) / 10;
   const saves = !billOver && daysOver === 0 && maxKw < 0.8 * c;
   return {
@@ -237,8 +237,8 @@ export function billingSummary(store, { from, to, prices = null, today = localDa
     tiles: {
       total: cents(total), average: bills.length ? cents(total / bills.length) : null, pricePerKwh: kwh > 0 ? Math.round((total / kwh) * 1000) / 1000 : null,
       surplusDiscount: cents(part('surplus')), bills: bills.length, months: monthIndex(monthKeys[1]) - monthIndex(monthKeys[0]) + 1,
-      // months a bill is expected for: measured months that are billed or already missing (not the current or grace ones)
-      measuredMonths: measuredMonths(measured).filter(inRange).filter((m) => missing.includes(m) || invoices.some((i) => i.period_from.slice(0, 7) <= m && m <= i.period_to.slice(0, 7))).length,
+      // months a bill is expected for: each confirmed bill's month plus the missing ones (measured, unbilled, past the grace)
+      measuredMonths: Math.max(bills.length, new Set([...missing, ...invoices.map((i) => billMonth(i.period_from, i.period_to))]).size),
     },
     crossTiles: {
       homeCostPerKwh: load > 0 ? Math.round((sum(compared.map((b) => num(b.total))) / load) * 1000) / 1000 : null,
