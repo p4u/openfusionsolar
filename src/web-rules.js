@@ -71,7 +71,7 @@ export function urlRefusal(raw, allowed) {
   if (host.startsWith('[') || IPV4.test(host)) return 'a url with an ip address cannot be read';
   if (host === 'localhost' || host.endsWith('.localhost') || !host.includes('.')) return 'a local address cannot be read';
   // `new URL` drops a default port, so look at the authority as written
-  if (/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*:\d*(?:[/?#]|$)/i.test(raw.trim())) return 'a url with a port cannot be read';
+  if (u.port || /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*:\d*(?:[/?#]|$)/i.test(raw.trim())) return 'a url with a port cannot be read';
   if (!allowed.has(u.href)) return 'only a url returned by web_search in this turn, or a source listed in the guide, can be read';
   return null;
 }

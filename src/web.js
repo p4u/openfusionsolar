@@ -2,7 +2,7 @@
 // lives only in this closure and never reaches a log, an error, kv or status(). Error bodies are never read or logged.
 // The caller applies src/web-rules.js before any call; read() still sends only a canonical https url (preflight F4).
 import { fetchCapped } from './http.js';
-import { canonicalUrl } from './web-rules.js';
+import { canonicalUrl, urlRefusal } from './web-rules.js';
 import { dayBounds, localDay } from './collector.js';
 
 const SEARCH_URL = 'https://s.jina.ai/';
@@ -14,9 +14,10 @@ const BY_STATUS = { 401: 'bad_key', 402: 'no_balance' };
 const KEY_ERRORS = ['bad_key', 'no_balance'];
 
 const cut = (s, n) => String(s ?? '').slice(0, n);
+// results keep only urls read_web_page could read
 const httpsUrl = (u) => {
   const c = canonicalUrl(u);
-  return c?.startsWith('https://') ? c : null;
+  return c && urlRefusal(c, new Set([c])) === null ? c : null;
 };
 
 // Page text for the model: no images, link targets dropped (their text kept), bare urls kept as text.

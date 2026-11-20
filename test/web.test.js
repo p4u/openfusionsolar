@@ -60,6 +60,16 @@ test('search posts the query in the body with the key and the snippet-only heade
   assert.equal(t.store.countUsage(['web_search'], 0), 1);
 });
 
+test('search drops results read_web_page could not read: an ip address, a port, a local host (gate F3)', async () => {
+  const data = searchOk(7).response.data;
+  data[0].url = 'https://192.168.1.1/';
+  data[1].url = 'https://example.org:8443/p1';
+  data[2].url = 'https://router/x';
+  const t = setup([{ status: 200, response: { data } }]);
+  const r = await t.web.search('preu PVPC');
+  assert.deepEqual(r.results.map((x) => x.url), [3, 4, 5, 6].map((i) => `https://example.org/p${i}`));
+});
+
 test('search without a key returns no_key and makes no request', async () => {
   const t = setup([], { apiKey: '' });
   assert.deepEqual(await t.web.search('preu PVPC'), { unavailable: 'no_key' });

@@ -63,6 +63,13 @@ for (const [u, re] of URLS) {
   });
 }
 
+// gate F3: backslashes parse as slashes, so the port is read from the parsed url too, even when search returned it
+test('url: a port written after backslashes is refused', () => {
+  const ported = new Set([canonicalUrl('https://example.com:8443/x')]);
+  assert.match(urlRefusal('https:\\\\example.com:8443\\x', ported) ?? '', /port/);
+  assert.match(urlRefusal('https://example.com:8443/x', ported) ?? '', /port/);
+});
+
 test('fold strips accents and case', () => assert.equal(fold('  Casa  RAMÍREZ '), 'casa ramirez'));
 
 // preflight F5: only the household's figures block a query, not the date or the guide's numbers in the system prompt
