@@ -1,11 +1,31 @@
 // OpenRouter client. Every model call goes through complete(): budget check first, usage recorded after.
 // The key lives only in the createLlm closure and is never logged or put in an error.
 import { dayBounds } from './collector.js';
+import { readCapped } from './http.js';
 
 export const DEFAULT_MODEL = 'google/gemini-3.1-flash-lite';
-export const PRICES = { [DEFAULT_MODEL]: { in: 0.25e-6, out: 1.5e-6 } };
+export const CHAT_MODEL = 'google/gemini-3.8-flash';
+export const CHAT_FALLBACK = 'qwen/qwen3.8-27b';
+// USD per token, OpenRouter list prices of 2026-11-20; only used when a response has no usage.cost.
+export const PRICES = {
+  [DEFAULT_MODEL]: { in: 0.25e-6, out: 1.5e-6 },
+  [CHAT_MODEL]: { in: 0.825e-6, out: 4.125e-6 },
+  [CHAT_FALLBACK]: { in: 0.06e-6, out: 2.2e-6 },
+};
 
-const MAX_BYTES = 1024 * 1024;
+// AI_CHAT_REASONING: 'off' → null, empty → low effort, low | medium | high; anything else throws.
+export function reasoningFromEnv(v) {
+  const s = (v ?? '').trim();
+  if (s === 'off') return null;
+  if (s === '') return { effort: 'low' };
+  if (['low', 'medium', 'high'].includes(s)) return { effort: s };
+  throw new Error('AI_CHAT_REASONING must be off, low, medium or high');
+}
+
+export function assertPriced(model) {
+  if (!PRICES[model]) throw new Error(`no price for model ${model}: add it to PRICES in src/llm.js`);
+}
+
 const BACKOFF_MS = [1000, 3000];
 
 export class LlmError extends Error {
@@ -21,18 +41,6 @@ export class LlmError extends Error {
 const pad = (n) => String(n).padStart(2, '0');
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Reads at most MAX_BYTES of the body; null when it is larger.
-async function readCapped(res) {
-  const chunks = [];
-  let n = 0;
-  for await (const c of res.body ?? []) {
-    n += c.length;
-    if (n > MAX_BYTES) return null; // leaving the loop cancels the stream
-    chunks.push(c);
-  }
-  return Buffer.concat(chunks).toString('utf8');
-}
-
 export function createLlm({
   apiKey, store, budgetUsd = 5, fetch = globalThis.fetch, now = Date.now, sleep = wait, log = () => {},
   baseUrl = 'https://openrouter.ai/api/v1',
@@ -46,6 +54,7 @@ export function createLlm({
 
   async function complete({
     job, model = DEFAULT_MODEL, messages, tools, schema, maxTokens, temperature = 0, timeoutMs = 60000, signal, ref,
+    reasoning = null, retryTimeout = true,
   }) {
     const fail = (code, message, status = null) => {
       log(`llm ${job} error ${code} ${status}`);
@@ -57,6 +66,7 @@ export function createLlm({
     const body = { model, messages, temperature, max_tokens: maxTokens, provider: { data_collection: 'deny' } };
     if (schema) body.response_format = { type: 'json_schema', json_schema: { name: 'bill', strict: true, schema } };
     if (tools) body.tools = tools;
+    if (reasoning) body.reasoning = reasoning;
     const payload = JSON.stringify(body);
 
     for (let attempt = 0; ; attempt++) {
@@ -80,6 +90,7 @@ export function createLlm({
         if (e instanceof LlmError) throw e;
         if (signal?.aborted) fail('timeout', 'request aborted');
         last = timer.aborted ? ['timeout', 'request timed out'] : ['upstream', 'network error'];
+        if (timer.aborted) retryable = retryTimeout; // false when the caller has a fallback to try instead
       }
       if (!retryable || attempt >= BACKOFF_MS.length) fail(...last);
       await sleep(BACKOFF_MS[attempt]);

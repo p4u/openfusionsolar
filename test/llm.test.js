@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createLlm, LlmError, DEFAULT_MODEL, PRICES } from '../src/llm.js';
+import {
+  createLlm, LlmError, DEFAULT_MODEL, PRICES, CHAT_MODEL, CHAT_FALLBACK, reasoningFromEnv, assertPriced,
+} from '../src/llm.js';
 import { fakeFetch, fixture } from './fixtures/llm/fake.js';
 
 const REPO = path.resolve(import.meta.dirname, '..');
@@ -136,6 +138,45 @@ test('a timeout aborts the request and is retried; an aborted caller signal is n
   assert.equal(e.code, 'timeout');
   assert.equal(t.calls.length, 1);
   assert.deepEqual(t.sleeps, []);
+});
+
+test('a timeout is not retried when retryTimeout is false; 5xx still is', async () => {
+  let t = setup(['timeout', ok]);
+  assert.equal((await code(call(t.llm, { timeoutMs: 10, retryTimeout: false }))).code, 'timeout');
+  assert.equal(t.calls.length, 1);
+  assert.deepEqual(t.sleeps, []);
+  t = setup([{ status: 503, response: {} }, ok]);
+  await call(t.llm, { retryTimeout: false });
+  assert.equal(t.calls.length, 2);
+});
+
+test('reasoning is sent in the body', async () => {
+  const t = setup([ok]);
+  await call(t.llm, { model: CHAT_MODEL, reasoning: { effort: 'low' } });
+  assert.deepEqual(t.calls[0].reasoning, { effort: 'low' });
+  assert.equal(t.calls[0].model, CHAT_MODEL);
+});
+
+test('no reasoning key when null', async () => {
+  const t = setup([ok, ok]);
+  await call(t.llm, { reasoning: null });
+  await call(t.llm);
+  assert.ok(!('reasoning' in t.calls[0]) && !('reasoning' in t.calls[1]));
+});
+
+test('reasoningFromEnv table', () => {
+  for (const [v, want] of [[undefined, { effort: 'low' }], ['', { effort: 'low' }], ['off', null],
+    ['low', { effort: 'low' }], ['medium', { effort: 'medium' }], ['high', { effort: 'high' }]]) {
+    assert.deepEqual(reasoningFromEnv(v), want, String(v));
+  }
+  for (const v of ['none', 'HIGH', 'max', '1']) assert.throws(() => reasoningFromEnv(v), /AI_CHAT_REASONING/, v);
+});
+
+test('assertPriced throws for an unknown model', () => {
+  for (const m of [DEFAULT_MODEL, CHAT_MODEL, CHAT_FALLBACK]) assertPriced(m);
+  assert.deepEqual(PRICES[CHAT_MODEL], { in: 0.825e-6, out: 4.125e-6 });
+  assert.deepEqual(PRICES[CHAT_FALLBACK], { in: 0.06e-6, out: 2.2e-6 });
+  assert.throws(() => assertPriced('acme/unknown-1'), /acme\/unknown-1/);
 });
 
 test('responses over 1 MB and without choices are bad_response', async () => {
