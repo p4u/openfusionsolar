@@ -1,6 +1,6 @@
 // The one-time notice about what leaves the server when the assistant reads a bill or answers a question.
 import { t } from './i18n.js';
-import { esc } from './ui.js';
+import { esc, overlay } from './ui.js';
 
 const KEY = 'ofs.aiNotice';
 
@@ -25,6 +25,7 @@ export function ensureAiNotice() {
         <button type="button" class="pill pill-primary" data-answer="yes">${esc(t('core.privacy.ok'))}</button>
         <button type="button" class="pill pill-outline" data-answer="no">${esc(t('core.privacy.manual'))}</button>
       </div>`;
+    const o = overlay(dialog);
     let answer = false;
     dialog.addEventListener('click', (e) => {
       const choice = e.target.closest('[data-answer]')?.dataset.answer;
@@ -39,10 +40,10 @@ export function ensureAiNotice() {
     });
     dialog.addEventListener('close', () => {
       dialog.remove();
-      resolve(answer); // Escape counts as "by hand"
+      o.closed().then(() => resolve(answer)); // Escape or back counts as "by hand"
     });
     document.body.append(dialog);
-    dialog.showModal();
+    o.open();
   });
 }
 

@@ -4,7 +4,7 @@ import { register, t, locale } from './i18n.js';
 import dict from './i18n/charts.js';
 import { PRESETS, COMPARES, parseRange, rangeParams, stepRange, rangeLabel } from './range.js';
 import { legalSeriesBuckets, legalEnergyBuckets } from './buckets.js';
-import { esc, icon } from './ui.js';
+import { esc, icon, overlay } from './ui.js';
 
 register(dict);
 let uid = 0;
@@ -45,6 +45,7 @@ export function renderRangeBar(container, { range, ctx, mode = null, compare = t
 
   const q = (s) => container.querySelector(s);
   const dialog = q('dialog');
+  const sheet = overlay(dialog);
   const emit = (r) => onChange(rangeParams(r));
   // a new period resets the bucket: a legal one for the old span may be illegal for the new one
   const keep = { cmp: range.cmp, b: 'auto' };
@@ -55,7 +56,7 @@ export function renderRangeBar(container, { range, ctx, mode = null, compare = t
 
   const onPreset = (e) => {
     if (e.target.name !== id && e.target.id !== `${id}-preset`) return;
-    if (e.target.value === 'custom') dialog.showModal();
+    if (e.target.value === 'custom') sheet.open();
     else emit(parseRange({ r: e.target.value, ...keep }, ctx));
   };
   const onClick = (e) => {
@@ -65,13 +66,14 @@ export function renderRangeBar(container, { range, ctx, mode = null, compare = t
       if (r) emit({ ...r, ...keep });
     } else if (e.target.closest('[data-cancel]')) dialog.close();
     // a click on the already selected "Custom" radio does not fire change: reopen the dialog
-    else if (e.target.name === id && e.target.value === 'custom' && range.r === 'custom') dialog.showModal();
+    else if (e.target.name === id && e.target.value === 'custom' && range.r === 'custom') sheet.open();
   };
   const onSubmit = (e) => {
     e.preventDefault();
     const [from, to] = [q(`#${id}-from`).value, q(`#${id}-to`).value];
     dialog.close();
-    emit(parseRange({ r: 'custom', from, to, ...keep }, ctx));
+    // after the dialog's history entry is popped, or that pop would undo the new range
+    sheet.closed().then(() => emit(parseRange({ r: 'custom', from, to, ...keep }, ctx)));
   };
   const onSelect = (e) => {
     if (e.target.id === `${id}-cmp`) emit({ ...range, cmp: e.target.value });

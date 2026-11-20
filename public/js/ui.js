@@ -86,7 +86,92 @@ export function statusLine({ state = 'ok', title, details = [], link = null }) {
   </div>`;
 }
 
-// Modal question with two buttons; resolves true on `yes`, false on `no`, Escape or close. Labels are plain text.
+// Overlays and the back button (spec 4.3). Every modal dialog and the menu popover go through overlay(el): opening
+// pushes a history entry on the same URL (no hashchange), so the back button closes the top overlay before it leaves
+// the view; an overlay closed any other way pops its own entry again.
+const stack = []; // open overlays, the top last
+let seq = 0;
+let settled = Promise.resolve(); // resolves when no back() of an overlay is pending
+let release = null;
+
+function popOwnEntry() {
+  let timer;
+  settled = new Promise((resolve) => {
+    release = () => { clearTimeout(timer); release = null; resolve(); };
+    timer = setTimeout(release, 500); // guard: a popstate that never comes
+  });
+  history.back();
+}
+
+// dialog.close() fires its close event a task later: settle overlays already shut before another one opens or the
+// back button acts, so their entries are popped in order
+const sweep = () => { for (const e of [...stack]) if (!e.isOpen()) e.closed(); };
+
+globalThis.addEventListener?.('popstate', () => {
+  if (release) return release(); // the pop of our own back()
+  sweep();
+  if (stack.length) stack.at(-1).hide();
+  else if (history.state?.overlay) popOwnEntry(); // forward onto an overlay entry: nothing to show there
+});
+if (globalThis.history?.state?.overlay) popOwnEntry(); // reloaded while an overlay was open
+
+const wired = new WeakMap();
+
+// Wired once per element. open(): showModal (dialogs) or showPopover; a popover pushes on its toggle event, so the
+// native popovertarget button works too. closed(): resolves once the element has closed and its entry is popped;
+// callers that navigate or write history after closing an overlay wait for it.
+export function overlay(el) {
+  if (wired.has(el)) return wired.get(el);
+  const isDialog = typeof el.showModal === 'function';
+  let finish = () => {};
+  const entry = {
+    n: 0,
+    done: Promise.resolve(),
+    isOpen: () => (isDialog ? el.open : el.matches(':popover-open')),
+    hide: () => (isDialog ? el.close() : el.hidePopover()),
+    closed() {
+      const i = stack.indexOf(entry);
+      if (i < 0) return;
+      stack.splice(i, 1);
+      if (history.state?.overlay === entry.n) popOwnEntry();
+      settled.then(finish);
+    },
+  };
+  const opened = () => {
+    entry.n = ++seq;
+    entry.done = new Promise((resolve) => { finish = resolve; });
+    stack.push(entry);
+    history.pushState({ ...history.state, overlay: entry.n }, '');
+  };
+  if (isDialog) el.addEventListener('close', () => entry.closed());
+  else el.addEventListener('toggle', (e) => (e.newState === 'open' ? opened() : entry.closed()));
+  // a route link inside: close, wait for the pop, then navigate, so no overlay entry is left under the next view
+  el.addEventListener('click', (e) => {
+    const a = e.target.closest?.('a[href^="#/"]');
+    if (!a || !stack.includes(entry) || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    const { done } = entry;
+    entry.hide();
+    done.then(() => { location.hash = a.getAttribute('href'); });
+  });
+  const api = {
+    async open() {
+      sweep();
+      let s;
+      do await (s = settled); while (s !== settled); // a back() started meanwhile is waited for too
+      if (!isDialog) return el.showPopover();
+      if (el.open || !el.isConnected) return;
+      el.showModal();
+      opened();
+    },
+    closed: () => entry.done,
+  };
+  wired.set(el, api);
+  return api;
+}
+
+// Modal question with two buttons; resolves true on `yes`, false on `no`, Escape, close or back, once its history
+// entry is gone (the caller may navigate next). Labels are plain text.
 export function confirmDialog({ title, body, yes, no }) {
   return new Promise((resolve) => {
     const dialog = document.createElement('dialog');
@@ -95,14 +180,15 @@ export function confirmDialog({ title, body, yes, no }) {
     dialog.innerHTML = `<h2 id="confirm-title" class="view-title">${esc(title)}</h2>${body ? `<p>${esc(body)}</p>` : ''}
       <div class="actions"><button type="button" class="pill pill-primary" data-yes>${esc(yes)}</button>
       <button type="button" class="pill pill-outline" data-no>${esc(no)}</button></div>`;
+    const o = overlay(dialog);
     let answer = false;
     dialog.addEventListener('click', (e) => {
       if (e.target.closest('[data-yes]')) answer = true;
       if (e.target.closest('[data-yes], [data-no]')) dialog.close();
     });
-    dialog.addEventListener('close', () => { dialog.remove(); resolve(answer); });
+    dialog.addEventListener('close', () => { dialog.remove(); o.closed().then(() => resolve(answer)); });
     document.body.append(dialog);
-    dialog.showModal();
+    o.open();
   });
 }
 

@@ -2,7 +2,7 @@
 import { register, t, getLang } from '../i18n.js';
 import dict from '../i18n/invoices.js';
 import settingsDict from '../i18n/settings.js';
-import { esc, icon, badge, emptyState, moneyTabs, loadBlock, every } from '../ui.js';
+import { esc, icon, badge, emptyState, moneyTabs, loadBlock, every, overlay } from '../ui.js';
 import { ensureAiNotice } from '../privacy.js';
 import { uploadFiles } from '../upload.js';
 import {
@@ -408,19 +408,21 @@ async function detail(body, ctx, id) {
       dialog.innerHTML = `<h2 id="inv-del" class="view-title">${esc(t('invoices.deleteTitle'))}</h2><p>${esc(t('invoices.deleteBody'))}</p>
         <div class="actions"><button type="button" class="pill pill-primary" data-yes>${esc(t('invoices.delete'))}</button>
         <button type="button" class="pill pill-outline" data-no>${esc(t('invoices.cancel'))}</button></div>`;
+      const o = overlay(dialog);
       dialog.addEventListener('click', async (e) => {
         if (e.target.closest('[data-no]')) dialog.close();
         if (e.target.closest('[data-yes]')) {
           try {
             await deleteInvoice(id, { signal });
             dialog.close();
+            await o.closed(); // the dialog's history entry first, or its pop would undo the navigation
             go('#/invoices');
           } catch { dialog.close(); message = t('invoices.err.other'); paint(); }
         }
       });
       dialog.addEventListener('close', () => dialog.remove());
       document.body.append(dialog);
-      dialog.showModal();
+      o.open();
     }
 
     paint();
