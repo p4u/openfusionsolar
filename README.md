@@ -69,7 +69,7 @@ or disabled.
 | `AI_MODEL_CHAT_FALLBACK` | no | Model used when the assistant's model fails on the first round (default `qwen/qwen3.8-27b`; `none` disables it). |
 | `AI_CHAT_REASONING` | no | How much the assistant's model thinks: `off`, `low` (default), `medium` or `high`. |
 | `JINA_API_KEY` | no | [Jina](https://jina.ai) key for the assistant's web search. The account needs balance; without a key, or with none left, the assistant says web search is unavailable. |
-| `AI_MONTHLY_BUDGET_USD` | no | Monthly spending limit in US dollars (default 5). |
+| `AI_MONTHLY_BUDGET_USD` | no | Monthly spending limit in US dollars (default 10). |
 
 ## Alerts
 
@@ -124,7 +124,7 @@ delete anything. A bill can be attached to a question.
 - **Keys**: `AI_API_KEY` (an OpenRouter key), `AI_MODEL_EXTRACT` (default `google/gemini-3.1-flash-lite`, any
   OpenRouter model that takes PDFs), `AI_MODEL_CHAT` (default `google/gemini-3.8-flash`, any model with tools),
   `AI_MODEL_CHAT_FALLBACK` (default `qwen/qwen3.8-27b`, `none` to disable), `AI_CHAT_REASONING` (`off`, `low`,
-  `medium` or `high`; default `low`), `AI_MONTHLY_BUDGET_USD` (default 5) and `JINA_API_KEY` (web search). At the
+  `medium` or `high`; default `low`), `AI_MONTHLY_BUDGET_USD` (default 10) and `JINA_API_KEY` (web search). At the
   limit, uploads are still stored and can be filled in by hand, and the assistant pauses until the next month.
   Settings, Assistant and bills shows this month's spending, whether web search is available and this month's web
   calls.
@@ -151,9 +151,9 @@ delete anything. A bill can be attached to a question.
   Logs carry status codes only, never bill contents.
 - **Deleting**: one bill from its page; all bills, or all assistant conversations, from Settings, Assistant and
   bills. Deleting a bill removes its original file too.
-- **Costs** with the default models: about 0.005 USD per bill and about 0.007 USD per short question; a question that
-  draws charts or reads many bills can take 0.02 to 0.04 USD. Ten short questions a day come to about 2 USD a month,
-  so the default limit stays at 5 USD. Higher reasoning costs more (`medium` about 0.016 USD per short question).
+- **Costs** with the default models: about 0.005 USD per bill. A live run of twelve typical questions cost about
+  0.022 USD per question on average (0.003 for a short one, up to 0.04 for one that draws charts or reads many bills).
+  Ten questions a day come to about 6.5 USD a month, so the default limit is 10 USD. Higher reasoning costs more (`medium` about twice as much).
 - **Behind a reverse proxy**: allow request bodies of at least 12 MB for uploads (nginx: `client_max_body_size 12m`;
   its default is 1 MB). The assistant streams its answer and sends a keep-alive line every 15 s, so the default read
   timeouts are enough; with nginx the app already asks for no response buffering.

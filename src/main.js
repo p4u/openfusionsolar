@@ -91,8 +91,9 @@ engine.start();
 // Bill files live next to the DB; the key stays inside the llm closure.
 const billsDir = path.join(path.dirname(DB_PATH), 'bills');
 fs.mkdirSync(billsDir, { recursive: true });
-const budgetUsd = Number(env.AI_MONTHLY_BUDGET_USD || 5);
-if (!Number.isFinite(budgetUsd) || budgetUsd < 0) throw new Error('AI_MONTHLY_BUDGET_USD must be a number of dollars, for example 5');
+// default 10: measured about 0.022 USD per question, so ten a day pass 3 USD a month (spec 3.7)
+const budgetUsd = Number(env.AI_MONTHLY_BUDGET_USD || 10);
+if (!Number.isFinite(budgetUsd) || budgetUsd < 0) throw new Error('AI_MONTHLY_BUDGET_USD must be a number of dollars, for example 10');
 const chatModel = env.AI_MODEL_CHAT || CHAT_MODEL;
 const fallbackModel = env.AI_MODEL_CHAT_FALLBACK === 'none' ? null : env.AI_MODEL_CHAT_FALLBACK || CHAT_FALLBACK;
 // A model without a price would be billed at the wrong rate when usage.cost is missing.
