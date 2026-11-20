@@ -222,7 +222,7 @@ async function detail(body, ctx, id) {
           ? `<select id="f-${col}" data-col="${col}"${aria}>${[['', 'unknown'], ['yes', 'yes'], ['no', 'no']].map(([v, k]) => `<option value="${v}"${value === v ? ' selected' : ''}>${esc(t(`invoices.bool.${k}`))}</option>`).join('')}</select>`
           : `<input id="f-${col}" data-col="${col}" value="${esc(value)}"${fd.type === 'date' ? ' type="date"' : fd.type === 'text' ? ' type="text"' : ' type="text" inputmode="decimal" autocomplete="off"'}${aria}>`;
       let why = '';
-      if (st === 'suspect') {
+      if (st === 'suspect' && !anchor) { // a refused save explains itself in the note below
         const bad = checks.find((c) => c.outcome === 'fail' && c.fields.includes(col));
         why = bad ? sumText(bad, num, lang) : t('invoices.check.unreadable');
       }
