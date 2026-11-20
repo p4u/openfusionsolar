@@ -151,9 +151,9 @@ export function plainWords(inv, lang, lines = []) {
     ['other', other, {}],
   ];
   // name the other charges by their bill lines (a voluntary donation is not a supply cost)
-  const named = lines.filter((l) => l.section === 'other' && !l.info && l.concept).map((l) => l.concept);
+  const named = lines.filter((l) => (l.section === 'other' || l.section === 'discount') && !l.info && l.concept).map((l) => l.concept);
   const parts = blocks.filter(([id, v]) => v !== 0 || id === 'fixed' || id === 'energy')
-    .map(([id, eur, vars]) => ({ id, eur: cents(eur), text: say(lang, id === 'other' && named.length ? 'invoices.plain.otherNamed' : `invoices.plain.${id}`, { ...vars, eur: eurs(lang, Math.abs(cents(eur))), names: named.join(', ') }) }));
+    .map(([id, eur, vars]) => ({ id, eur: cents(eur), text: say(lang, id === 'other' ? `invoices.plain.other${eur < 0 ? 'Credit' : ''}${named.length ? 'Named' : ''}` : `invoices.plain.${id}`, { ...vars, eur: eurs(lang, Math.abs(cents(eur))), names: named.join(', ') }) }));
   return { parts, sum: cents(parts.reduce((s, p) => s + p.eur, 0)), total: inv.total_eur ?? null };
 }
 

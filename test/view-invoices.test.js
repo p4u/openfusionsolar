@@ -24,6 +24,10 @@ test('plain words for the sample name every block with its euros and add up to t
   }
   const named = plainWords({ ...sample, other_exempt_eur: 1.59, other_taxed_eur: null }, 'ca', [{ section: 'other', concept: 'Donatiu voluntari', amount_eur: 1.59 }, { section: 'other', concept: 'nota', info: 1 }]);
   assert.match(named.parts.find((p) => p.id === 'other').text, /\(Donatiu voluntari\)/);
+  const credit = plainWords({ ...sample, other_exempt_eur: -1.67, other_taxed_eur: null }, 'ca', [{ section: 'other', concept: 'Donatiu voluntari', amount_eur: 0.35 }, { section: 'discount', concept: 'Descompte per Flux Solar', amount_eur: -2.02 }]);
+  const c = credit.parts.find((p) => p.id === 'other');
+  assert.equal(c.eur, -1.67);
+  assert.match(c.text, /descomptes i abonaments, en net: 1,67\s€\smenys \(Donatiu voluntari, Descompte per Flux Solar\)/);
   const zero = plainWords({ ...sample, surplus_lost_eur: 0 }, 'ca');
   assert.match(zero.parts.find((p) => p.id === 'surplus').text, /No es perd cap excedent/);
 });
