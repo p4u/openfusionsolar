@@ -65,7 +65,8 @@ export function reconRows(invoices) {
       diffPct: num(billed) && num(measured) && measured > 0 ? ((billed - measured) / measured) * 100 : null,
       reason, reasonEur, reasonKey: reason == null ? null : `billing.recon.${reason}${way}`,
       // the whole gap against the app's forecast (what Previsió shows) and its three parts, which add up to it
-      gap: c.verdict !== 'nodata' && d?.total != null ? { total: d.total, kwh: d.kwh ?? 0, prices: d.prices ?? 0, other: d.other ?? 0 } : null,
+      // parts are null when the bill lacks the prices to split the gap: then only the total is shown
+      gap: c.verdict !== 'nodata' && d?.total != null ? { total: d.total, ...(d.kwh != null && d.prices != null && { kwh: d.kwh, prices: d.prices, other: d.other ?? 0 }) } : null,
     };
   });
 }

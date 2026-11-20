@@ -63,8 +63,8 @@ export async function render(root, ctx) {
     const rows = reconRows(summary.invoices);
     const reason = (r) => (r.reasonKey == null ? '' : t(r.reasonKey, { eur: eur(Math.abs(r.reasonEur ?? 0)) }));
     const signed = (v) => `${v > 0 ? '+' : ''}${eur(v)}`;
-    const gap = (r) => (!r.gap || Math.abs(r.gap.total) < 0.01 ? '' : t(r.gap.total > 0 ? 'billing.recon.gapMore' : 'billing.recon.gapLess', {
-      eur: eur(Math.abs(r.gap.total)), kwh: signed(r.gap.kwh), prices: signed(r.gap.prices), other: signed(r.gap.other) }));
+    const gap = (r) => (!r.gap || Math.abs(r.gap.total) < 0.01 ? '' : t(`billing.recon.gap${r.gap.total > 0 ? 'More' : 'Less'}${r.gap.kwh == null ? 'Total' : ''}`, {
+      eur: eur(Math.abs(r.gap.total)), kwh: signed(r.gap.kwh ?? 0), prices: signed(r.gap.prices ?? 0), other: signed(r.gap.other ?? 0) }));
     const td = (label, html, cls = '') => `<td${cls ? ` class="${cls}"` : ''} data-label="${esc(label)}">${html}</td>`;
     const body = rows.map((r) => `<tr>
       <th scope="row"><span>${esc(fmtMonth(r.month))}</span><span class="hint">${esc(`${fmtDate(r.period.from)} - ${fmtDate(r.period.to)}`)}</span></th>

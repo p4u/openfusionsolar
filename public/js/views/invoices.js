@@ -238,6 +238,7 @@ async function detail(body, ctx, id) {
     let message = '';
     let forceable = false;
     let typed = null; // what the user typed, kept in the form when the server refuses it
+    let pendingRevert = null; // a revert the checks refused, sent again by "confirm anyway"
     let failed = { notes: [], byCol: {} }; // the checks a 409 named
     let saved = ''; // short status after a successful save
     function view(dd, c) {
@@ -321,9 +322,11 @@ async function detail(body, ctx, id) {
 
     // act: save | confirm | force; revert: columns to put back to the value read from the bill
     async function submit(act, revert = null) {
+      const retried = !revert && act === 'force' && pendingRevert; // "confirm anyway" after a refused revert
+      if (retried) revert = pendingRevert;
       const keep = snapshot();
       if (revert) errors = {};
-      const fields = revert ? {} : collect();
+      const fields = revert && !retried ? {} : collect(); // a retried revert keeps anything typed since
       message = '';
       saved = '';
       failed = { notes: [], byCol: {} };
@@ -331,7 +334,10 @@ async function detail(body, ctx, id) {
       try {
         d = await saveInvoice(id, fields, { confirm: act !== 'save', force: act === 'force', noNumber: keep.noNumber, revert }, { signal });
         forceable = false;
-        typed = null;
+        pendingRevert = null;
+        // a revert sends only its columns: other inputs typed and not saved yet stay in the form
+        const dirty = revert ? Object.keys(keep).filter((c) => c !== 'noNumber' && !revert.includes(c) && keep[c] !== fieldText(c, d.invoice[c], lang)) : [];
+        typed = dirty.length ? { ...Object.fromEntries(dirty.map((c) => [c, keep[c]])), noNumber: keep.noNumber } : null;
         saved = t(revert ? 'invoices.reverted' : d.invoice.status === 'confirmed' ? 'invoices.savedConfirmed' : 'invoices.saved');
       } catch (err) {
         if (err?.name === 'AbortError') return;
@@ -342,10 +348,13 @@ async function detail(body, ctx, id) {
           message = t('invoices.err.fix');
         } else if (err.status === 409 && code === 'checks_failed') {
           forceable = true;
+          pendingRevert = revert;
           failed = failedChecks(err.body.checks, num, lang);
           message = t('invoices.err.checks');
         } else if (err.status === 409 && code === 'duplicate_unresolved') {
           message = t('invoices.err.duplicate');
+          d = await getInvoice(id, { signal }).catch(() => d); // the server flagged it: show the three choices
+          typed = null;
         } else message = t('invoices.err.other');
       }
       paint();

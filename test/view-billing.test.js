@@ -117,3 +117,10 @@ test('advice with one bill keeps the power card and says the others need more da
   const ok = adviceView({ id: 'power', state: 'ok', period, numbers: { contractedKw: 4.4, maxKw: 3.9, daysOver: 0, billMaxP1Kw: 3.1 } });
   assert.match(ok.text, /The maximum demand on the bill was 3\.10.kW\./);
 });
+
+test('a gap without the bill prices to split it shows only its total', () => {
+  const inv = { id: 1, month: '2026-10', period: { from: '2026-10-01', to: '2026-10-31' }, total: 59.15,
+    compare: { verdict: 'ok', days: 31, daysWithData: 31, kwh: { billed: { total: 150 }, measured: { total: 150 } }, diff: { total: 4.95, kwh: null, prices: null, other: 1.59 } } };
+  const [row] = reconRows([inv]);
+  assert.deepEqual(row.gap, { total: 4.95 });
+});
