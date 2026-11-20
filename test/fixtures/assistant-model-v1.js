@@ -1,4 +1,4 @@
-// The pre-change assistant model: `git show 820c31d:public/js/views/assistant-model.js` with its import paths fixed (spec 5 rollback test).
+// The previous assistant view model, unchanged but for its import paths: tests check that it still reads newer stored blocks.
 // Assistant view model (pure, no DOM): safe text rendering, stored and streamed blocks, error and status texts.
 import dict from '../../public/js/i18n/assistant.js';
 import { LANGS } from '../../public/js/i18n.js';
@@ -7,7 +7,7 @@ import { esc } from '../../public/js/ui.js';
 export const MAX_TEXT = 4000; // the server's limit (src/assistant.js)
 export const MAX_ATTACHMENTS = 3; // upload groups per question (src/assistant.js)
 
-// Codes the chat can answer with: stream `error` events, then the JSON errors before the stream (preflight F22),
+// Codes the chat can answer with: stream `error` events, then the JSON errors before the stream,
 // plus `offline` (no answer from the server) and `stopped` (the user pressed Stop).
 export const ERROR_CODES = ['internal', 'budget', 'rate_limited', 'timeout', 'upstream', 'bad_response', 'too_many_rounds',
   'invalid', 'ai_disabled', 'offline', 'stopped'];

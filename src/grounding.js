@@ -1,4 +1,4 @@
-// Number grounding check (spec 3.6). It answers one question: does each figure in an answer appear in text the
+// Number grounding check. It answers one question: does each figure in an answer appear in text the
 // model was given this turn? It does not prove the figure carries the right label or period. Pure, no I/O.
 // The checker does no arithmetic of its own: derived figures come from tools (calculate, query_data, precomputed fields).
 

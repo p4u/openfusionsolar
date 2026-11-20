@@ -55,7 +55,7 @@ test('queue states map every extraction status and error code to a message', () 
   for (const code of ['too_large', 'body too large', 'too_many_pages', 'unsupported_type', 'duplicate_file', 'too_many_files', 'pdf_alone',
     'too_many_images', 'group_closed', 'rate_limited', 'budget', 'ai_disabled', 'heic_unsupported', 'HTTP 500', undefined]) keysOk(uploadErrorKey(code));
   assert.equal(uploadErrorKey('too_many_pages', 413), 'invoices.err.too_many_pages');
-  assert.equal(uploadErrorKey('HTTP 413', 413), 'invoices.err.too_large'); // R4: any other 413 is "too large"
+  assert.equal(uploadErrorKey('HTTP 413', 413), 'invoices.err.too_large'); // any other 413 is "too large"
   assert.equal(uploadErrorKey('x', 413), 'invoices.err.too_large');
   assert.equal(ofMonth('2025-10', 'ca'), 'd’octubre');
   assert.equal(ofMonth('2025-05', 'ca'), 'de maig');

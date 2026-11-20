@@ -1,4 +1,4 @@
-// keyboardState and its wiring (spec 4.1, AC7 iOS path): pure function, then watchViewport over fake window objects.
+// keyboardState and its wiring (the iOS path): pure function, then watchViewport over fake window objects.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { keyboardState, watchViewport } from '../public/js/viewport.js';
@@ -13,7 +13,7 @@ const CASES = [
   ['121 px is open', { innerHeight: 723, vvHeight: 723, baseline: 844 }, { vvh: 723, open: true, baseline: 844 }],
   ['a taller reading raises the baseline', { innerHeight: 900, vvHeight: 900, baseline: 844 }, { vvh: 900, open: false, baseline: 900 }],
 ];
-// with an editable element focused (D1, fix-2: no focus, no keyboard)
+// with an editable element focused (no focus, no keyboard)
 for (const [name, input, expected] of CASES) test(`keyboardState: ${name}`, () => assert.deepEqual(keyboardState({ ...input, focused: true }), expected));
 test('keyboardState: nothing focused is never open, and the height becomes the baseline', () => {
   assert.deepEqual(keyboardState({ innerHeight: 844, vvHeight: 844, baseline: 1024 }), { vvh: 844, open: false, baseline: 844 });
@@ -74,7 +74,7 @@ test('a pinch zoom is not a keyboard', () => {
   assert.ok(!f.classes.has('kb-open'));
 });
 
-test('a window resized with nothing focused keeps the tab bar; focus and blur toggle kb-open (D1)', () => {
+test('a window resized with nothing focused keeps the tab bar; focus and blur toggle kb-open', () => {
   const f = fakeWindow({ height: 1024 });
   watchViewport(f.win);
   f.resize(844); // 768x1024 to 390x844 on a desktop

@@ -23,7 +23,7 @@ test('shares sum to 100 and handle zero totals', () => {
 });
 
 test('yesterday: the sun went to the battery and the home ran on the grid, never "100 % at home"', () => {
-  // the ruling's figures: no self-use, nothing sold
+  // a day with no self-use and nothing sold
   const r = shares({ pv_kwh: 1.5, load_kwh: 11.8, import_kwh: 11.8, self_use_kwh: 0, export_kwh: 0 });
   assert.deepEqual(r.solar, { home: 0, battery: 100, sold: 0 });
   assert.deepEqual(r.consumption, { solar: 0, grid: 100, battery: 0 });

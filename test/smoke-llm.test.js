@@ -1,5 +1,6 @@
 process.env.TZ = 'Europe/Madrid';
-// Live OpenRouter check, skipped unless AI_SMOKE=1. Prints only cost and timing, never bill values or the key.
+// Live OpenRouter check, skipped unless AI_SMOKE=1; the bill tests also need AI_SMOKE_PDF, a sample bill PDF.
+// Prints only cost and timing, never bill values or the key.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -15,10 +16,11 @@ import { startTestServer } from './helpers.js';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 const skip = process.env.AI_SMOKE !== '1';
+const skipPdf = skip || !process.env.AI_SMOKE_PDF;
 
-test('the sample bill is extracted live and auto-confirmed', { skip, timeout: 240e3 }, async (t) => {
+test('the sample bill is extracted live and auto-confirmed', { skip: skipPdf, timeout: 240e3 }, async (t) => {
   process.loadEnvFile(path.join(REPO, '.env'));
-  const pdfPath = process.env.AI_SMOKE_PDF || path.join(REPO, '.delivery/2026-11-19-billing-assistant/sample-bill.pdf');
+  const pdfPath = process.env.AI_SMOKE_PDF;
   const store = new Store(':memory:');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ofs-smoke-'));
   const llm = createLlm({ apiKey: process.env.AI_API_KEY, store, budgetUsd: 0.05 });
@@ -99,11 +101,11 @@ test('a chat question about the golden bill is answered live through a tool', { 
   console.log(`smoke chat: 2 turns, ${store.usageCostSince(0).toFixed(4)} USD, ${Date.now() - t0} ms`);
 });
 
-test('one chat turn with the sample PDF attached answers with its total', { skip, timeout: 240e3 }, async (t) => {
+test('one chat turn with the sample PDF attached answers with its total', { skip: skipPdf, timeout: 240e3 }, async (t) => {
   const store = new Store(':memory:');
   const srv = await chatSetup(t, store);
   t.after(() => srv.close());
-  const pdfPath = process.env.AI_SMOKE_PDF || path.join(REPO, '.delivery/2026-11-19-billing-assistant/sample-bill.pdf');
+  const pdfPath = process.env.AI_SMOKE_PDF;
   const t0 = Date.now();
   const group = randomUUID();
   const up = await srv.request(`/api/invoices/upload?group=${group}&pos=0&source=chat`, {

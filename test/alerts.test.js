@@ -318,7 +318,7 @@ test('config validation reports field paths; the config api round-trips and neve
     'lang', 'quiet.from', 'recipients.0', 'recipients.1', 'rules.batteryLowInCut.params.soc', 'rules.dailySummary.params.time',
     'rules.deviceAlarm.params.maxSeverity', 'rules.gridCut.enabled', 'rules.noData.params.minutes',
   ]);
-  // the limit is now 20 distinct addresses (was 10, and repeated ones are refused on their own)
+  // the limit is 20 distinct addresses, and repeated ones are refused on their own
   assert.ok(validateConfig({ ...DEFAULT_CONFIG, recipients: Array.from({ length: 21 }, (_, i) => `a${i}@b.example`) }).fields.recipients);
   assert.deepEqual(validateConfig(DEFAULT_CONFIG).config, DEFAULT_CONFIG);
 

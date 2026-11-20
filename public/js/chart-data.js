@@ -231,7 +231,7 @@ export function sliceTipHtml(spec, i, palette = {}) {
 }
 
 // Donut (one slice per series, data [total]) and heatmap (one row per series over x.categories). Both draw their
-// tooltip with esc(): ApexCharts' default tooltip inserts series names as HTML (preflight F8).
+// tooltip with esc(): ApexCharts' default tooltip inserts series names as HTML.
 function roundOptions(spec, palette, chart, text, hidden) {
   const legendMarkers = { size: 8, strokeWidth: 1, customHTML: spec.series.map((s) => { const html = legendKey({ type: 'bar' }, { colour: palette[s.entity] ?? palette.muted }); return () => html; }) };
   const common = { dataLabels: { enabled: false }, stroke: { width: spec.kind === 'donut' ? 2 : 1, colors: [palette.surface] } };

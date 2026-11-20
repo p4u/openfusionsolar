@@ -8,14 +8,12 @@ import {
 } from '../src/llm.js';
 import { fakeFetch, fixture } from './fixtures/llm/fake.js';
 
-const REPO = path.resolve(import.meta.dirname, '..');
-
 const KEY = 'sk-test-SECRET';
 const NOW = Date.parse('2026-11-19T12:00:00+01:00');
 const ok = fixture('chat-final');
 const messages = [{ role: 'user', content: 'hi' }];
 
-// Fake store (task 1 owns the real one): same two methods llm.js uses.
+// Fake store: the same two methods llm.js uses.
 const fakeStore = () => ({
   rows: [],
   addUsage(r) { this.rows.push(r); },
@@ -221,9 +219,10 @@ test('fixtures hold no personal data', () => {
     }
   })(root);
   assert.ok(files.some((f) => f.endsWith('extract-pdf-ok.json')));
-  const mainRepoPatterns = path.join(REPO, '.delivery/2026-11-19-billing-assistant/pii-patterns.txt');
-  const extra = fs.existsSync(mainRepoPatterns)
-    ? fs.readFileSync(mainRepoPatterns, 'utf8').split('\n').filter(Boolean).map((l) => new RegExp(l)) : [];
+  // PII_PATTERNS may name a local file of extra patterns, one regular expression per line
+  const patterns = process.env.PII_PATTERNS;
+  const extra = patterns && fs.existsSync(patterns)
+    ? fs.readFileSync(patterns, 'utf8').split('\n').filter(Boolean).map((l) => new RegExp(l)) : [];
   for (const f of files) {
     const txt = fs.readFileSync(f, 'utf8');
     const at = path.relative(root, f);

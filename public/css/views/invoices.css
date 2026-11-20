@@ -1,4 +1,4 @@
-/* Bills view (task 7). Every class here starts with 'invoices-'. */
+/* Bills view. Every class here starts with 'invoices-'. */
 /* grid children shrink to the track: without min-width 0 a long row (the 24 month labels) widened the page on phones */
 .invoices-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-base); margin-top: var(--sp-base); }
 .invoices-body > * { min-width: 0; }

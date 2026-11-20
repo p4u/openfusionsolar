@@ -1,6 +1,6 @@
 // Chart presets shared by the billing summary and the assistant: a type plus a period in, a figure with its table out.
 // Every spec has one y axis and one unit. presetModel/billModel are pure (data in, spec out) so Node can test them;
-// renderPreset fetches through api.js and draws. The list is final: task 9 compares it with the server's.
+// renderPreset fetches through api.js and draws. The list is closed: a test compares it with the server's.
 import { register, t } from './i18n.js';
 import billing from './i18n/billing.js';
 import bill from './i18n/bill.js';

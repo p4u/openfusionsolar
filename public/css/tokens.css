@@ -1,4 +1,4 @@
-/* Design tokens (DESIGN.md with the spec's section 6 deviations). Components use these names only. */
+/* Design tokens (from DESIGN.md, with the deviations noted below). Components use these names only. */
 
 @font-face {
   font-family: 'Inter Variable';
@@ -16,7 +16,7 @@
   src: url(/fonts/inter-latin-wght-normal.woff2) format('woff2-variations');
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
-/* EB Garamond's weight axis is 400-800: the 300 display token renders as 400 (spec 6.2, deviation 3). */
+/* EB Garamond's weight axis is 400-800: the 300 display token renders as 400. */
 @font-face {
   font-family: 'EB Garamond Variable';
   font-style: normal;
@@ -70,7 +70,7 @@
   --chart-home: #2a78d6;
   --chart-grid: #b0409a;
   --chart-battery: #199e70;
-  /* the second of a pair gets its own hue (validated per chart, docs/plans/2026-11-19-palette-validation.txt) */
+  /* the second of a pair gets its own hue (contrast checked per chart) */
   --chart-sold: #a44c1d;
   --chart-discharge: #736c01;
   --chart-fixed: #736c01;

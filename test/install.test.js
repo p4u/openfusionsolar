@@ -1,4 +1,4 @@
-// installMode and showBanner (spec 4.2, AC8 unit part): which install entry each browser gets, and when the banner shows.
+// installMode and showBanner: which install entry each browser gets, and when the banner shows.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { installMode, showBanner } from '../public/js/install.js';

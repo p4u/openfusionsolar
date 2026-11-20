@@ -72,7 +72,7 @@ test('time ticks: hours in a day, day at midnight over a few days, months with t
   assert.equal(timeTick(midnight + 12 * 3600e3, DAY), '12:00');
   assert.equal(timeTick(midnight, 3 * DAY), fmtDate(midnight));
   assert.match(timeTick(midnight, 3 * DAY), /10/);
-  // ruling R26: past 2 days the ticks are days, so a tick near noon reads as its nearest day
+  // past 2 days the ticks are days, so a tick near noon reads as its nearest day
   assert.equal(timeTick(midnight + 3 * 3600e3, 3 * DAY), '10 Aug');
   assert.equal(timeTick(midnight, 30 * DAY), fmtDate(midnight));
   assert.equal(timeTick(midnight, 400 * DAY), 'Aug 2026');
@@ -338,7 +338,7 @@ const round = (kind) => ({
 });
 
 test('apexOptions escapes legend names', () => {
-  // preflight F8: ApexCharts' default tooltip inserts series names as HTML, so every kind builds its own with esc();
+  // ApexCharts' default tooltip inserts series names as HTML, so every kind builds its own with esc();
   // the legend writes an unchanged name with textContent, so no legend formatter
   for (const spec of [round('donut'), round('heatmap'), { ...round('category'), series: round('heatmap').series.map((s) => ({ ...s, type: 'bar' })) }]) {
     const o = apexOptions(spec, palette);

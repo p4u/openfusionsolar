@@ -1,5 +1,5 @@
 process.env.TZ = 'Europe/Madrid';
-// Dataset core (spec 3.4, AC1 unit tests): registry, summary, group_by over local time, ratios from sums, derived
+// Dataset core: registry, summary, group_by over local time, ratios from sums, derived
 // series and the resolved figure block.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

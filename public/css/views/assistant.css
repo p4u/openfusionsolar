@@ -1,7 +1,7 @@
-/* Assistant view (task 10). Every class here starts with 'assistant-'. The view is a column as tall as the visible
+/* Assistant view. Every class here starts with 'assistant-'. The view is a column as tall as the visible
    viewport below the top bar (--vvh from viewport.js; above the tab bar on phones unless the keyboard is open): the
    thread scrolls inside it, the composer is its last child (no sticky) and the document does not scroll on this
-   route (spec 4.1). From 1024 px the conversations list is a side column instead of a sheet. */
+   route. From 1024 px the conversations list is a side column instead of a sheet. */
 :root:has(.view-assistant) { overflow: hidden; }
 :root:has(.view-assistant) main.container { padding-block: 0; }
 .view-assistant { height: calc(var(--vvh, 100dvh) - var(--top-h)); padding-block: var(--sp-lg) calc(var(--sp-base) + var(--safe-bottom)); }
@@ -52,7 +52,7 @@
 .assistant-chip:hover { background: var(--surface-strong); }
 
 /* thread. position: its .sr-only labels (absolute) stay inside its scroll box; static, they made the document taller
-   than the viewport and a scrollIntoView then moved the page (spec 4.1: no document scroll on this route). */
+   than the viewport and a scrollIntoView then moved the page, and this route must not scroll the document. */
 .assistant-thread {
   position: relative;
   display: flex;

@@ -95,7 +95,7 @@ export function queueState(u) {
   }
 }
 
-// Upload or process error (body.error or message, HTTP status when known) -> message key. R4: a 413 that is not
+// Upload or process error (body.error or message, HTTP status when known) -> message key. A 413 that is not
 // too_many_pages is "file too large" (the server sends two shapes).
 export function uploadErrorKey(code, status) {
   const c = String(code ?? '');

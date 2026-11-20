@@ -1,4 +1,4 @@
-/* Technical data view (task 10). Every class here starts with 'signals-'. */
+/* Technical data view. Every class here starts with 'signals-'. */
 [data-block="pick"] { display: grid; gap: var(--sp-base); }
 .signals-device { max-width: 420px; }
 .signals-list { margin: 0; padding: 0; border: 0; min-width: 0; }

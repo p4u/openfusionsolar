@@ -1,7 +1,7 @@
 // The assistant: a tool-calling loop on the server, streamed to the browser as NDJSON steps (not tokens).
 // Every model call goes through llm.complete (budget checked first, usage recorded after). The model can only read
 // through the tools of assistant-tools.js; bill contents and web pages reach it as JSON values marked as data. Every
-// final answer goes through the number grounding check (spec 3.6) before it leaves the server.
+// final answer goes through the number grounding check before it leaves the server.
 import { createLimiter } from './auth.js';
 import { localDay, dayBounds } from './collector.js';
 import { LlmError } from './llm.js';
@@ -12,9 +12,9 @@ import { TOOLS, TOOL_LIMITS, runTool, toJson, invoiceForModel, compareForModel }
 
 const MAX_TEXT = 4000;
 const MAX_ATTACHMENTS = 3;
-// firstRoundMs: round 1 on the primary model when a fallback is set, so the fallback still has time (preflight F12).
-// maxSameTool: calls of one tool per turn; later ones are refused unrun (the live smoke looped on get_energy).
-// maxCalculate: calculate's own cap, since one answer can need many derived figures (fix-2).
+// firstRoundMs: round 1 on the primary model when a fallback is set, so the fallback still has time.
+// maxSameTool: calls of one tool per turn; later ones are refused unrun (a model can loop on one tool).
+// maxCalculate: calculate's own cap, since one answer can need many derived figures.
 export const LIMITS = {
   maxRounds: 10, roundMs: 90e3, turnMs: 180e3, maxToolCalls: 24, maxSameTool: 4, maxCalculate: 12, maxTokensIn: 150000, firstRoundMs: 60e3, ...TOOL_LIMITS,
 };
@@ -26,7 +26,7 @@ const KEEP_CONVERSATIONS = 50;
 const MAX_SOURCES = 10;
 const SHOWN = new Set(['text', 'chart', 'invoice', 'figure', 'choice', 'sources']);
 const FALLBACK_ON = new Set(['upstream', 'rate_limited', 'timeout']);
-// Results that are not the household's data: they ground an answer's figures but never refuse a web query (F5).
+// Results that are not the household's data: they ground an answer's figures but never refuse a web query.
 const NOT_HOUSEHOLD = new Set(['read_guide', 'calculate', 'web_search', 'read_web_page']);
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LLM_CODES = new Set(['budget', 'rate_limited', 'timeout', 'upstream', 'bad_response']);
@@ -42,12 +42,12 @@ const MAX_GATHERED = 4000; // characters of each tool result in the tool-less la
 
 const intId = (v) => (Number.isInteger(v) && v > 0 ? v : null);
 
-// The guide's index without the topic lists, so the prompt fits in 6000 characters (preflight F22: guide lines first,
+// The guide's index without the topic lists, so the prompt fits in 6000 characters (guide lines first,
 // at most 1600); every section is under 2500 words, so read_guide of a section returns its text with the topic ids.
 const guideLines = (guide) => guidePrompt(guide).replace(/ \(topics: [^)]*\)/g, '');
 
 // Spec 3.6. Holds the date, time zone, language, plant name and the guide's index only: no key, password, env values,
-// e-mails or CUPS. asked: the previous answer ended with a question (spec 3.5).
+// e-mails or CUPS. asked: the previous answer ended with a question.
 export function systemPrompt({ today, timeZone, lang, plantName, guide = loadGuide(), asked = false }) {
   return [
     `You are the assistant of a home solar installation${plantName ? ` called ${JSON.stringify(plantName)}` : ''} (panels, battery, grid connection) and its electricity bills (Spanish 2.0TD tariff).`,
@@ -110,7 +110,7 @@ function sourcesBlock(sources) {
 const invoiceBlock = (inv) => ({ type: 'invoice', id: inv.id, period: { from: inv.period_from, to: inv.period_to }, total: inv.total_eur, status: inv.status });
 
 // pingMs: a quiet stream gets a ping line this often, so a proxy (nginx: 60 s by default) does not close it.
-// model/reasoning serve the turn; fallbackModel/fallbackReasoning only replace them when round 1 fails (spec 3.1).
+// model/reasoning serve the turn; fallbackModel/fallbackReasoning only replace them when round 1 fails.
 // limits: overrides of LIMITS (tests).
 export function createAssistant({
   store, llm, invoices = null, config = {}, model, fallbackModel = null, reasoning = null, fallbackReasoning = null,
@@ -138,7 +138,7 @@ export function createAssistant({
   }
 
   // Waits for each attached bill; returns the lines added to the user message and emits the invoice blocks. Each
-  // bill's data also goes to `data` as its own JSON string, for the grounded set (preflight F17).
+  // bill's data also goes to `data` as its own JSON string, for the grounded set.
   async function readAttachments(groups, emit, blocks, signal, data) {
     const extra = [];
     for (const group of groups) {
@@ -187,7 +187,7 @@ export function createAssistant({
     const prefix = messages.slice(0, -1);
     const toolLog = []; // { name, result } of the tool results that entered the grounded sets
 
-    // G (spec 3.6 step 1, preflight F5): household = history, the user message, its bills and the household tool results;
+    // G: household = history, the user message, its bills and the household tool results;
     // all adds the system prompt and the other results. The model's own messages of this turn never enter either.
     const household = groundedSet([...history.map((m) => m.content), text, ...extra.filter((l) => !l.startsWith(ATTACHED)), ...attached]);
     const all = groundedSet([system], new Set(household));
@@ -265,9 +265,9 @@ export function createAssistant({
       }
 
       if (final.toolChoice) {
-        // A tool call despite tool_choice 'none' (live smoke q2): the calls are not run. One more call with no tools at
+        // A tool call despite tool_choice 'none' (some models do it): the calls are not run. One more call with no tools at
         // all, so no tool-call history goes without tools: the user message carries this turn's results as text.
-        // web text stays inside tool results (spec 6): never repeated in a user message
+        // web text stays inside tool results: never repeated in a user message
         const kept = toolLog.filter((x) => !['web_search', 'read_web_page'].includes(x.name));
         const data = kept.map((x) => `${x.name}: ${x.result.slice(0, MAX_GATHERED)}`).join('\n')
           + (kept.length < toolLog.length ? '\n(Web results are not repeated here.)' : '');

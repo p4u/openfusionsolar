@@ -1,4 +1,4 @@
-// REE market price cache (spec 3.3, AC6): parsing the recorded answer, storing past whole days once, never today.
+// REE market price cache: parsing the recorded answer, storing past whole days once, never today.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

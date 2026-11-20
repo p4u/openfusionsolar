@@ -496,7 +496,7 @@ test('weeklySummary: Monday at 08:00, the previous week with incidents and the p
   assert.equal(s.transport.sent.length, 2, 'once a week');
 });
 
-// ---- mailer (R28) ----
+// ---- mailer ----
 
 test('mailer: SMTP_PASSWORD works like SMTP_PASS, TLS defaults on for port 465, credentials never shown', async () => {
   assert.deepEqual(smtpSecurity({ SMTP_USER: 'u', SMTP_PASSWORD: 'p2' }).auth, { user: 'u', pass: 'p2' });

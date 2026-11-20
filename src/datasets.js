@@ -1,4 +1,4 @@
-// Datasets of one assistant turn (spec 3.4): the rows query_data built stay here, the model gets a summary, and
+// Datasets of one assistant turn: the rows query_data built stay here, the model gets a summary, and
 // draw_chart resolves series (plain or derived) into a `figure` block the browser draws without fetching. Pure: the
 // caller builds the rows (src/query-data.js) and owns the per-turn registry.
 //
@@ -174,7 +174,7 @@ function seriesOf(ds, s) {
 const r3 = (v) => (isNum(v) ? Math.round(v * 1000) / 1000 + 0 : null);
 
 // draw_chart: args { kind, title, series: [{ dataset, column, label } | { dataset, op, columns, label }], notes? }.
-// checkText(s) returns the figures of s that are not grounded (spec 3.6 step 10). Returns { block, result }.
+// checkText(s) returns the figures of s that are not grounded. Returns { block, result }.
 export function resolveFigure(args, datasets, { checkText = () => [] } = {}) {
   const a = args && typeof args === 'object' ? args : fail('arguments must be an object');
   for (const k of Object.keys(a)) if (!['kind', 'title', 'series', 'notes'].includes(k)) fail(`unknown argument ${k}`);

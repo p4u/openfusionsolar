@@ -1,5 +1,5 @@
 // Bill reconciliation: each confirmed bill against what FusionSolar measured over the same days, plus the
-// deterministic advice cards (spec 5.2, 5.3). Pure reads over the Store; nothing is prorated into months.
+// deterministic advice cards. Pure reads over the Store; nothing is prorated into months.
 import { periodMoney } from './tariff.js';
 import { localDay } from './collector.js';
 import * as aggregate from './aggregate.js';

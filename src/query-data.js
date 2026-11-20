@@ -1,4 +1,4 @@
-// query_data (spec 3.4): the metric catalogue and the builder that turns one call into a dataset of src/datasets.js,
+// query_data: the metric catalogue and the builder that turns one call into a dataset of src/datasets.js,
 // computed by the existing pure functions (aggregate, tariff through aggregate, billing) and the REE price cache.
 // Local days and hours are the process's: the server runs in the plant's time zone, as REE's (Europe/Madrid).
 import * as aggregate from './aggregate.js';
@@ -15,11 +15,11 @@ const ENERGY_BUCKETS = ['1d', '1mo', '1y'];
 const POWER_BUCKETS = [...SERIES_BUCKETS, '1d'];
 const X_TYPE = { '5m': 'time', '15m': 'time', '1h': 'time', '1d': 'day', '1mo': 'month', '1y': 'year' };
 const KEY_LEN = { '1d': 10, '1mo': 7, '1y': 4 };
-// Rulings R4, R5: the price series take at most 31 days (spec 3.3); import_cost_pvpc_eur up to a year, since
+// The price series take at most 31 days; import_cost_pvpc_eur up to a year, since
 // market.hourly fetches in 31-day chunks and caches past days. Checked before market.hourly.
 export const MARKET_DAYS = 31;
 export const COST_DAYS = 366;
-const COST_UNIT = '€'; // energy term only: the caveat is the query_data note (ruling R7c)
+const COST_UNIT = '€'; // energy term only: the caveat is the query_data note
 const KEYS = ['metrics', 'from', 'to', 'bucket', 'group_by', 'agg'];
 
 // metric → where its values come from

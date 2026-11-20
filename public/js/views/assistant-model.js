@@ -12,7 +12,7 @@ register(dict);
 export const MAX_TEXT = 4000; // the server's limit (src/assistant.js)
 export const MAX_ATTACHMENTS = 3; // upload groups per question (src/assistant.js)
 
-// Codes the chat can answer with: stream `error` events, then the JSON errors before the stream (preflight F22),
+// Codes the chat can answer with: stream `error` events, then the JSON errors before the stream,
 // plus `offline` (no answer from the server) and `stopped` (the user pressed Stop).
 export const ERROR_CODES = ['internal', 'budget', 'rate_limited', 'busy', 'timeout', 'upstream', 'bad_response', 'too_many_rounds',
   'invalid', 'ai_disabled', 'offline', 'stopped'];
@@ -22,7 +22,7 @@ export const STATUS_TOOLS = ['get_plant', 'get_energy', 'get_power', 'get_tariff
   'compare_invoice', 'get_billing_summary', 'get_incidents', 'show_chart', 'query_data', 'draw_chart', 'read_guide', 'web_search',
   'read_web_page', 'calculate', 'ask_user', 'checking', 'reading_bill', 'uploading', 'thinking'];
 
-// The figure block's closed sets (src/datasets.js KINDS and its x types; a server test compares them, preflight F15).
+// The figure block's closed sets (src/datasets.js KINDS and its x types; a server test compares them).
 export const FIGURE_KINDS = ['line', 'bar', 'stacked_bar', 'area', 'scatter', 'donut', 'heatmap'];
 export const X_TYPES = ['time', 'day', 'month', 'year', 'bill', 'hour_of_day', 'weekday', 'month_of_year'];
 const MAX_SERIES = 8;

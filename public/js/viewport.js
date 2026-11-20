@@ -1,4 +1,4 @@
-// Keyboard and viewport (spec 4.1). keyboardState is pure; watchViewport wires it to visualViewport: it sets --vvh on
+// Keyboard and viewport. keyboardState is pure; watchViewport wires it to visualViewport: it sets --vvh on
 // <html> and toggles .kb-open (which hides the tab bar). The same code serves browsers that resize the layout when the
 // keyboard opens (Chrome, Samsung, Firefox on Android) and those that do not (iOS): both shrink visualViewport.height.
 export const KB_MIN_PX = 120;

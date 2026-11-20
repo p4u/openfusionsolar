@@ -1,4 +1,4 @@
-// query_data builder (spec 3.4, AC1): datasets from the store, the bills and the market prices, and its refusals.
+// query_data builder: datasets from the store, the bills and the market prices, and its refusals.
 // No TZ is forced: the suite runs under TZ=Europe/Madrid and TZ=UTC and every expectation is computed in local time.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -148,7 +148,7 @@ test('import_cost_pvpc_eur sums import × pvpc per day', async () => {
   const [from, to] = ['2026-07-25', '2026-07-31'];
   const ds = await buildDataset({ metrics: ['import_cost_pvpc_eur', 'pvpc_eur_kwh'], from, to, bucket: '1d' }, deps());
   assert.deepEqual(ds.source, ['measured', 'ree']);
-  assert.equal(ds.columns[0].unit, '€'); // ruling R7c: the caveat moved to the query_data note
+  assert.equal(ds.columns[0].unit, '€'); // the caveat is in the query_data note
   assert.equal(ds.x.type, 'day');
   const s = aggregate.series(store, { from, to, bucket: '1h', now: NOW });
   ds.x.values.forEach((d, k) => {
@@ -209,7 +209,7 @@ test('bills: one row per bill, a second bill of one month gets (2); power at 1d 
   assert.deepEqual(column(ds, 'bill_total_eur'), [59.15, 61.2]);
   assert.deepEqual(column(ds, 'bill_price_p1'), [0.249, 0.249]);
   assert.deepEqual(ds.columns.map((c) => c.unit), ['€', '€/kWh', 'kWh']);
-  // a bill without a month (inverted period) is left out, as the browser would drop the figure (gate F1)
+  // a bill without a month (inverted period) is left out, as the browser would drop the figure
   s.insertInvoice({ ...row, status: 'confirmed', period_from: '2026-10-20', period_to: '2026-10-10' }, [], readings);
   const noMonth = await buildDataset({ metrics: ['bill_total_eur'], from: '2026-10-01', to: '2026-10-31' }, deps({ store: s }));
   assert.deepEqual(noMonth.x, { type: 'bill', values: ['2026-10', '2026-10 (2)'] });
@@ -219,7 +219,7 @@ test('bills: one row per bill, a second bill of one month gets (2); power at 1d 
   assert.ok(column(p, 'import_kw_max').every((v) => v > 0));
 });
 
-test('ruling R5: a 366-day import cost at 1mo builds in one market call; a 32-day pvpc_eur_kwh is refused', async () => {
+test('a 366-day import cost at 1mo builds in one market call; a 32-day pvpc_eur_kwh is refused', async () => {
   const market = fakeMarket();
   const [from, to] = ['2025-08-01', '2026-07-31']; // 365 days, the seeded year
   const ds = await buildDataset({ metrics: ['import_cost_pvpc_eur'], from: '2025-07-31', to, bucket: '1mo' }, deps({ market }));
@@ -266,7 +266,7 @@ test('refusals', async () => {
   await assert.rejects(buildDataset(null, deps()), DataError);
 });
 
-test('the catalogue: units, buckets and sources as spec 3.4', () => {
+test('the catalogue: units, buckets and sources', () => {
   assert.equal(Object.keys(METRICS).length, 41);
   assert.deepEqual(METRICS.pv_kwh, { group: 'energy', unit: 'kWh', buckets: ['1h', '1d', '1mo', '1y'], source: ['measured'] });
   assert.deepEqual(METRICS.import_p2.buckets, ['1d', '1mo', '1y']);
@@ -279,7 +279,7 @@ test('the catalogue: units, buckets and sources as spec 3.4', () => {
   assert.deepEqual(METRICS.import_cost_pvpc_eur.source, ['measured', 'ree']);
 });
 
-test('query_data says import_cost_pvpc_eur is the energy term only; its unit is plain € (ruling R7c)', async () => {
+test('query_data says import_cost_pvpc_eur is the energy term only; its unit is plain €', async () => {
   const { runTool } = await import('../src/assistant-tools.js');
   const { createDatasets } = await import('../src/datasets.js');
   const args = { metrics: ['import_cost_pvpc_eur'], from: '2026-07-25', to: '2026-07-31', bucket: '1d' };
@@ -291,7 +291,7 @@ test('query_data says import_cost_pvpc_eur is the energy term only; its unit is 
   assert.equal(out.result.uncoveredDays, undefined);
 });
 
-test('import_cost_pvpc_eur reports days with daily import but no hourly data as uncoveredDays (gate F5)', async () => {
+test('import_cost_pvpc_eur reports days with daily import but no hourly data as uncoveredDays', async () => {
   const { runTool } = await import('../src/assistant-tools.js');
   const { createDatasets } = await import('../src/datasets.js');
   // June has daily rows only, July has 5-minute samples too

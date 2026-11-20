@@ -1,4 +1,4 @@
-// Spanish market prices (spec 3.3): REE apidatos, peninsula, hourly EUR/kWh. A past day REE returned whole is kept in
+// Spanish market prices: REE apidatos, peninsula, hourly EUR/kWh. A past day REE returned whole is kept in
 // market_prices and never fetched again; today and later are fetched each time and never stored.
 // Days are Europe/Madrid days (REE's and the plant's), computed with Intl so they hold whatever TZ the process runs in.
 import { fetchCapped } from './http.js';

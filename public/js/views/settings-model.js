@@ -146,7 +146,7 @@ export const usageText = ({ spentUsd, budgetUsd }, lang) =>
   String(dict[lang]?.['settings.ai.usage'] ?? dict.en['settings.ai.usage'])
     .replace('{spent}', usd(spentUsd, lang)).replace('{budget}', usd(budgetUsd, lang, { whole: true }));
 
-// The web search line from /api/status `web` (spec 3.3): available, or why not. lastError is the code of the last Jina
+// The web search line from /api/status `web`: available, or why not. lastError is the code of the last Jina
 // call (src/web.js); a key error makes web search unavailable, any other failure leaves it available.
 export function webKey(web) {
   const e = web?.lastError;

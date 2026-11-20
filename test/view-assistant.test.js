@@ -42,7 +42,7 @@ test('stored and streamed blocks become view items; unknown or malformed blocks 
 });
 
 test('every stream error code has a message in both languages', () => {
-  // preflight F22: stream codes, then the HTTP errors before the stream
+  // stream codes, then the HTTP errors before the stream
   for (const code of ['internal', 'budget', 'rate_limited', 'timeout', 'upstream', 'bad_response', 'too_many_rounds', 'invalid', 'ai_disabled']) {
     assert.ok(ERROR_CODES.includes(code), code);
   }
@@ -84,7 +84,7 @@ test('busy has its own message', () => {
   for (const tool of ['query_data', 'draw_chart', 'read_guide', 'web_search', 'read_web_page', 'calculate', 'ask_user', 'checking']) assert.ok(STATUS_TOOLS.includes(tool), tool);
 });
 
-// ---------- figure, choice and sources (spec 3.3-3.5) ----------
+// ---------- figure, choice and sources ----------
 
 const figure = (extra = {}) => ({
   type: 'figure', kind: 'bar', title: 'Consum', x: { type: 'month', values: ['2026-01', '2026-02'] },
@@ -178,7 +178,7 @@ test('figureModel for each kind', () => {
   assert.deepEqual(model({ x: { type: 'day', values: ['2026-03-09', '2026-03-10'] } }).spec.x.categories, ['9', '10']);
   assert.deepEqual(model({ x: { type: 'year', values: ['2025', '2026'] } }).spec.x.categories, ['2025', '2026']);
   assert.deepEqual(model({ x: { type: 'bill', values: ['2026-01', '2026-02'] } }).spec.x.categories, ['Jan', 'Feb']);
-  // a second bill of one month is keyed `YYYY-MM (2)` by the server (gate F1): drawn, not dropped
+  // a second bill of one month is keyed `YYYY-MM (2)` by the server: drawn, not dropped
   const twoBills = { type: 'figure', kind: 'bar', title: 't', x: { type: 'bill', values: ['2026-10', '2026-10 (2)'] }, series: [{ label: 'a', values: [1, 2] }], unit: '€', source: ['bills'] };
   for (const kind of FIGURE_KINDS) assert.equal(one({ ...twoBills, kind }).length, 1, kind);
   const billRows = figureModel(one(twoBills)[0].figure);
@@ -199,7 +199,7 @@ test('figureModel for each kind', () => {
   setTimeZone(null);
   for (const kind of FIGURE_KINDS) assert.equal(model({ ...two, kind }).spec.series.length, 2, kind);
 
-  // a label that ends with its unit loses it, so the table header is not "Estalvi diari (€) (€)" (fix-2 D8)
+  // a label that ends with its unit loses it, so the table header is not "Estalvi diari (€) (€)"
   const own = model({ unit: '€', series: [{ label: 'Estalvi diari (€)', values: [1, 2] }, { label: 'Cost [€]', values: [1, 2] }, { label: 'Casa (kWh)', values: [1, 2] }, { label: '(€)', values: [1, 2] }] });
   assert.deepEqual(own.columns.slice(1).map((c) => c.label), ['Estalvi diari', 'Cost', 'Casa (kWh)', '(€)']);
   assert.deepEqual(own.spec.series.map((s) => s.name), ['Estalvi diari', 'Cost', 'Casa (kWh)', '(€)']);
@@ -216,7 +216,7 @@ test('answered marks a choice followed by a user message', () => {
 });
 
 test('no history.replaceState(null in public/js', () => {
-  // the overlay helper keeps its marker in history.state: every replaceState passes it on (preflight F6)
+  // the overlay helper keeps its marker in history.state: every replaceState passes it on
   const hits = [];
   (function walk(dir) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -229,7 +229,7 @@ test('no history.replaceState(null in public/js', () => {
 });
 
 test('every modal dialog opens through overlay(): no showModal() outside ui.js', () => {
-  // Android back closes the top overlay first (spec 4.3): the conversations sheet too (Task 11)
+  // Android back closes the top overlay first: the conversations sheet too
   const dir = fileURLToPath(new URL('../public/js/', import.meta.url));
   const hits = fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith('.js') && f !== 'ui.js')
     .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('.showModal('));

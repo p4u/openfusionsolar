@@ -50,7 +50,7 @@ test('the precache before login holds only public paths', () => {
 });
 
 test('the cache name carries the version, so an update clears the old shell', () => {
-  assert.match(SW, /^const VERSION = 6;$/m); // bumped for assistant 2 and the mobile shell, again for its fix-2 shell files
+  assert.match(SW, /^const VERSION = 6;$/m); // bumped whenever the shell files change
   assert.match(SW, /const SHELL = `ofs-shell-v\$\{VERSION\}`;/);
   assert.match(SW, /name\.startsWith\('ofs-'\) && name !== SHELL && name !== DATA/);
 });
@@ -99,7 +99,7 @@ test('manifest, worker, offline page and icons have their types and headers', ()
     assert.equal(sw.headers.get('service-worker-allowed'), '/');
     assert.match(sw.headers.get('content-security-policy'), /worker-src 'self'; manifest-src 'self'/);
 
-    // spec 4.2: one narrow and one wide screenshot, PNG of the stated size, served without a session, not precached
+    // one narrow and one wide screenshot, PNG of the stated size, served without a session, not precached
     assert.deepEqual(manifest.screenshots.map((s) => [s.form_factor, s.sizes]), [['narrow', '1080x1920'], ['wide', '1920x1080']]);
     for (const shot of manifest.screenshots) {
       assert.ok(shot.label.length > 10, shot.src);
@@ -120,7 +120,7 @@ test('manifest, worker, offline page and icons have their types and headers', ()
     assert.doesNotMatch(await offline.text(), /<script(?![^>]*src="\/js\/theme\.js")/, 'no inline script (CSP)');
   }));
 
-test('the app page lets the keyboard resize the layout (spec 4.1)', () => {
+test('the app page lets the keyboard resize the layout', () => {
   assert.match(fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), /name="viewport" content="[^"]*interactive-widget=resizes-content"/);
 });
 

@@ -139,7 +139,7 @@ export function createInvoices({ store, llm, dir, now = Date.now, log = () => {}
     return prev && { ...prev, readings: store.invoiceReadings(prev.id) };
   }
 
-  // Duplicates are looked for among confirmed, non-superseded bills only (preflight F24).
+  // Duplicates are looked for among confirmed, non-superseded bills only.
   function duplicateOf(row, exceptId) {
     const live = (i) => i.id !== exceptId && i.status === 'confirmed' && !i.superseded_by;
     if (row.invoice_number) {

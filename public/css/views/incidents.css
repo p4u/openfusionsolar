@@ -1,4 +1,4 @@
-/* Incidents view (task 8). Every class here starts with 'incidents-'. */
+/* Incidents view. Every class here starts with 'incidents-'. */
 .incidents-main { display: flex; flex-direction: column; gap: var(--sp-base); }
 .incidents-summary, .incidents-reassure { max-width: 70ch; margin: 0; }
 .incidents-chips { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }

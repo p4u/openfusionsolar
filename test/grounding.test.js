@@ -1,4 +1,4 @@
-// Number grounding (spec 3.6, AC4): table-driven. G is built from the strings the model was given this turn.
+// Number grounding: table-driven. G is built from the strings the model was given this turn.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { groundedSet, figures, check, redact, normalise, numbersIn, MARK } from '../src/grounding.js';

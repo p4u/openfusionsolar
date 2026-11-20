@@ -247,7 +247,7 @@ main:focus { outline: none; }
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 44px; /* the touch target floor (spec 4.3), on every pointer */
+  width: 44px; /* the touch target floor, on every pointer */
   height: 44px;
   padding: 0;
   border: 0;
@@ -344,7 +344,7 @@ main:focus { outline: none; }
 .tab[aria-current="page"], .tab.is-current { color: var(--ink); }
 .tab[aria-current="page"] .tab-icon, .tab.is-current .tab-icon { background: var(--surface-strong); }
 .tab:focus-visible { outline-offset: -4px; border-radius: var(--r-md); }
-/* the keyboard takes the bottom of the screen: the field typed into keeps it (spec 4.1) */
+/* the keyboard takes the bottom of the screen: the field typed into keeps it */
 .kb-open .tabbar { display: none; }
 
 @media (min-width: 640px) and (max-width: 1023px) {
@@ -631,7 +631,7 @@ a.card:hover, .card-link:hover { border-color: var(--hairline-strong); box-shado
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.08em;
-  text-transform: uppercase; /* the only uppercase in the app (spec 6.2, deviation 6) */
+  text-transform: uppercase; /* the only uppercase in the app */
   white-space: nowrap;
 }
 .badge-ok::before, .badge-warn::before, .badge-alarm::before, .badge-ongoing::before {

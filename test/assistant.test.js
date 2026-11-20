@@ -46,7 +46,7 @@ function toolStep(name, args) {
 }
 
 // A final answer without figures, for tests about something else: the system prompt's examples no longer ground
-// the fixture's 59,15 € (ruling R6a), and these tests give the model no bill.
+// the fixture's 59,15 €, and these tests give the model no bill.
 function plainFinal() {
   const step = structuredClone(fixture('chat-final-ca'));
   step.response.choices[0].message.content = 'A l’octubre vas pagar la factura de l’1 al 31 d’octubre.';
@@ -90,7 +90,7 @@ test('a turn streams status, chart and text in order and stores the conversation
   const r = await chat({ text: 'Quant vaig pagar a l’octubre?' });
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-type'), /application\/x-ndjson/);
-  // spec 3.1 and 3.6: 'thinking' before each model round, 'checking' before the answer is shown
+  // 'thinking' before each model round, 'checking' before the answer is shown
   assert.deepEqual(r.events.map((e) => e.type), ['status', 'status', 'status', 'chart', 'status', 'status', 'text', 'done']);
   assert.deepEqual(r.events.filter((e) => e.type === 'status').map((e) => e.tool), ['thinking', 'get_billing_summary', 'show_chart', 'thinking', 'checking']);
   assert.deepEqual(r.events[3].chart, { type: 'bill_breakdown', from: '2026-10-01', to: '2026-10-31' });
@@ -117,7 +117,7 @@ test('the assistant message with reasoning details is sent back verbatim with on
   assert.equal(fake.calls.length, 2);
   const [first, second] = fake.calls;
   assert.deepEqual(first.messages.map((m) => m.role), ['system', 'user']);
-  assert.equal(first.max_tokens, 4000); // spec 3.1: 4000 without reasoning
+  assert.equal(first.max_tokens, 4000); // 4000 without reasoning
   assert.equal(first.reasoning, undefined);
   assert.deepEqual(first.tools, TOOLS);
   assert.deepEqual(second.messages.map((m) => m.role), ['system', 'user', 'assistant', 'tool', 'tool']);
@@ -257,11 +257,11 @@ test('the preset list matches the browser\'s', () => {
 test('10 rounds at most, then a plain apology', async (t) => {
   const { chat, fake } = await setup(t, { steps: Array(11).fill(fixture('chat-get-invoice')) });
   const r = await chat({ text: 'Explica’m la factura' });
-  assert.equal(fake.calls.length, 11); // spec 3.1: 10 rounds (was 6), plus the one no-tools call (fix-2)
+  assert.equal(fake.calls.length, 11); // 10 rounds, plus the one no-tools call
   assert.deepEqual(r.events.map((e) => e.type), [...Array(20).fill('status'), 'text', 'done']);
   assert.deepEqual(r.events.slice(0, 2).map((e) => e.tool), ['thinking', 'get_invoice']);
   assert.match(r.events[20].text, /^Ho sento/);
-  // the model got a reason for every refused call: no bill 1 for the first four, then the per-tool cap (fix-1)
+  // the model got a reason for every refused call: no bill 1 for the first four, then the per-tool cap
   const results = fake.calls[9].messages.filter((m) => m.role === 'tool').map((m) => JSON.parse(m.content).error);
   assert.equal(results.length, 9);
   for (const e of results.slice(0, 4)) assert.match(e, /no bill/);
@@ -269,7 +269,7 @@ test('10 rounds at most, then a plain apology', async (t) => {
   // round 10 is sent without tools and with the note; this model ignores it and calls a tool anyway
   assert.equal(fake.calls[9].tool_choice, 'none');
   assert.match(fake.calls[9].messages.at(-1).content, /^Answer now with what you have/);
-  // so one more call goes out with no tools at all; this model calls a tool even then: the apology (fix-2)
+  // so one more call goes out with no tools at all; this model calls a tool even then: the apology
   assert.ok(!('tools' in fake.calls[10]));
 });
 
@@ -316,7 +316,7 @@ test('limits: 21st message in 5 minutes and a second turn in flight are 429; the
   while (!busy.fake.calls.length) await new Promise((resolve) => setTimeout(resolve, 5));
   const second = await busy.chat({ text: 'Segona' });
   assert.equal(second.status, 429);
-  assert.deepEqual(second.body, { error: 'busy' }); // spec 3.1 (was rate_limited)
+  assert.deepEqual(second.body, { error: 'busy' });
   ac.abort();
   await first;
 
@@ -524,7 +524,7 @@ test('a quiet chat stream gets ping lines, and none after the turn ends', async 
   assert.equal(types.at(-1), 'done');
 });
 
-// --- assistant 2 tools (spec 3.2-3.6) ---
+// --- assistant tools: guide, calculate, query_data, charts, web ---
 
 const turnDeps = (store, over = {}) => ({
   store, config: {}, now: () => NOW, lang: 'ca', datasets: createDatasets(), grounded: { all: new Set(), household: new Set() }, guide: loadGuide(),

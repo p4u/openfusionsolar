@@ -86,7 +86,7 @@ export function statusLine({ state = 'ok', title, details = [], link = null }) {
   </div>`;
 }
 
-// Overlays and the back button (spec 4.3). Every modal dialog and the menu popover go through overlay(el): opening
+// Overlays and the back button. Every modal dialog and the menu popover go through overlay(el): opening
 // pushes a history entry on the same URL (no hashchange), so the back button closes the top overlay before it leaves
 // the view; an overlay closed any other way pops its own entry again.
 const stack = []; // open overlays, the top last

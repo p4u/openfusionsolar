@@ -1,4 +1,4 @@
-// Bill extraction schema, normalisation of the model's answer and the arithmetic checks (spec 3.1-3.3).
+// Bill extraction schema, normalisation of the model's answer and the arithmetic checks.
 // Pure: no I/O. Field paths everywhere are invoice column names; dates are 'YYYY-MM-DD' strings and all
 // day math is UTC string math (buckets.js).
 import { addDays, addMonths, spanDays, billMonth } from '../public/js/buckets.js';
@@ -81,7 +81,7 @@ const ABS = new Set(['surplus.kwh.p*', 'surplus.amount', 'surplus.uncompensated_
 const DATES = new Set(['invoice.issue_date', 'invoice.period_from', 'invoice.period_to', 'invoice.due_date',
   'readings[].from_date', 'readings[].to_date']);
 const NON_NULL_ENUM = { 'invoice.kind': 'normal', 'lines[].section': 'other' };
-// Free text the model writes: a bank account or a tax id must never be stored (preflight F14).
+// Free text the model writes: a bank account or a tax id must never be stored.
 const PII = [/\bES\d{2}[ *\d]{16,}/g, /\b\d{8}[A-Z]\b/g, /\b[XYZ]\d{7}[A-Z]\b/g];
 const scrub = (s) => PII.reduce((t, re) => t.replace(re, '[...]'), s);
 const CUT = { notes: 300, 'lines[].concept': 120 };
@@ -202,7 +202,7 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol + 1e-9;
 const P = ['p1', 'p2', 'p3'];
 const REQUIRED = ['period_from', 'period_to', 'total_eur', 'kwh_p1', 'kwh_p2', 'kwh_p3', 'invoice_number'];
 
-// Signed sum: core operands null → missing; optional addends count as 0 when null (preflight F2).
+// Signed sum: core operands null → missing; optional addends count as 0 when null.
 function sumCheck(id, hard, row, core, optional, target, tol) {
   const all = [...core, ...optional];
   const absent = [...core.map(([c]) => c), target].filter((c) => !num(row[c]));
@@ -335,7 +335,7 @@ function s1(row) {
   return { ...base, outcome: ok ? 'pass' : 'fail', expected: round(year / 365, 2) };
 }
 
-// Hard H1-H7 and soft S1-S6 of spec 3.3 over an invoice row. `readings` in row form (toRow); `previous` is the
+// Hard checks H1-H7 and soft checks S1-S6 over an invoice row. `readings` in row form (toRow); `previous` is the
 // confirmed bill just before (same CUPS) with an optional `readings` array. Lines are not needed by any check.
 export function checks(row, { readings = [], today = localDay(Date.now()), previous } = {}) {
   const out = [];
@@ -382,7 +382,7 @@ export function checks(row, { readings = [], today = localDay(Date.now()), previ
   return out;
 }
 
-// One English line per failed hard check, for the retry message to the model (spec 3 step 6).
+// One English line per failed hard check, for the retry message to the model.
 export function retryText(list) {
   const path = (c) => RETRY_PATHS[c] ?? c;
   const fmt = (c, v) => (v == null ? 'null' : c.endsWith('_eur') ? v.toFixed(2) : String(v));

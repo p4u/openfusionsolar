@@ -1,4 +1,4 @@
-/* Billing summary view (task 8). Every class here starts with 'billing-'. */
+/* Billing summary view. Every class here starts with 'billing-'. */
 .billing-range { min-width: 0; }
 .billing-body { display: flex; flex-direction: column; gap: var(--band-gap-y); }
 .billing-figs { display: flex; flex-direction: column; gap: var(--band-gap-y); }

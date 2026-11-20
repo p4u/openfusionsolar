@@ -1,4 +1,4 @@
-// Jina client (spec 3.3): outcomes, the snippet-only search, the keyless reader retry, the daily cap and the key's reach.
+// Jina client: outcomes, the snippet-only search, the keyless reader retry, the daily cap and the key's reach.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWeb } from '../src/web.js';
@@ -38,7 +38,7 @@ const err = (status) => ({ status, response: { name: 'InsufficientBalanceError',
 
 test('search posts the query in the body with the key and the snippet-only header and returns 5 trimmed results', async () => {
   const data = searchOk(7).response.data;
-  data[1].url = 'http://example.org/plain'; // not https: dropped (preflight F4)
+  data[1].url = 'http://example.org/plain'; // not https: dropped
   data[2].url = 'javascript:alert(1)';
   const t = setup([{ status: 200, response: { data } }]);
   const r = await t.web.search('preu PVPC avui');
@@ -60,7 +60,7 @@ test('search posts the query in the body with the key and the snippet-only heade
   assert.equal(t.store.countUsage(['web_search'], 0), 1);
 });
 
-test('search drops results read_web_page could not read: an ip address, a port, a local host (gate F3)', async () => {
+test('search drops results read_web_page could not read: an ip address, a port, a local host', async () => {
   const data = searchOk(7).response.data;
   data[0].url = 'https://192.168.1.1/';
   data[1].url = 'https://example.org:8443/p1';
@@ -110,7 +110,7 @@ test('read retries once without the key on 402 and strips images and link target
   assert.equal(r.text.length, 6000);
   assert.ok(r.text.startsWith('# Mercados\n Precio PVPC hoy.  Ver https://www.ree.es/es plano.\n'), r.text.slice(0, 80));
   assert.doesNotMatch(r.text, /img\.example|\]\(/);
-  // the keyless success counts as a call but does not clear the key's error (preflight F20)
+  // the keyless success counts as a call but does not clear the key's error
   assert.equal(t.store.countUsage(['web_read'], 0), 1);
   assert.deepEqual(t.web.status(), { available: false, lastError: 'no_balance' });
 });

@@ -1,4 +1,4 @@
-// The calculate tool's parser (spec 3.6 step 8): grounded literals only, no eval, fixed grammar.
+// The calculate tool's parser: grounded literals only, no eval, fixed grammar.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { calculate, CalcError } from '../src/calc.js';

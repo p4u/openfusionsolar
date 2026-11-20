@@ -1,4 +1,4 @@
-// AC5: the UI carries no emoji or glyphs doing an icon's job, and loads nothing from another origin.
+// The UI carries no emoji or glyphs doing an icon's job, and loads nothing from another origin.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

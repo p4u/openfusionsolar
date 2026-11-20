@@ -226,7 +226,7 @@ test('the same invoice number becomes a draft marked duplicate', async (t) => {
   const up = (await s.get('/api/invoices/uploads')).find((u) => u.groupId === group);
   assert.equal(up.duplicateOf, older.id);
 
-  // gate F3: confirming from the form is refused until the duplicate is resolved; saving edits stays allowed
+  // confirming from the form is refused until the duplicate is resolved; saving edits stays allowed
   const confirm = await s.post('/api/invoices/save', { id: newer.id, fields: {}, confirm: true });
   assert.equal(confirm.status, 409);
   assert.deepEqual(await confirm.json(), { error: 'duplicate_unresolved' });
@@ -502,7 +502,7 @@ test('delete removes rows and bytes; delete-all empties the folder', async (t) =
   await s.upload(jpeg(), { type: 'image/jpeg' });
   await s.post('/api/invoices/create', {});
   fs.writeFileSync(path.join(s.dir, 'stray.pdf.tmp-1'), 'x');
-  fs.mkdirSync(path.join(s.dir, 'lost+found', 'inner'), { recursive: true }); // gate F9
+  fs.mkdirSync(path.join(s.dir, 'lost+found', 'inner'), { recursive: true }); // a directory, not a file
   assert.equal((await s.post('/api/invoices/delete-all')).status, 204);
   assert.deepEqual(fs.readdirSync(s.dir), []);
   assert.deepEqual(s.store.allBillGroups(), []);

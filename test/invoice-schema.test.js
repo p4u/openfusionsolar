@@ -17,7 +17,7 @@ const outcome = (list, id) => {
   return mine.some((c) => c.outcome === 'fail') ? 'fail' : mine.some((c) => c.outcome === 'missing') ? 'missing' : 'pass';
 };
 
-test('the schema is strict and the prompt is the spec text', () => {
+test('the schema is strict and the prompt is the fixed text', () => {
   assert.equal(SCHEMA_V, 2);
   const walk = (s) => {
     if (s.type === 'object') {

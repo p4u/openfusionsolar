@@ -1,5 +1,5 @@
 process.env.TZ = 'Europe/Madrid';
-// Live assistant check (spec AC1, AC2), skipped unless AI_SMOKE=1 and AI_SMOKE_DB names a copy of a real database
+// Live assistant check, skipped unless AI_SMOKE=1 and AI_SMOKE_DB names a copy of a real database
 // outside the repo. The copy is copied again (VACUUM INTO) under ~/.cache/openfusionsolar/smoke/ and only that one is
 // written. Keys come from .env and are never printed. Answers go to ~/.cache/openfusionsolar/smoke/assistant-<ts>.jsonl;
 // the console gets pass or fail per question, rounds and cost only, never a figure or a text.
@@ -28,7 +28,8 @@ const SPEND = 0.30;
 const db = process.env.AI_SMOKE_DB;
 const skip = process.env.AI_SMOKE !== '1' ? 'AI_SMOKE=1 not set' : !db || !fs.existsSync(db) ? 'AI_SMOKE_DB is not a file' : false;
 
-// Benchmark questions (model-bench.md, text of its harness), the four of AC1 and one that needs the web.
+// Typical questions: some with key figures to find, two that should ask back, four that should draw a chart and
+// one that needs the web.
 const QUESTIONS = {
   q1: 'Quin mes d\'aquest any hem sigut més autosuficients amb les plaques, i per què aquell mes i no un altre?',
   q2: 'Quant ens ha estalviat la bateria aquest estiu?',
@@ -37,18 +38,17 @@ const QUESTIONS = {
   q5: 'Quin mes d\'aquest any hem pagat la factura més cara, i quanta llum vam comprar i vendre aquell mes?',
   q9: 'Quant hem gastat?',
   q10: 'Compara-ho amb l\'any passat.',
-  ac1a: 'El dia mitjà de juliol hora a hora: producció, consum i bateria.',
-  ac1b: 'Quins dies de la setmana consumeixo més?',
-  ac1c: 'Compara el preu PVPC d\'ahir amb la meva producció.',
-  ac1d: 'Quant he estalviat cada mes d\'aquest any, acumulat?',
+  fig1: 'El dia mitjà de juliol hora a hora: producció, consum i bateria.',
+  fig2: 'Quins dies de la setmana consumeixo més?',
+  fig3: 'Compara el preu PVPC d\'ahir amb la meva producció.',
+  fig4: 'Quant he estalviat cada mes d\'aquest any, acumulat?',
   web: 'Busca al web les últimes notícies sobre el preu de la llum a Espanya.',
 };
 
-// A reference value is in the answer when one of its checked figures matches it under the grounding tolerance
-// (spec 3.6 step 7).
+// A reference value is in the answer when one of its checked figures matches it under the grounding tolerance.
 const has = (text, ref) => Number.isFinite(ref) && figures(text, 'ca').some((f) => isGrounded(f, new Set([Math.abs(ref)])));
 
-// Key figures per data question, computed now with the app's own tools (as the benchmark's refs.mjs did): a list of
+// Key figures per data question, computed now with the app's own tools: a list of
 // alternatives per required figure.
 async function references(deps, today) {
   const year = `${today.slice(0, 4)}-01-01`;
@@ -91,7 +91,7 @@ async function figureMatches(fig, deps) {
   return fig.series.every((s) => candidates.some((c) => isDeepStrictEqual(c, s.values)));
 }
 
-test('the assistant answers the benchmark and AC1 questions live, within 0.30 USD', { skip, timeout: 40 * 60e3 }, async (t) => {
+test('the assistant answers typical questions live, within 0.30 USD', { skip, timeout: 40 * 60e3 }, async (t) => {
   process.loadEnvFile(path.join(REPO, '.env'));
   const env = process.env;
   fs.mkdirSync(OUT, { recursive: true, mode: 0o700 });
@@ -116,7 +116,7 @@ test('the assistant answers the benchmark and AC1 questions live, within 0.30 US
   const d = new Date();
   const monthStart = dayBounds(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`)[0];
   const spent0 = store.usageCostSince(0);
-  // preflight F10: the copy already holds this month's spending; this run may add 0.30 USD to it
+  // the copy already holds this month's spending; this run may add 0.30 USD to it
   const llm = createLlm({ apiKey: env.AI_API_KEY, store, budgetUsd: store.usageCostSince(monthStart) + SPEND });
   const reasoning = reasoningFromEnv(env.AI_CHAT_REASONING);
   const web = createWeb({ apiKey: env.JINA_API_KEY, store });
@@ -144,7 +144,7 @@ test('the assistant answers the benchmark and AC1 questions live, within 0.30 US
     const checks = { answered: Boolean(done) && Boolean(answer), notApology: !answer.startsWith('Ho sento, no he pogut respondre'), noPlaceholder: !answer.includes(MARK.ca) };
     if (id === 'q9' || id === 'q10') checks.choice = blocks.at(-1)?.type === 'choice';
     else if (refs[id]) checks.keyFigures = refs[id].map((alts) => alts.some((ref) => has(answer, ref)));
-    else if (id.startsWith('ac1')) checks.figures = await Promise.all(figs.map((f) => figureMatches(f, deps)));
+    else if (id.startsWith('fig')) checks.figures = await Promise.all(figs.map((f) => figureMatches(f, deps)));
     else if (id === 'web') checks.webSearch = events.some((e) => e.type === 'status' && e.tool === 'web_search');
     const ok = Object.values(checks).every((v) => (Array.isArray(v) ? v.length > 0 && v.every(Boolean) : v));
     const rounds = events.filter((e) => e.type === 'status' && e.tool === 'thinking').length;

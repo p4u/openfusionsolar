@@ -32,7 +32,7 @@ export async function render(root, ctx) {
       <p data-install hidden><button type="button" class="pill pill-outline">${icon('download', { size: 16 })}${esc(t('core.install.action'))}</button></p></div></section>`;
   const q = (name) => root.querySelector(`[data-block="${name}"]`);
 
-  // the install row (spec 4.2), in the always-shown About card: only where installing is possible and not done yet;
+  // the install row, in the always-shown About card: only where installing is possible and not done yet;
   // the browser's prompt may come later
   const install = root.querySelector('[data-install]');
   const showInstall = () => { install.hidden = !ENTRY_MODES.includes(installEntry().mode); };

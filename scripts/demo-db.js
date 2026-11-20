@@ -1,5 +1,5 @@
 // Writes an invented demo database (no real household data): node scripts/demo-db.js <path>
-// Used for screenshots and the UI acceptance round. Never reads .env; prints the env lines to run it.
+// Used for screenshots and manual UI testing. Never reads .env; prints the env lines to run it.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

@@ -162,8 +162,10 @@ A live check against OpenRouter (it reads `AI_API_KEY` from `.env` and spends ab
 test`; run it on purpose with:
 
 ```sh
-AI_SMOKE=1 node --disable-warning=ExperimentalWarning --test test/smoke-llm.test.js
+AI_SMOKE=1 AI_SMOKE_PDF=/path/to/bill.pdf node --disable-warning=ExperimentalWarning --test test/smoke-llm.test.js
 ```
+
+Without `AI_SMOKE_PDF` (a sample bill) only the chat test runs.
 
 The assistant's live check asks 11 questions on a copy of a real database (never commit or share it) and spends at
 most 0.30 USD; it writes the answers under `~/.cache/openfusionsolar/smoke/` and prints only pass or fail per question:

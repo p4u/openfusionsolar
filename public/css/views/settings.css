@@ -1,4 +1,4 @@
-/* Settings view (task 10). Every class here starts with 'settings-'. */
+/* Settings view. Every class here starts with 'settings-'. */
 .settings-form { display: flex; flex-direction: column; gap: var(--sp-base); }
 .settings-rules { display: flex; flex-direction: column; }
 .settings-rule { display: flex; align-items: flex-start; gap: var(--sp-base); padding-block: var(--sp-base); border-top: 1px solid var(--hairline); }

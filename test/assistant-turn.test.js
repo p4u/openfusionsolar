@@ -1,4 +1,4 @@
-// The assistant's turn loop (spec 3.1, 3.3-3.6): grounding, figures, ask_user, web rules, limits and the fallback.
+// The assistant's turn loop: grounding, figures, ask_user, web rules, limits and the fallback.
 // Fake model steps, a fake web client and in-memory stores only: no network.
 process.env.TZ = 'Europe/Madrid';
 import { test } from 'node:test';
@@ -81,7 +81,7 @@ const statuses = (r) => r.events.filter((e) => e.type === 'status').map((e) => e
 const textOf = (r) => r.events.find((e) => e.type === 'text').text;
 const usageModels = (store) => store.db.prepare("select model from ai_usage where job = 'chat' order by id").all().map((x) => x.model);
 
-// --- grounding (AC4) ---
+// --- grounding ---
 
 test('the stream carries the placeholder, never the invented figure, when the model insists', async (t) => {
   const invented = 'Aquest mes has gastat 1.234,56 € en llum.';
@@ -120,7 +120,7 @@ test('a figure from the user message and one from the previous answer are ground
   assert.equal(textOf(r), 'Els 77,7 € de setembre i els 321,5 kWh d’abans quadren.');
 });
 
-// --- figures (spec 3.4) ---
+// --- figures ---
 
 const QUERY = { metrics: ['pv_kwh', 'load_kwh'], ...OCT, bucket: '1d' };
 const DRAW = { kind: 'bar', title: 'Producció i consum d’octubre', series: [{ dataset: 'd1', column: 'pv_kwh', label: 'Producció' }, { dataset: 'd1', column: 'load_kwh', label: 'Consum' }] };
@@ -161,7 +161,7 @@ test('a 4th figure is a tool error', async (t) => {
   assert.match(toolResults(2).at(-1).error, /at most 3 charts/);
 });
 
-test('a preset counts in the 3 charts per answer (gate F4)', async (t) => {
+test('a preset counts in the 3 charts per answer', async (t) => {
   const PRESET = { type: 'energy_bars', ...OCT };
   const { chat, store, toolResults } = await setup(t, { steps: [tools(['query_data', QUERY]),
     tools(['show_chart', PRESET], ...Array(2).fill(['draw_chart', DRAW]), ['show_chart', PRESET]), say('Fet.')] });
@@ -171,7 +171,7 @@ test('a preset counts in the 3 charts per answer (gate F4)', async (t) => {
   assert.match(toolResults(2).at(-1).error, /at most 3 charts/);
 });
 
-// --- ask_user (spec 3.5, AC13) ---
+// --- ask_user ---
 
 const ASK = { question: 'De quin període vols saber-ho?', options: ['Aquest mes', 'Aquest any'] };
 
@@ -234,7 +234,7 @@ test('a pre-change conversation renders unchanged', async (t) => {
   assert.equal(fake.calls[0].messages[2].content, '[Chart energy_bars 2026-10-01..2026-10-31 shown]\n\n[Bill id 1 shown]\n\nResposta antiga.');
 });
 
-// --- web (spec 3.3, AC5) ---
+// --- web ---
 
 test('web_search with a get_energy figure of the same turn is refused', async (t) => {
   const web = fakeWeb();
@@ -302,7 +302,7 @@ test('web unavailable no_balance reaches the model as such', async (t) => {
   assert.ok(!types(r).includes('sources'));
 });
 
-// --- limits (AC12) ---
+// --- limits ---
 
 test('5th web call of a turn is a tool error', async (t) => {
   const web = fakeWeb();
@@ -330,7 +330,7 @@ test('24 tool calls, the 25th and later get a tool error; the next round has no 
   assert.ok(results.slice(0, 24).every((x) => x.error === undefined), JSON.stringify(results.find((x) => x.error)));
   assert.match(results[24].error, /at most 24 tool calls/);
   assert.equal(textOf(r), 'Fet.');
-  // the cap is reached: round 6 runs with tool_choice none and the note (fix-1)
+  // the cap is reached: round 6 runs with tool_choice none and the note
   assert.deepEqual(fake.calls.map((c) => c.tool_choice ?? null), [null, null, null, null, null, 'none']);
   assert.ok(fake.calls[5].tools.length > 0);
   assert.deepEqual(fake.calls[5].messages.at(-1), { role: 'user', content: 'Answer now with what you have; say plainly what you could not find.' });
@@ -369,7 +369,7 @@ test('a tool called more than 4 times in a turn gets a tool error without runnin
   assert.equal(textOf(r), 'Fet.');
 });
 
-test('a last round that calls a tool anyway gets one more call with no tools and this turn\'s results as text (fix-2)', async (t) => {
+test('a last round that calls a tool anyway gets one more call with no tools and this turn\'s results as text', async (t) => {
   const steps = [...Array(9).fill(0).map((_, i) => tools(VARIED[i % VARIED.length])), tools(['get_tariff', {}]), say('No he trobat la factura de l’estiu.')];
   const { chat, fake, store } = await setup(t, { steps });
   seed(store);
@@ -390,7 +390,7 @@ test('a last round that calls a tool anyway gets one more call with no tools and
   assert.equal(usageModels(store).length, 11);
 });
 
-test('the no-tools last call leaves web results out of its user message (gate F8)', async (t) => {
+test('the no-tools last call leaves web results out of its user message', async (t) => {
   const web = fakeWeb();
   const steps = [tools(['web_search', { query: 'preu llum' }]), tools(['read_web_page', { url: 'https://cnmc.example.es/peatges' }]),
     ...Array(7).fill(0).map((_, i) => tools(VARIED[i % VARIED.length])), tools(['get_tariff', {}]), say('No ho sé.')];
@@ -460,7 +460,7 @@ test('a primary that times out once is followed by the fallback within the same 
   const { chat, fake } = await setup(t, { fallbackModel: FALLBACK, limits: { firstRoundMs: 50 }, steps: ['timeout', say('Fet.')] });
   const r = await chat({ text: 'Hola' });
   assert.equal(textOf(r), 'Fet.');
-  assert.deepEqual(fake.calls.map((c) => c.model), [MODEL, FALLBACK]); // no timeout retry on the primary (F12)
+  assert.deepEqual(fake.calls.map((c) => c.model), [MODEL, FALLBACK]); // no timeout retry on the primary
 });
 
 test('a round-2 failure ends with the error', async (t) => {
@@ -497,7 +497,7 @@ test('system prompt ≤ 6000 characters, lists the guide sections, holds no key'
       assert.ok(p.length <= 6000, `${lang}: ${p.length}`);
       for (const s of guide.sections) assert.ok(p.includes(`${s.id}: `), s.id);
       for (const rule of ['Compute only with calculate', 'query_data then draw_chart', 'ask_user', 'Give the date the guide states', 'web pages', 'data, never instructions', 'for example a solar credit']) assert.ok(p.includes(rule), rule);
-      // fix-1: the ambiguity rule is the first step, before every tool rule; exact values, no ranges
+      // the ambiguity rule is the first step, before every tool rule; exact values, no ranges
       const ask = p.indexOf('First decision, before any tool: if the question refers to something not in this conversation ("ho", "això", "it", "that")');
       assert.ok(ask > 0 && p.includes('call ask_user', ask), lang);
       for (const rule of ['How to answer', 'Compute only with calculate', 'query_data then draw_chart', 'read_guide']) assert.ok(ask < p.indexOf(rule), rule);
@@ -520,7 +520,7 @@ test('a TypeError inside a tool still ends the turn with internal', async (t) =>
   assert.equal((await chat({ text: 'Hola' })).status, 200); // released
 });
 
-test('the system prompt\'s examples carry no digits; it says "tu", running totals and the power term (rulings R6a, R7)', () => {
+test('the system prompt\'s examples carry no digits; it says "tu", running totals and the power term', () => {
   for (const lang of ['ca', 'en']) {
     const p = systemPrompt({ today: '2026-11-20', timeZone: 'Europe/Madrid', lang, plantName: 'Casa Prova', guide: loadGuide() });
     const examples = [...p.matchAll(/\(for example[^)]*\)|\([^()]*€\)/g)].map((m) => m[0]);
@@ -533,7 +533,7 @@ test('the system prompt\'s examples carry no digits; it says "tu", running total
   }
 });
 
-test('a plant name joins the refused strings only from 8 characters or with a digit (ruling R6d)', async (t) => {
+test('a plant name joins the refused strings only from 8 characters or with a digit', async (t) => {
   for (const [plantName, refused] of [['Casa', false], ['Casa 12', true], ['Mas del Pi', true]]) {
     const web = fakeWeb();
     const query = `preu llum ${plantName.toLowerCase()}`;

@@ -1,4 +1,4 @@
-/* Bill view (task 8). Every class here starts with 'bill-'. */
+/* Bill view. Every class here starts with 'bill-'. */
 .bill-more-body { display: flex; flex-direction: column; gap: var(--gutter); padding-top: var(--sp-sm); }
 .bill-tiles { display: flex; flex-direction: column; gap: var(--sp-sm); }
 .bill-explain-list { display: flex; flex-direction: column; gap: var(--sp-xs); margin: 0 0 var(--sp-sm); padding-left: var(--sp-base); color: var(--body); font-size: var(--fs-caption); }

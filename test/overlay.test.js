@@ -1,4 +1,4 @@
-// overlay() of ui.js (spec 4.3, preflight F6) over a fake history whose back() lands a task later, as in a browser,
+// overlay() of ui.js over a fake history whose back() lands a task later, as in a browser,
 // and fake dialogs whose close event is also queued.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

@@ -1,4 +1,4 @@
-// The `calculate` tool (spec 3.6 step 8): numbers, + - * / and parentheses, read by a hand-written recursive-descent
+// The `calculate` tool: numbers, + - * / and parentheses, read by a hand-written recursive-descent
 // parser (no eval). Every literal must be in the grounded set G (same rounding rule as the answer check) or one of the
 // fixed constants, so arithmetic only ever starts from figures the model was given.
 import { isGrounded } from './grounding.js';

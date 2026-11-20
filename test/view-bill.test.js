@@ -62,7 +62,7 @@ test('phases come from W or kW signals named Pa, Pb, Pc and are scaled to kW', (
   assert.equal(phaseSignals(undefined), null);
 });
 
-// ruling R26: key names only in the Settings administrator detail; the bill sentence points there
+// key names only in the Settings administrator detail; the bill sentence points there
 test('the price keys are named for the administrator, and the money sentence points there', async () => {
   const { default: settingsDict } = await import('../public/js/i18n/settings.js');
   for (const lang of ['en', 'ca']) {

@@ -1,4 +1,4 @@
-// What may leave the server through the web tools (spec 3.3): search queries without personal data or the household's
+// What may leave the server through the web tools: search queries without personal data or the household's
 // own figures, and page reads limited to URLs this turn's search returned or the guide lists. Pure, no I/O.
 import { isGrounded } from './grounding.js';
 
@@ -18,7 +18,7 @@ export const fold = (s) => String(s ?? '').normalize('NFD').replace(/\p{M}/gu, '
 
 // null when the query may be sent, else the reason. groundedNonWeb: the household's figures of this turn (history, the
 // user message, attachments and every tool result except read_guide, calculate, web_search and read_web_page; never
-// the system prompt, preflight F5); personal: plant name, every invoice's invoice_number, rectifies_number,
+// the system prompt); personal: plant name, every invoice's invoice_number, rectifies_number,
 // contract_number, cups and supplier_tax_id, device names and DNs of kv devices, bill note lines of 12 characters or more.
 export function queryRefusal(query, { groundedNonWeb = new Set(), personal = [] } = {}) {
   if (typeof query !== 'string' || !query.trim()) return 'the query is empty';

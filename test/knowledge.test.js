@@ -8,7 +8,7 @@ const md = fs.readFileSync(new URL('../src/knowledge/guide.md', import.meta.url)
 const SPEC_SECTIONS = ['pv-basics', 'huawei-fusionsolar', 'spain-tariff-2.0TD', 'spain-market', 'self-consumption-compensation',
   'advice-patterns', 'glossary'];
 
-test('every section of spec 3.2 is in the index', () => {
+test('every section is in the index', () => {
   assert.deepEqual(guide.sections.map((s) => s.id), SPEC_SECTIONS);
   for (const s of guide.sections) {
     assert.ok(guide.index.has(s.id), s.id);
@@ -79,7 +79,7 @@ test('guidePrompt is at most 2200 characters and holds 15 glossary terms', () =>
   assert.match(p, /how-it-works, self-consumption-terms/);
 });
 
-test('read_guide ends with the cited sources as "[n] url" lines that read_web_page accepts (ruling R6c)', async () => {
+test('read_guide ends with the cited sources as "[n] url" lines that read_web_page accepts', async () => {
   const { urlRefusal } = await import('../src/web-rules.js');
   const { text } = readGuide(guide, 'self-consumption-compensation');
   const lines = text.slice(text.indexOf('\n\nSources:\n') + 11).split('\n');
@@ -95,7 +95,7 @@ test('read_guide ends with the cited sources as "[n] url" lines that read_web_pa
   assert.equal(readGuide(g, 's/b').text, '### s/b\nno citation');
 });
 
-test('the prompt\'s glossary lines name no supplier (ruling R6b)', () => {
+test('the prompt\'s glossary lines name no supplier', () => {
   const p = guidePrompt(guide);
   assert.doesNotMatch(p, /\bSom\b/);
   assert.match(p, /\nSols = A supplier's solar credit; 1 Sol = 1 € off a later bill\n/);

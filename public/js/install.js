@@ -1,4 +1,4 @@
-// Installing the app (spec 4.2). installMode and showBanner are pure; the rest keeps the browser's install prompt and
+// Installing the app. installMode and showBanner are pure; the rest keeps the browser's install prompt and
 // shows the steps on browsers that have none.
 import { t } from './i18n.js';
 import { esc, icon, overlay } from './ui.js';

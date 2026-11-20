@@ -1,4 +1,4 @@
-/* Battery view (task 7). Every class here starts with 'battery-'. */
+/* Battery view. Every class here starts with 'battery-'. */
 .battery-now { display: flex; flex-direction: column; gap: var(--sp-base); }
 .battery-now-main { display: flex; flex-direction: column; gap: var(--sp-xs); }
 .battery-soc { color: var(--ink); font-size: var(--fs-hero); font-weight: 500; line-height: 1.1; }

@@ -1,6 +1,6 @@
-// Jina client (spec 3.3): web search (titles, urls and snippets only) and page reading. Built like createLlm: the key
+// Jina client: web search (titles, urls and snippets only) and page reading. Built like createLlm: the key
 // lives only in this closure and never reaches a log, an error, kv or status(). Error bodies are never read or logged.
-// The caller applies src/web-rules.js before any call; read() still sends only a canonical https url (preflight F4).
+// The caller applies src/web-rules.js before any call; read() still sends only a canonical https url.
 import { fetchCapped } from './http.js';
 import { canonicalUrl, urlRefusal } from './web-rules.js';
 import { dayBounds, localDay } from './collector.js';
@@ -74,7 +74,7 @@ export function createWeb({ apiKey, store, fetch = globalThis.fetch, now = Date.
     if (overLimit()) return { unavailable: 'daily_limit' };
     // with the key first; on 401/402 or without a key, keyless (rate-limited but free)
     let r = await post(READ_URL, { url: target }, { auth: Boolean(apiKey), signal });
-    remember(r.code); // kv keeps the first attempt's outcome, so a keyless success does not hide a key error (F20)
+    remember(r.code); // kv keeps the first attempt's outcome, so a keyless success does not hide a key error
     if (apiKey && KEY_ERRORS.includes(r.code)) r = await post(READ_URL, { url: target }, { auth: false, signal });
     if (!r.code && typeof r.data?.content !== 'string') r = { code: 'error' };
     if (r.code) {
