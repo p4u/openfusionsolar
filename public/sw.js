@@ -1,7 +1,7 @@
 // Service worker (scope /): the app shell offline, the last /api/status for the Now view, nothing else from /api.
 // Bump VERSION when the shell list changes; a changed file makes the browser install the new worker, and the app
 // offers "New version available" until the user accepts (no skipWaiting on install).
-const VERSION = 1;
+const VERSION = 4;
 const SHELL = `ofs-shell-v${VERSION}`;
 const DATA = 'ofs-data'; // the last good /api/status only; dropped on logout and on a 401
 const STATUS = '/api/status';
@@ -17,12 +17,16 @@ const PUBLIC_SHELL = [
 // Behind the login: cached when the worker installs with a session, otherwise on first use.
 const APP_SHELL = [
   '/', '/vendor/apexcharts.js',
-  '/css/charts.css', '/css/views/battery.css', '/css/views/bill.css', '/css/views/energy.css', '/css/views/incidents.css',
+  '/css/charts.css', '/css/views/assistant.css', '/css/views/battery.css', '/css/views/bill.css', '/css/views/billing.css',
+  '/css/views/energy.css', '/css/views/incidents.css', '/css/views/invoices.css',
   '/css/views/now.css', '/css/views/panels.css', '/css/views/settings.css', '/css/views/signals.css',
-  '/js/alert-catalogue.js', '/js/api.js', '/js/app.js', '/js/buckets.js', '/js/chart-data.js', '/js/charts.js',
-  '/js/format.js', '/js/incidents.js', '/js/range-bar.js', '/js/range.js', '/js/ui.js',
-  '/js/i18n/battery.js', '/js/i18n/bill.js', '/js/i18n/charts.js', '/js/i18n/energy.js', '/js/i18n/incidents.js',
+  '/js/alert-catalogue.js', '/js/api.js', '/js/app.js', '/js/buckets.js', '/js/chart-data.js', '/js/chart-presets.js', '/js/charts.js',
+  '/js/format.js', '/js/incidents.js', '/js/privacy.js', '/js/range-bar.js', '/js/range.js', '/js/routes.js', '/js/ui.js', '/js/upload.js',
+  '/js/i18n/assistant.js', '/js/i18n/battery.js', '/js/i18n/bill.js', '/js/i18n/billing.js', '/js/i18n/charts.js', '/js/i18n/energy.js',
+  '/js/i18n/incidents.js', '/js/i18n/invoices.js',
   '/js/i18n/now.js', '/js/i18n/panels.js', '/js/i18n/settings.js', '/js/i18n/signals.js',
+  '/js/views/assistant.js', '/js/views/assistant-model.js', '/js/views/billing.js', '/js/views/billing-model.js',
+  '/js/views/invoices.js', '/js/views/invoices-model.js',
   '/js/views/battery.js', '/js/views/battery-model.js', '/js/views/bill.js', '/js/views/bill-model.js',
   '/js/views/energy.js', '/js/views/energy-model.js', '/js/views/incidents.js', '/js/views/incidents-model.js',
   '/js/views/now.js', '/js/views/now-model.js', '/js/views/panels.js', '/js/views/panels-model.js',

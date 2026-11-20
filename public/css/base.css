@@ -354,6 +354,16 @@ main:focus { outline: none; }
   main.container { padding-block: var(--sp-lg) calc(var(--tabbar-h) + var(--safe-bottom) + var(--sp-xl)); }
 }
 
+/* Ask button (assistant): icon on every size, the word from 1024 px; hidden while the assistant is off */
+.ask-btn { margin-left: auto; }
+.ask-btn[hidden] { display: none; }
+.ask-btn ~ .nav-actions { margin-left: 0; }
+.ask-label { display: none; font-size: 15px; font-weight: 500; }
+@media (min-width: 1024px) {
+  .ask-btn { width: auto; padding: 0 var(--sp-sm); gap: var(--sp-xs); grid-auto-flow: column; }
+  .ask-label { display: inline; }
+}
+
 /* sheet: bottom sheet on phones, centred dialog elsewhere; dialogs return focus to their opener */
 .sheet {
   width: 100%;
@@ -380,6 +390,7 @@ main:focus { outline: none; }
 .sheet-list { display: flex; flex-direction: column; }
 .sheet .menu-item { min-height: 52px; font-size: var(--fs-body); border-radius: var(--r-md); }
 .sheet-close { width: 100%; margin-top: var(--sp-sm); }
+.sheet .actions { display: flex; flex-wrap: wrap; gap: var(--sp-xs); margin-top: var(--sp-base); } /* confirm and notice dialogs */
 @media (min-width: 640px) {
   .sheet {
     width: min(100% - 2 * var(--sp-base), 440px);

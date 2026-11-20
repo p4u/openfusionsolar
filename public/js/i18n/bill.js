@@ -1,13 +1,13 @@
 // Strings of the Bill view (every key starts with 'bill.').
 export default {
   en: {
-    'bill.title': 'Bill',
+    'bill.title': 'Forecast',
     'bill.noPrices': 'Electricity prices are not set, so there are no euro figures. The administrator can add them (see Settings, For the administrator).',
     'bill.tile.cost': 'Energy cost (approx.)',
     'bill.tile.costHint': 'What you pay for the energy bought, minus what you get for the surplus. Taxes included; fixed power charges and meter rent not included. On the bill it never goes below zero in a month.',
     'bill.tile.bill': 'Estimated bill',
     'bill.tile.billHint': 'Energy plus fixed charges (contracted power, meter rent, social bonus), with taxes. Your real bill may add donations or adjustments. Compare it with your bill from the 1st to the last day of the month.',
-    'bill.tile.savings': 'Saved thanks to the panels',
+    'bill.tile.savings': 'Saved in this period, from the measurements',
     'bill.tile.savingsHint': 'Difference with what the same consumption would have cost buying everything from the grid.',
     'bill.tile.savingsNegative': 'Negative because the battery was charged from the grid and that energy has not been used yet; it evens out on the following days.',
     'bill.tile.income': 'Paid for the surplus (approx.)',
@@ -67,13 +67,13 @@ export default {
     'bill.table.total': 'Total',
   },
   ca: {
-    'bill.title': 'Factura',
+    'bill.title': 'Previsió',
     'bill.noPrices': 'Els preus de l’electricitat no estan configurats, així que no hi ha xifres en euros. Els pot afegir l’administrador (vegeu Configuració, Per a l’administrador).',
     'bill.tile.cost': 'Cost de l’energia (aprox.)',
     'bill.tile.costHint': 'El que pagues per l’energia comprada menys el que et paguen per l’excedent. Amb impostos; sense la potència contractada ni el lloguer del comptador. A la factura mai baixa de zero en un mes.',
     'bill.tile.bill': 'Factura estimada',
     'bill.tile.billHint': 'Energia més els termes fixos (potència contractada, lloguer del comptador, bo social), amb impostos. La factura real pot afegir donatius o ajustos. Compara-la amb la factura del dia 1 a l’últim dia del mes.',
-    'bill.tile.savings': 'Estalviat gràcies a les plaques',
+    'bill.tile.savings': 'Estalviat en aquest període, segons les mesures',
     'bill.tile.savingsHint': 'Diferència amb el que hauria costat el mateix consum comprant-ho tot a la xarxa.',
     'bill.tile.savingsNegative': 'Negatiu perquè la bateria s’ha carregat des de la xarxa i aquesta energia encara no s’ha aprofitat; es compensa els dies següents.',
     'bill.tile.income': 'Pagat per l’excedent (aprox.)',

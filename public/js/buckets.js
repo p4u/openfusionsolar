@@ -51,6 +51,19 @@ export const autoSeriesBucket = (n) => (n <= 2 ? '5m' : n <= 7 ? '15m' : '1d');
 export const autoEnergyBucket = (n, lifetime = false) => (n <= 120 ? '1d' : n <= (lifetime ? 731 : 1826) ? '1mo' : '1y');
 export const defaultMode = (n) => (n <= 7 ? 'power' : 'energy');
 
+// The 'YYYY-MM' holding most days of a bill period; a tie goes to the later month.
+export function billMonth(from, to) {
+  let best = null, most = 0;
+  for (let d = from; d <= to; ) {
+    const end = addDays(addMonths(`${d.slice(0, 7)}-01`, 1), -1);
+    const last = end < to ? end : to;
+    const n = spanDays(d, last);
+    if (n >= most) [best, most] = [d.slice(0, 7), n];
+    d = addDays(last, 1);
+  }
+  return best;
+}
+
 export function compareDays(from, to, cmp) {
   if (cmp === 'yoy') return { from: addMonths(from, -12), to: addMonths(to, -12) };
   const n = spanDays(from, to);

@@ -1,8 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  legalSeriesBuckets, legalEnergyBuckets, autoEnergyBucket, compareDays, spanDays, bucketCount, addMonths,
+  legalSeriesBuckets, legalEnergyBuckets, autoEnergyBucket, compareDays, spanDays, bucketCount, addMonths, billMonth,
 } from '../public/js/buckets.js';
+
+test('billMonth picks the month with most days', () => {
+  assert.equal(billMonth('2026-09-15', '2026-10-14'), '2026-09'); // 16 vs 14 days
+  assert.equal(billMonth('2026-10-01', '2026-10-31'), '2026-10');
+  assert.equal(billMonth('2026-09-16', '2026-10-15'), '2026-10'); // 15 vs 15: the later month
+  assert.equal(billMonth('2026-11-20', '2027-02-10'), '2027-01'); // December and January tie at 31 days
+});
 
 test('bucket rules follow the span table and the 750 cap', () => {
   assert.ok(legalSeriesBuckets(2).includes('5m'));

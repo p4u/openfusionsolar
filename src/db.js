@@ -61,13 +61,101 @@ create table if not exists alert_log (
   title text, body text, delivery text not null, reason text, error text
 );
 create index if not exists alert_log_ts on alert_log(ts);
+-- Bills (files on disk under <dirname(DB_PATH)>/bills, metadata here), their extractions, the assistant's chats and AI spend.
+create table if not exists bill_files (
+  id integer primary key, sha text not null unique, kind text not null,  -- pdf|jpeg|png|webp|heic
+  bytes integer not null, name text, group_id text not null,             -- name: display only; group = one bill
+  pos integer not null default 0, uploaded_at integer not null, source text not null default 'upload' -- upload|chat
+);
+create index if not exists bill_files_group on bill_files(group_id, pos);
+create table if not exists bill_extractions (
+  id integer primary key, group_id text not null, status text not null,  -- queued|processing|done|not_a_bill|failed
+  attempt integer not null default 0, model text, schema_v integer not null default 1,
+  created_at integer not null, finished_at integer, result_json text,    -- the model's validated JSON, verbatim
+  checks_json text, error text, invoice_id integer
+);
+create index if not exists bill_extractions_group on bill_extractions(group_id, id);
+create index if not exists bill_extractions_status on bill_extractions(status);
+create table if not exists invoices (
+  id integer primary key, group_id text, status text not null,           -- draft|confirmed
+  auto_confirmed integer not null default 0, duplicate_of integer, superseded_by integer,
+  supplier text, supplier_tax_id text, invoice_number text,
+  kind text not null default 'normal', rectifies_number text,            -- normal|rectifying|credit
+  issue_date text, period_from text, period_to text, days integer, due_date text,
+  cups text, contract_number text, tariff text, self_consumption integer,
+  contracted_p1_kw real, contracted_p2_kw real, max_demand_p1_kw real, max_demand_p2_kw real,
+  power_price_p1 real, power_price_p2 real, power_eur real,              -- EUR per kW and year
+  kwh_p1 real, kwh_p2 real, kwh_p3 real, price_p1 real, price_p2 real, price_p3 real,
+  energy_p1_eur real, energy_p2_eur real, energy_p3_eur real, adjust_eur real, energy_eur real, -- energy_eur includes adjust
+  surplus_p1_kwh real, surplus_p2_kwh real, surplus_p3_kwh real, surplus_price real,
+  surplus_eur real, surplus_lost_eur real,                               -- compensated; generated but not compensated
+  social_bonus_eur real, meter_rent_eur real, elec_tax_pct real, elec_tax_eur real,
+  other_taxed_eur real, other_exempt_eur real, tax_base_eur real, vat_pct real, vat_eur real, total_eur real,
+  edits text, notes text, created_at integer not null, updated_at integer not null
+);
+create index if not exists invoices_period on invoices(period_from, period_to);
+create index if not exists invoices_number on invoices(invoice_number);
+create table if not exists invoice_lines (
+  id integer primary key, invoice_id integer not null, pos integer not null,
+  section text not null,   -- power|energy|adjust|surplus|social|elec_tax|meter|vat|discount|other
+  concept text not null, period text, quantity real, unit text, unit_price real, amount_eur real,
+  vat_pct real, info integer not null default 0  -- 1: breakdown already inside another line (tolls, charges)
+);
+create index if not exists invoice_lines_invoice on invoice_lines(invoice_id, pos);
+create table if not exists invoice_readings (
+  invoice_id integer not null, kind text not null, period text not null, -- import|export, p1|p2|p3
+  from_date text, to_date text, start_kwh real, end_kwh real, estimated integer,
+  primary key (invoice_id, kind, period)
+) without rowid;
+create table if not exists chat_conversations (
+  id integer primary key, title text, created_at integer not null, updated_at integer not null
+);
+create table if not exists chat_messages (
+  id integer primary key, conversation_id integer not null, ts integer not null,
+  role text not null, blocks text not null  -- JSON: [{type:'text'|'chart'|'invoice'|'tool_call'|'tool_result', ...}]
+);
+create index if not exists chat_messages_conv on chat_messages(conversation_id, id);
+create table if not exists ai_usage (
+  id integer primary key, ts integer not null, job text not null,        -- extract|chat
+  model text not null, tokens_in integer, tokens_out integer, cost_usd real, ref text
+);
+create index if not exists ai_usage_ts on ai_usage(ts);
 `;
 
 const DAILY_COLS = ['pv_kwh', 'load_kwh', 'import_kwh', 'export_kwh', 'self_use_kwh', 'charge_kwh', 'discharge_kwh',
   'import_p1', 'import_p2', 'import_p3', 'load_p1', 'load_p2', 'load_p3'];
 const SAMPLE_COLS = ['pv_kw', 'inverter_kw', 'yield_kwh', 'load_kw', 'self_use_kw', 'grid_kw', 'battery_kw', 'soc'];
 
+// Writable columns of the bill tables (id, invoice_id and timestamps are set by the store).
+export const INVOICE_COLS = Object.freeze(['group_id', 'status', 'auto_confirmed', 'duplicate_of', 'superseded_by',
+  'supplier', 'supplier_tax_id', 'invoice_number', 'kind', 'rectifies_number',
+  'issue_date', 'period_from', 'period_to', 'days', 'due_date',
+  'cups', 'contract_number', 'tariff', 'self_consumption',
+  'contracted_p1_kw', 'contracted_p2_kw', 'max_demand_p1_kw', 'max_demand_p2_kw',
+  'power_price_p1', 'power_price_p2', 'power_eur',
+  'kwh_p1', 'kwh_p2', 'kwh_p3', 'price_p1', 'price_p2', 'price_p3',
+  'energy_p1_eur', 'energy_p2_eur', 'energy_p3_eur', 'adjust_eur', 'energy_eur',
+  'surplus_p1_kwh', 'surplus_p2_kwh', 'surplus_p3_kwh', 'surplus_price',
+  'surplus_eur', 'surplus_lost_eur',
+  'social_bonus_eur', 'meter_rent_eur', 'elec_tax_pct', 'elec_tax_eur',
+  'other_taxed_eur', 'other_exempt_eur', 'tax_base_eur', 'vat_pct', 'vat_eur', 'total_eur',
+  'edits', 'notes']);
+export const LINE_COLS = Object.freeze(['pos', 'section', 'concept', 'period', 'quantity', 'unit', 'unit_price', 'amount_eur',
+  'vat_pct', 'info']);
+export const READING_COLS = Object.freeze(['kind', 'period', 'from_date', 'to_date', 'start_kwh', 'end_kwh', 'estimated']);
+const EXTRACTION_PATCH = ['status', 'attempt', 'model', 'finished_at', 'result_json', 'checks_json', 'error', 'invoice_id'];
+
+// node:sqlite binds neither booleans nor undefined.
+const bind = (v) => (typeof v === 'boolean' ? Number(v) : (v ?? null));
+// Column names are interpolated into SQL, so they must come from a fixed list.
+function knownCols(row, allowed, what) {
+  const cols = Object.keys(row).filter((c) => row[c] !== undefined);
+  for (const c of cols) if (!allowed.includes(c)) throw new Error(`${what}: unknown column ${c}`);
+  return cols;
+}
+
 const logRow = (r) => ({ ...r, recipients: r.recipients ? JSON.parse(r.recipients) : null });
+const chatRow = (r) => ({ ...r, blocks: JSON.parse(r.blocks) });
 
 export class Store {
   constructor(path) {
@@ -105,6 +193,7 @@ export class Store {
       daily: q(`insert or replace into daily (day, ${DAILY_COLS}) values (?, ${DAILY_COLS.map(() => '?')})`),
       days: q('select * from daily where day >= ? and day <= ? order by day'),
       firstDay: q('select min(day) as v from daily'),
+      measuredDays: q('select day from daily where import_kwh is not null order by day'),
       firstSample: q('select min(ts) as v from samples'),
       daySyncs: q('select * from day_sync where day >= ? and day <= ?'),
       sigHistory: q(`select signal_id, ts, value from signal_history where device_dn = ? and signal_id = ? and ts >= ? and ts < ?
@@ -120,10 +209,58 @@ export class Store {
       updateAlertLog: q('update alert_log set delivery = ?, error = ? where id = ?'),
       alertLog: q('select * from alert_log where id < ? order by id desc limit ?'),
       failedAlerts: q("select * from alert_log where delivery = 'failed' and ts >= ? order by id"),
+      addBillFile: q(`insert into bill_files (sha, kind, bytes, name, group_id, pos, uploaded_at, source)
+                      values (?, ?, ?, ?, ?, ?, ?, ?)`),
+      billFile: q('select * from bill_files where id = ?'),
+      billFileBySha: q('select * from bill_files where sha = ?'),
+      billFiles: q('select * from bill_files where group_id = ? order by pos, id'),
+      countBillFiles: q('select count(*) as n from bill_files'),
+      billGroupFiles: q('select sha, kind from bill_files where group_id = ? order by pos, id'),
+      deleteBillGroup: q('delete from bill_files where group_id = ?'),
+      allBillGroups: q(`select group_id from bill_files union select group_id from bill_extractions
+                        union select group_id from invoices where group_id is not null`),
+      addExtraction: q('insert into bill_extractions (group_id, status, created_at) values (?, ?, ?)'),
+      extraction: q('select * from bill_extractions where id = ?'),
+      latestExtraction: q('select * from bill_extractions where group_id = ? order by id desc limit 1'),
+      extractionsByStatus: q('select * from bill_extractions where status in (select value from json_each(?)) order by id'),
+      recentExtractions: q('select * from bill_extractions where finished_at is null or finished_at >= ? order by id'),
+      requeueProcessing: q("update bill_extractions set status = 'queued' where status = 'processing'"),
+      deleteExtractions: q('delete from bill_extractions where group_id = ?'),
+      invoice: q('select * from invoices where id = ?'),
+      invoiceLines: q('select * from invoice_lines where invoice_id = ? order by pos, id'),
+      invoiceReadings: q('select * from invoice_readings where invoice_id = ? order by kind, period'),
+      addLine: q(`insert into invoice_lines (invoice_id, ${LINE_COLS}) values (?, ${LINE_COLS.map(() => '?')})`),
+      addReading: q(`insert into invoice_readings (invoice_id, ${READING_COLS}) values (?, ${READING_COLS.map(() => '?')})`),
+      deleteLines: q('delete from invoice_lines where invoice_id = ?'),
+      deleteReadings: q('delete from invoice_readings where invoice_id = ?'),
+      deleteInvoice: q('delete from invoices where id = ?'),
+      listInvoices: q(`select * from invoices where (:status is null or status = :status)
+                       and (:from is null or period_to >= :from) and (:to is null or period_from <= :to)
+                       order by period_from, id`),
+      invoicesByNumber: q('select * from invoices where invoice_number = ? order by id'),
+      // strict: consecutive bills that share their boundary day (to = next from) are not duplicates
+      invoicesOverlapping: q('select * from invoices where cups = ? and period_from < ? and period_to > ? order by period_from, id'),
+      createConversation: q('insert into chat_conversations (title, created_at, updated_at) values (?, ?, ?)'),
+      touchConversation: q('update chat_conversations set updated_at = ? where id = ?'),
+      addChatMessage: q('insert into chat_messages (conversation_id, role, blocks, ts) values (?, ?, ?, ?)'),
+      conversations: q('select * from chat_conversations order by updated_at desc, id desc limit ?'),
+      chatMessages: q(`select * from (select * from chat_messages where conversation_id = ? order by id desc limit ?)
+                       order by id`),
+      deleteChatMessages: q('delete from chat_messages where conversation_id = ?'),
+      deleteConversation: q('delete from chat_conversations where id = ?'),
+      deleteAllChatMessages: q('delete from chat_messages'),
+      deleteAllConversations: q('delete from chat_conversations'),
+      pruneChatMessages: q(`delete from chat_messages where conversation_id not in
+                            (select id from chat_conversations order by updated_at desc, id desc limit ?)`),
+      pruneConversations: q(`delete from chat_conversations where id not in
+                             (select id from chat_conversations order by updated_at desc, id desc limit ?)`),
+      addUsage: q('insert into ai_usage (ts, job, model, tokens_in, tokens_out, cost_usd, ref) values (?, ?, ?, ?, ?, ?, ?)'),
+      usageCostSince: q('select coalesce(sum(cost_usd), 0) as v from ai_usage where ts >= ?'),
     };
   }
 
   tx(fn) {
+    if (this.db.isTransaction) return fn(); // nested: the outer tx commits or rolls back
     this.db.exec('begin');
     try {
       const out = fn();
@@ -217,6 +354,11 @@ export class Store {
     return this.st.firstDay.get().v;
   }
 
+  // Days with measured grid import, oldest first (missing months, advice).
+  measuredDays() {
+    return this.st.measuredDays.all().map((r) => r.day);
+  }
+
   firstSampleTs() {
     return this.st.firstSample.get().v;
   }
@@ -284,5 +426,209 @@ export class Store {
 
   failedAlerts(since) {
     return this.st.failedAlerts.all(since).map(logRow);
+  }
+
+  // --- bill files (bytes live on disk, named by sha) ---
+
+  addBillFile({ sha, kind, bytes, name = null, group_id, pos = 0, uploaded_at, source = 'upload' }) {
+    return Number(this.st.addBillFile.run(sha, kind, bytes, name, group_id, pos, uploaded_at, source).lastInsertRowid);
+  }
+
+  billFile(id) {
+    return this.st.billFile.get(id);
+  }
+
+  billFileBySha(sha) {
+    return this.st.billFileBySha.get(sha);
+  }
+
+  billFiles(groupId) {
+    return this.st.billFiles.all(groupId);
+  }
+
+  countBillFiles() {
+    return this.st.countBillFiles.get().n;
+  }
+
+  // Deletes the group's bill_files rows only and returns them, so the caller removes the bytes.
+  deleteBillGroup(groupId) {
+    return this.tx(() => {
+      const files = this.st.billGroupFiles.all(groupId).map(({ sha, kind }) => ({ sha, kind }));
+      this.st.deleteBillGroup.run(groupId);
+      return files;
+    });
+  }
+
+  allBillGroups() {
+    return this.st.allBillGroups.all().map((r) => r.group_id);
+  }
+
+  // --- extractions ---
+
+  addExtraction({ group_id, status, created_at }) {
+    return Number(this.st.addExtraction.run(group_id, status, created_at).lastInsertRowid);
+  }
+
+  updateExtraction(id, patch) {
+    const cols = knownCols(patch, EXTRACTION_PATCH, 'extraction');
+    if (!cols.length) return;
+    this.db.prepare(`update bill_extractions set ${cols.map((c) => `${c} = ?`)} where id = ?`)
+      .run(...cols.map((c) => bind(patch[c])), id);
+  }
+
+  extraction(id) {
+    return this.st.extraction.get(id);
+  }
+
+  latestExtraction(groupId) {
+    return this.st.latestExtraction.get(groupId);
+  }
+
+  extractionsByStatus(statuses) {
+    return this.st.extractionsByStatus.all(JSON.stringify(statuses));
+  }
+
+  // Not finished yet, or finished at or after sinceTs.
+  recentExtractions(sinceTs) {
+    return this.st.recentExtractions.all(sinceTs);
+  }
+
+  // After a restart nothing is processing any more: those jobs run again.
+  requeueProcessing() {
+    return Number(this.st.requeueProcessing.run().changes);
+  }
+
+  deleteExtractions(groupId) {
+    this.st.deleteExtractions.run(groupId);
+  }
+
+  // --- invoices, their lines and meter readings ---
+
+  #putChildren(id, lines, readings) {
+    if (lines) {
+      this.st.deleteLines.run(id);
+      lines.forEach((l, i) => {
+        knownCols(l, LINE_COLS, 'invoice line');
+        const v = { ...l, pos: l.pos ?? i, info: l.info ? 1 : 0 };
+        this.st.addLine.run(id, ...LINE_COLS.map((c) => bind(v[c])));
+      });
+    }
+    if (readings) {
+      this.st.deleteReadings.run(id);
+      for (const r of readings) {
+        knownCols(r, READING_COLS, 'invoice reading');
+        this.st.addReading.run(id, ...READING_COLS.map((c) => bind(r[c])));
+      }
+    }
+  }
+
+  insertInvoice(row, lines = [], readings = []) {
+    // null columns are left out so the table defaults (kind, auto_confirmed) apply
+    const cols = knownCols(row, INVOICE_COLS, 'invoice').filter((c) => row[c] !== null);
+    const now = Date.now();
+    return this.tx(() => {
+      const id = Number(this.db.prepare(`insert into invoices (${[...cols, 'created_at', 'updated_at']})
+        values (${[...cols, 0, 0].map(() => '?')})`).run(...cols.map((c) => bind(row[c])), now, now).lastInsertRowid);
+      this.#putChildren(id, lines, readings);
+      return id;
+    });
+  }
+
+  // patch: any subset of INVOICE_COLS. Lines and readings are replaced when given.
+  updateInvoice(id, patch = {}, lines, readings) {
+    const cols = knownCols(patch, INVOICE_COLS, 'invoice');
+    this.tx(() => {
+      this.db.prepare(`update invoices set ${[...cols, 'updated_at'].map((c) => `${c} = ?`)} where id = ?`)
+        .run(...cols.map((c) => bind(patch[c])), Date.now(), id);
+      this.#putChildren(id, lines, readings);
+    });
+  }
+
+  invoice(id) {
+    return this.st.invoice.get(id);
+  }
+
+  invoiceLines(id) {
+    return this.st.invoiceLines.all(id);
+  }
+
+  invoiceReadings(id) {
+    return this.st.invoiceReadings.all(id);
+  }
+
+  // from/to (YYYY-MM-DD, inclusive) keep the invoices whose period overlaps them.
+  listInvoices({ status = null, from = null, to = null } = {}) {
+    return this.st.listInvoices.all({ status, from, to });
+  }
+
+  invoicesByNumber(number) {
+    return this.st.invoicesByNumber.all(number);
+  }
+
+  invoicesOverlapping(cups, from, to) {
+    return this.st.invoicesOverlapping.all(cups, to, from);
+  }
+
+  deleteInvoice(id) {
+    this.tx(() => {
+      this.st.deleteLines.run(id);
+      this.st.deleteReadings.run(id);
+      this.st.deleteInvoice.run(id);
+    });
+  }
+
+  // --- assistant conversations ---
+
+  createConversation(title, ts) {
+    return Number(this.st.createConversation.run(title ?? null, ts, ts).lastInsertRowid);
+  }
+
+  touchConversation(id, ts) {
+    this.st.touchConversation.run(ts, id);
+  }
+
+  addChatMessage(convId, role, blocks, ts) {
+    return Number(this.st.addChatMessage.run(convId, role, JSON.stringify(blocks), ts).lastInsertRowid);
+  }
+
+  conversations(limit = 50) {
+    return this.st.conversations.all(limit);
+  }
+
+  // The newest `limit` messages, oldest first.
+  chatMessages(convId, limit = 200) {
+    return this.st.chatMessages.all(convId, limit).map(chatRow);
+  }
+
+  deleteConversation(id) {
+    this.tx(() => {
+      this.st.deleteChatMessages.run(id);
+      this.st.deleteConversation.run(id);
+    });
+  }
+
+  deleteAllConversations() {
+    this.tx(() => {
+      this.st.deleteAllChatMessages.run();
+      this.st.deleteAllConversations.run();
+    });
+  }
+
+  // Keeps the `keep` most recently updated conversations and their messages.
+  pruneConversations(keep = 50) {
+    this.tx(() => {
+      this.st.pruneChatMessages.run(keep);
+      this.st.pruneConversations.run(keep);
+    });
+  }
+
+  // --- AI spend ---
+
+  addUsage({ ts, job, model, tokens_in = null, tokens_out = null, cost_usd = null, ref = null }) {
+    this.st.addUsage.run(ts, job, model, tokens_in, tokens_out, cost_usd, ref);
+  }
+
+  usageCostSince(ts) {
+    return this.st.usageCostSince.get(ts).v;
   }
 }

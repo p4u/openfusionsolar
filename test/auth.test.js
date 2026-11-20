@@ -12,7 +12,7 @@ import { safeNext } from '../public/js/login.js';
 import { startTestServer } from './helpers.js';
 
 const DAY = 24 * 60 * 60e3;
-const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; manifest-src 'self'";
+const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src 'self'";
 const COOKIE_RE = /^ofs_session=\d+\.[0-9a-f]{64}; HttpOnly; SameSite=Lax; Path=\/; Max-Age=2592000$/;
 
 const login = (base, password, headers = {}) =>

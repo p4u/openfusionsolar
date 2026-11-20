@@ -1,15 +1,15 @@
 // Bill view: what the bill will be, what the panels saved, how much was bought in each tariff period.
 import { register, t, locale } from '../i18n.js';
 import dict from '../i18n/bill.js';
-import { esc, icon, emptyState, loadBlock, ledger, badge, every } from '../ui.js';
-import { getEnergy, getSeries, getSignals, getBills, putBill, ApiError } from '../api.js';
+import { esc, icon, emptyState, loadBlock, ledger, badge, every, moneyTabs } from '../ui.js';
+import { getEnergy, getSeries, getSignals, getBills, getBilling, putBill, ApiError } from '../api.js';
 import { parseRange } from '../range.js';
 import { renderRangeBar } from '../range-bar.js';
 import { figure, chart } from '../charts.js';
 import { addDays } from '../buckets.js';
 import { bucketAxis } from '../chart-data.js';
 import { eur, kwh, kw, nf, fmtDate, fmtMonth, dayOf } from '../format.js';
-import { monthRows, peakVsContracted, monthTotals, parseAmount, billDelta, realTotals, periodParts } from './bill-model.js';
+import { monthRows, peakVsContracted, monthTotals, parseAmount, billDelta, realTotals, periodParts, confirmedMonths, realCellModel } from './bill-model.js';
 import { phaseLink } from './signals-model.js';
 import { deltaText, compareLabel, ofPeriod } from './energy-model.js';
 
@@ -39,18 +39,19 @@ const empty = (el, body = t('bill.empty')) => {
   el.innerHTML = emptyState({ title: t('core.empty.title'), body });
 };
 
-export async function render(root, ctx) {
+// embedded: inside Facturació (its range bar and tabs are above, and it hands over its range), so an h2 and no tabs or range bar.
+export async function render(root, ctx, { embedded = false, range: given = null } = {}) {
   const { status, signal } = ctx;
   const rctx = { today: status.today, firstDay: status.firstDay };
-  const range = parseRange(ctx.params, rctx, 'year');
+  const range = given ?? parseRange(ctx.params, rctx, 'year');
   const priced = Boolean(status.pricesConfigured);
   const monthLabel = (key) => fmtMonth(key);
   const monthAxis = (rows) => { const a = bucketAxis(rows.map((r) => r.key), '1mo'); return { categories: a.categories, title: a.title, label: (i) => monthLabel(rows[i].key) }; };
   const csvName = (id) => `${id}-${range.from}_${range.to}`;
   const cmp = range.cmp !== 'none' ? range.cmp : undefined;
 
-  root.innerHTML = `<header class="view-head"><h1 class="view-title">${esc(t('bill.title'))}</h1></header>
-    <div class="bill-range"></div>
+  root.innerHTML = `<header class="view-head">${embedded ? `<h2 class="section-title">${esc(t('bill.title'))}</h2>` : `<h1 class="view-title">${esc(t('bill.title'))}</h1>`}</header>
+    ${embedded ? '' : `${moneyTabs('bill', ctx.params)}<div class="bill-range"></div>`}
     <div class="bill-tiles"></div>
     <div class="grid">
       ${priced ? '<div class="card span-6 bill-monthly"></div>' : ''}
@@ -63,7 +64,7 @@ export async function render(root, ctx) {
         <p class="bill-phases" hidden></p>
       </div></details>`;
   const q = (s) => root.querySelector(s);
-  const bar = renderRangeBar(q('.bill-range'), { range, ctx: rctx, onChange: (p) => ctx.setParams(p) });
+  const bar = embedded ? null : renderRangeBar(q('.bill-range'), { range, ctx: rctx, onChange: (p) => ctx.setParams(p) });
 
   let energyP = null;
   const energy = () => (energyP ??= getEnergy({ from: range.from, to: range.to, bucket: '1mo', compare: cmp }, { signal }).catch((e) => {
@@ -211,7 +212,11 @@ export async function render(root, ctx) {
   async function table(el) {
     // the minute refresh never redraws under someone typing an amount
     if (el.contains(document.activeElement) && document.activeElement.matches('.bill-real')) return;
-    const [{ buckets }, bills] = await Promise.all([energy(), getBills({ signal }).catch(() => ({}))]);
+    // months covered by a confirmed bill show its total as a link; a failed lookup leaves every month as an input
+    const [{ buckets }, bills, billing] = await Promise.all([energy(), getBills({ signal }).catch(() => ({})),
+      getBilling({ from: range.from, to: range.to }, { signal }).catch(() => null)]);
+    const linked = confirmedMonths(billing?.invoices);
+    const all = () => ({ ...bills, ...Object.fromEntries(Object.entries(linked).map(([k, v]) => [k, v.total])) });
     const rows = monthRows(buckets);
     reset(el);
     if (!rows.length) return empty(el);
@@ -235,13 +240,15 @@ export async function render(root, ctx) {
     const cells = (r) => cols.map((c) => td(c.label, esc(c.cell(r)), c.cls)).join('');
     const signed = (v) => (v == null ? '' : `${v > 0 ? '+' : ''}${eur(v)}`);
     const realCell = (r) => {
-      const v = bills[r.key];
+      const cell = realCellModel(r.key, linked, bills);
+      if (cell.kind === 'link') return td(realLabel, `<a class="link" href="#/invoices?id=${cell.id}">${esc(eur(cell.total))}</a>`);
+      const v = cell.value;
       const id = `bill-real-${r.key}`;
       const month = ofPeriod(fmtMonth(r.key, { mid: true }));
       return td(realLabel, `<input id="${id}" class="input bill-real" type="text" inputmode="decimal" autocomplete="off" data-month="${esc(r.key)}"
         value="${v == null ? '' : esc(nf(2).format(v))}" aria-label="${esc(t('bill.table.realFor', { month }))}" aria-describedby="${id}-msg">`);
     };
-    const diffCell = (r) => (money ? td(diffLabel, esc(signed(billDelta(bills[r.key], r.money?.bill))), 'bill-diff') : '');
+    const diffCell = (r) => (money ? td(diffLabel, esc(signed(billDelta(all()[r.key], r.money?.bill))), 'bill-diff') : '');
     // the message of a month spans its whole row, under it, so it never squeezes into the narrow input cell
     const msgRow = (r) => `<tr class="bill-msg-row" hidden><td colspan="${span}"><span id="bill-real-${esc(r.key)}-msg" class="bill-real-msg"></span></td></tr>`;
     const body = rows.map((r) => {
@@ -250,7 +257,7 @@ export async function render(root, ctx) {
     });
     // real-bill totals over the months that have one: "3 of 11 months"
     const footReal = () => {
-      const rt = realTotals(rows, bills);
+      const rt = realTotals(rows, all());
       const count = rt.n && rt.n < rt.m ? `<span class="hint bill-real-count">${esc(t('bill.table.realCount', { n: rt.n, m: rt.m }))}</span>` : '';
       return `${td(realLabel, `${rt.real == null ? '' : esc(eur(rt.real))}${count}`, 'bill-foot-real')}${money ? td(diffLabel, esc(signed(rt.delta)), 'bill-foot-diff') : ''}`;
     };
@@ -332,7 +339,7 @@ export async function render(root, ctx) {
   }
 
   return () => {
-    bar.destroy();
+    bar?.destroy();
     for (const b of blocks) handles.get(b.el)?.forEach((h) => h.destroy());
   };
 }

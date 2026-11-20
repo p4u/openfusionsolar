@@ -1,5 +1,6 @@
 // Pure helpers of the Settings view.
-import { t } from '../i18n.js';
+import { t, LANGS } from '../i18n.js';
+import dict from '../i18n/settings.js';
 
 const LIMITS = { minutes: [5, 1440], soc: [1, 100], maxSeverity: [1, 4], margin: [0, 50], overPct: [0, 100] };
 export const MAX_RECIPIENTS = 20;
@@ -128,3 +129,19 @@ export function setField(cfg, path, value) {
 // FusionSolar access as Settings shows it: paused after a failure, unknown before the first check, else working.
 export const authKey = (c, now = Date.now()) => (c.authBlockedUntil > now ? 'settings.collector.authPaused'
   : c.lastTick == null ? 'settings.collector.authUnknown' : 'settings.collector.authOk');
+
+// Dollars as the assistant budget reads, with the currency code so nobody takes them for euros: "0,42 USD" (ca),
+// "0.42 USD" (en); a whole budget has no decimals.
+export function usd(v, lang, { whole = false } = {}) {
+  const loc = LANGS[lang]?.locale ?? 'en-GB';
+  const n = Number(v) || 0;
+  const tiny = n > 0 && n < 0.01; // a few questions cost less than a cent
+  const digits = whole && Number.isInteger(n) ? 0 : 2;
+  const text = new Intl.NumberFormat(loc, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(tiny ? 0.01 : n);
+  return `${tiny ? '<\u00a0' : ''}${text}\u00a0USD`;
+}
+
+// "Cost de l\u2019IA aquest mes: 0,42 USD de 5 USD de l\u00edmit" from GET /api/assistant/usage.
+export const usageText = ({ spentUsd, budgetUsd }, lang) =>
+  String(dict[lang]?.['settings.ai.usage'] ?? dict.en['settings.ai.usage'])
+    .replace('{spent}', usd(spentUsd, lang)).replace('{budget}', usd(budgetUsd, lang, { whole: true }));

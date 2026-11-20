@@ -1,10 +1,12 @@
-// Settings view: alerts (recipients and their alerts, rules, quiet hours, test email, history), plant, appearance, glossary, about.
+// Settings view: alerts (recipients and their alerts, rules, quiet hours, test email, history), plant, assistant and
+// bills (usage, privacy, deletion), appearance, glossary, about.
 import { register, t, getLang, setLang, LANGS } from '../i18n.js';
 import dict from '../i18n/settings.js';
-import { esc, icon, loadBlock, emptyState, getTheme, setTheme } from '../ui.js';
-import { getAlertsConfig, putAlertsConfig, sendTestEmail, getAlertsHistory, ApiError } from '../api.js';
+import { esc, icon, loadBlock, emptyState, getTheme, setTheme, confirmDialog } from '../ui.js';
+import { getAlertsConfig, putAlertsConfig, sendTestEmail, getAlertsHistory, ApiError, getAiUsage, deleteAllInvoices, deleteAllConversations } from '../api.js';
+import { aiNoticeHtml } from '../privacy.js';
 import { kw, nf, pct, fmtDateTime, fmtTime } from '../format.js';
-import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, errorText, authKey, lastFired, deliveryWords, setField, validateAlerts, parseAddresses } from './settings-model.js';
+import { ruleSentenceParts, ruleTemplate, splitSentence, fieldErrorsByInput, errorText, authKey, lastFired, deliveryWords, setField, validateAlerts, parseAddresses, usageText } from './settings-model.js';
 import { GROUPS, DEFAULT_ON, PRESETS, presetOf } from '../alert-catalogue.js';
 
 register(dict);
@@ -20,6 +22,7 @@ export async function render(root, ctx) {
       <div class="card" data-block="alerts"></div>
       <div class="card" data-block="history"></div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.plant.title'))}</h2><div class="card">${plantHtml(status)}</div></section>
+    <section class="band" id="settings-ai"><h2 class="section-title">${esc(t('settings.ai.title'))}</h2><div class="card settings-ai" data-block="ai"></div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.appearance.title'))}</h2><div class="card">${appearanceHtml()}</div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.glossary.title'))}</h2><div class="card">${glossaryHtml()}</div></section>
     <section class="band"><h2 class="section-title">${esc(t('settings.about.title'))}</h2><div class="card">
@@ -61,6 +64,40 @@ export async function render(root, ctx) {
   loadBlock(q('history'), 200, async (el) => {
     await ensure();
     drawHistory(el, rows, () => more, () => loadRows(rows.at(-1).id));
+  });
+
+  // #/settings?card=ai (the assistant's privacy line links here): bring the card into view once it is drawn
+  loadBlock(q('ai'), 160, async (el) => {
+    await drawAi(el, Boolean(status.ai?.enabled), signal);
+    if (ctx.params?.get('card') === 'ai') root.querySelector('#settings-ai').scrollIntoView({ block: 'start' });
+  });
+}
+
+async function drawAi(el, on, signal) {
+  const usage = on ? await getAiUsage({ signal }) : null;
+  const full = usage && usage.budgetUsd > 0 && usage.spentUsd >= usage.budgetUsd;
+  el.innerHTML = `${usage ? `<p class="settings-ai-usage">${esc(usageText(usage, getLang()))}</p>
+      <p class="hint">${esc(t(full ? 'settings.ai.limit' : 'settings.ai.usageHint'))}</p>
+      <p class="hint">${esc(t('settings.admin.aiBudget'))}</p>` : `<p>${esc(t('settings.ai.off'))}</p>`}
+    <div class="settings-ai-notice">${aiNoticeHtml()}</div>
+    <p><a class="link" href="#/invoices">${esc(t('settings.ai.manual'))}</a></p>
+    <div class="actions settings-ai-actions">
+      <button type="button" class="pill pill-outline" data-wipe="Bills">${icon('trash-2', { size: 16 })}${esc(t('settings.ai.deleteBills'))}</button>
+      <button type="button" class="pill pill-outline" data-wipe="Chats">${icon('trash-2', { size: 16 })}${esc(t('settings.ai.deleteChats'))}</button></div>
+    <p class="hint" role="status" data-wipe-msg></p>`;
+  const msg = el.querySelector('[data-wipe-msg]');
+  el.querySelector('.settings-ai-actions').addEventListener('click', async (e) => {
+    const what = e.target.closest('[data-wipe]')?.dataset.wipe;
+    if (!what) return;
+    msg.textContent = '';
+    const yes = await confirmDialog({ title: t(`settings.ai.delete${what}Title`), body: t(`settings.ai.delete${what}Body`), yes: t('settings.ai.delete'), no: t('settings.ai.cancel') });
+    if (!yes) return;
+    try {
+      await (what === 'Bills' ? deleteAllInvoices : deleteAllConversations)({ signal });
+      msg.textContent = t(`settings.ai.delete${what}Done`);
+    } catch (err) {
+      if (err?.name !== 'AbortError') msg.textContent = t('settings.ai.failed');
+    }
   });
 }
 

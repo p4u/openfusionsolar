@@ -1,0 +1,63 @@
+{
+  "request": {
+    "model": "google/gemini-3.1-flash-lite",
+    "temperature": 0,
+    "max_tokens": 1200,
+    "provider": {
+      "data_collection": "deny"
+    },
+    "tools": "<the TOOLS of src/assistant-tools.js>",
+    "messages": [
+      {
+        "role": "system",
+        "content": "<systemPrompt>"
+      },
+      {
+        "role": "user",
+        "content": "Explica’m la factura 1"
+      }
+    ]
+  },
+  "status": 200,
+  "response": {
+    "id": "gen-fixture",
+    "model": "google/gemini-3.1-flash-lite",
+    "provider": "Google",
+    "choices": [
+      {
+        "index": 0,
+        "finish_reason": "tool_calls",
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_1",
+              "type": "function",
+              "function": {
+                "name": "get_invoice",
+                "arguments": "{\"id\":1}"
+              }
+            }
+          ],
+          "reasoning_details": [
+            {
+              "type": "reasoning.encrypted",
+              "id": "tool_call_1",
+              "format": "google-gemini-v1",
+              "index": 0,
+              "data": "c2lnbmF0dXJl"
+            }
+          ],
+          "refusal": null
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 2050,
+      "completion_tokens": 25,
+      "total_tokens": 2075,
+      "cost": 0.00055
+    }
+  }
+}

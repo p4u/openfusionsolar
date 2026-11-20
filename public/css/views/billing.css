@@ -1,0 +1,47 @@
+/* Billing summary view (task 8). Every class here starts with 'billing-'. */
+.billing-range { min-width: 0; }
+.billing-body { display: flex; flex-direction: column; gap: var(--band-gap-y); }
+.billing-figs { display: flex; flex-direction: column; gap: var(--band-gap-y); }
+.billing-fig, .billing-seg-card, .billing-recon-card { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.billing-split { margin-top: var(--sp-xs); }
+.billing-split p, .billing-explain { max-width: 70ch; }
+.billing-explain { display: flex; flex-direction: column; gap: var(--sp-xs); margin: 0; padding-left: var(--sp-base); color: var(--body); font-size: var(--fs-caption); }
+.billing-forecast { display: flex; flex-direction: column; gap: var(--band-gap-y); }
+/* where every euro goes: one segmented bar, labels under it (narrow segments get a key line) */
+.billing-seg, .billing-seg-labels { display: flex; gap: 2px; }
+.billing-seg { height: 16px; margin-top: var(--sp-xs); overflow: hidden; border-radius: var(--r-pill); }
+.billing-seg > span { flex-basis: 0; min-width: 4px; }
+.billing-seg-grid { background: var(--chart-grid); }
+.billing-seg-fixed { background: var(--chart-fixed); }
+.billing-seg-muted { background: var(--muted); }
+.billing-seg-home { background: var(--chart-home); }
+.billing-seg-labels { margin-top: var(--sp-xs); column-gap: var(--sp-sm); color: var(--ink); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
+.billing-seg-labels > span { flex-basis: 0; min-width: 0; overflow-wrap: anywhere; } /* wraps instead of widening the page on a phone */
+.billing-seg-labels > span:last-child:not(:first-child) { text-align: right; }
+.billing-seg-labels > span:empty { min-width: 0; }
+.billing-seg-aside { display: flex; flex-wrap: wrap; gap: var(--sp-xxs) var(--sp-base); margin: var(--sp-xs) 0 0; color: var(--ink); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
+.billing-seg-aside > span { display: inline-flex; align-items: center; gap: var(--sp-xs); }
+.billing-seg-key { width: 10px; height: 10px; border-radius: 2px; }
+/* reconciliation table: a card per bill on phones */
+.billing-recon th[scope="row"] span { display: block; }
+.billing-recon td, .billing-recon th { vertical-align: top; }
+@media (max-width: 639px) {
+  .billing-recon thead { display: none; }
+  .billing-recon, .billing-recon tbody, .billing-recon tr { display: block; }
+  .billing-recon tr { padding-block: var(--sp-sm); border-bottom: 1px solid var(--hairline); }
+  .billing-recon tr:last-child { border-bottom: 0; }
+  .billing-recon tr > * { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-sm); padding: var(--sp-xxs) 0; border: 0; text-align: right; }
+  .billing-recon th[scope="row"] { color: var(--ink); font-weight: 500; text-align: left; }
+  .billing-recon td::before { content: attr(data-label); color: var(--muted); text-align: left; }
+  .billing-recon td[data-label=""]::before { content: none; }
+}
+/* advice cards */
+.billing-advice-block { display: flex; flex-direction: column; gap: var(--sp-sm); }
+.billing-advice-grid { display: grid; gap: var(--gutter); grid-template-columns: 1fr; }
+@media (min-width: 1024px) { .billing-advice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.billing-advice { display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
+.billing-advice-text { margin: 0; max-width: 70ch; color: var(--ink); }
+.billing-advice p { margin: 0; }
+.billing-lines { margin: 0; padding: var(--sp-xs) var(--sp-sm); overflow-x: auto; border-radius: var(--r-md); background: var(--surface-strong); color: var(--ink); font-family: ui-monospace, monospace; font-size: var(--fs-caption); user-select: all; }
+.billing-ask { display: inline-flex; align-items: center; gap: var(--sp-xs); align-self: flex-start; min-height: 44px; }
+.billing-preset { min-width: 0; }

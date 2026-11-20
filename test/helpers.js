@@ -2,9 +2,9 @@
 import { once } from 'node:events';
 import { startServer } from '../src/server.js';
 
-export async function startTestServer({ store, collector = null, config = {}, alerts, password = 'pw-test', failDelayMs = 0 }) {
+export async function startTestServer({ store, collector = null, config = {}, alerts, password = 'pw-test', failDelayMs = 0, routes }) {
   const server = startServer({
-    store, collector, config: { ...config, password }, port: 0, host: '127.0.0.1', log: () => {}, alerts, failDelayMs,
+    store, collector, config: { ...config, password }, port: 0, host: '127.0.0.1', log: () => {}, alerts, failDelayMs, routes,
   });
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;

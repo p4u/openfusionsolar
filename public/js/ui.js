@@ -1,5 +1,6 @@
 // Shared markup builders (they return HTML strings; every value is escaped) and small DOM helpers.
 import { t } from './i18n.js';
+import { CARRIED } from './routes.js';
 
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -10,6 +11,16 @@ export function icon(name, { size = 20, label } = {}) {
   return label
     ? `<svg class="icon icon-${size}" role="img"><title>${esc(label)}</title>${use}</svg>`
     : `<svg class="icon icon-${size}" aria-hidden="true">${use}</svg>`;
+}
+
+// Sub-navigation of Facturació: active is a route name (billing | invoices | bill); params carry the time range.
+const MONEY_TABS = [['billing', 'money', 'core.money.summary'], ['invoices', 'invoices', 'core.nav.invoices'], ['bill', 'forecast', 'core.nav.bill']];
+export function moneyTabs(active, params) {
+  const carried = new URLSearchParams(CARRIED.filter((k) => params?.has(k)).map((k) => [k, params.get(k)]));
+  const query = carried.toString();
+  const links = MONEY_TABS.map(([name, path, key]) =>
+    `<a href="#/${path}${query ? `?${query}` : ''}"${name === active ? ' aria-current="page"' : ''}>${esc(t(key))}</a>`);
+  return `<nav class="segmented money-tabs" aria-label="${esc(t('core.money.label'))}">${links.join('')}</nav>`;
 }
 
 // Placeholder with the final height, so nothing jumps when the data arrives.
@@ -73,6 +84,26 @@ export function statusLine({ state = 'ok', title, details = [], link = null }) {
     ${[].concat(details).filter(Boolean).map((d) => `<p class="status-detail">${esc(d)}</p>`).join('')}
     ${link ? `<p class="status-detail"><a class="link" href="${esc(link.href)}">${esc(link.label)}</a></p>` : ''}</div>
   </div>`;
+}
+
+// Modal question with two buttons; resolves true on `yes`, false on `no`, Escape or close. Labels are plain text.
+export function confirmDialog({ title, body, yes, no }) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'sheet';
+    dialog.setAttribute('aria-labelledby', 'confirm-title');
+    dialog.innerHTML = `<h2 id="confirm-title" class="view-title">${esc(title)}</h2>${body ? `<p>${esc(body)}</p>` : ''}
+      <div class="actions"><button type="button" class="pill pill-primary" data-yes>${esc(yes)}</button>
+      <button type="button" class="pill pill-outline" data-no>${esc(no)}</button></div>`;
+    let answer = false;
+    dialog.addEventListener('click', (e) => {
+      if (e.target.closest('[data-yes]')) answer = true;
+      if (e.target.closest('[data-yes], [data-no]')) dialog.close();
+    });
+    dialog.addEventListener('close', () => { dialog.remove(); resolve(answer); });
+    document.body.append(dialog);
+    dialog.showModal();
+  });
 }
 
 // Skeleton while fn runs; on failure an error with a retry that runs fn again. fn fills el itself.

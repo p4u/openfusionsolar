@@ -1,5 +1,6 @@
 // Entry point: collector loop + web server in one process.
 import fs from 'node:fs';
+import path from 'node:path';
 import { FusionSolarClient } from './fusionsolar.js';
 import { Store } from './db.js';
 import { Collector } from './collector.js';
@@ -7,6 +8,9 @@ import { startServer } from './server.js';
 import { pricesFromEnv } from './tariff.js';
 import { createAlertEngine } from './alerts.js';
 import { createTransport, smtpInfo } from './mailer.js';
+import { createLlm, DEFAULT_MODEL } from './llm.js';
+import { createInvoices } from './invoices.js';
+import { createAssistant } from './assistant.js';
 
 if (fs.existsSync('.env')) process.loadEnvFile('.env');
 const env = process.env;
@@ -34,7 +38,8 @@ function writeSession(data) {
 }
 
 fs.mkdirSync('data', { recursive: true });
-const store = new Store(env.DB_PATH ?? 'data/openfusionsolar.db');
+const DB_PATH = env.DB_PATH ?? 'data/openfusionsolar.db';
+const store = new Store(DB_PATH);
 // Everything runs in the plant's time zone: PLANT_TZ, else the one FusionSolar reported last time
 // (the collector sets it again after discovery), else the host's.
 env.TZ = env.PLANT_TZ || store.getKv('station')?.timeZone || env.TZ || 'UTC';
@@ -67,6 +72,8 @@ const config = {
   plantName: env.PLANT_NAME || null,
   password: env.APP_PASSWORD,
   trustProxy: env.TRUST_PROXY === '1',
+  // only whether the key is set; the key itself never enters config
+  ai: { enabled: Boolean(env.AI_API_KEY) },
 };
 // SMTP is optional: without SMTP_HOST alerts are only listed in the app. Credentials stay in mailer.js.
 const transport = await createTransport(env);
@@ -79,5 +86,17 @@ engine = createAlertEngine({
   },
 });
 engine.start();
-startServer({ store, collector: env.COLLECT === '0' ? null : collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log, alerts: engine });
+// Bill files live next to the DB; the key stays inside the llm closure.
+const billsDir = path.join(path.dirname(DB_PATH), 'bills');
+fs.mkdirSync(billsDir, { recursive: true });
+const budgetUsd = Number(env.AI_MONTHLY_BUDGET_USD || 5);
+if (!Number.isFinite(budgetUsd) || budgetUsd < 0) throw new Error('AI_MONTHLY_BUDGET_USD must be a number of dollars, for example 5');
+const llm = createLlm({ apiKey: env.AI_API_KEY, store, budgetUsd, log });
+const invoices = createInvoices({ store, llm, dir: billsDir, log, model: env.AI_MODEL_EXTRACT || DEFAULT_MODEL });
+invoices.start();
+const assistant = createAssistant({ store, llm, invoices, config, model: env.AI_MODEL_CHAT || DEFAULT_MODEL, log });
+startServer({
+  store, collector: env.COLLECT === '0' ? null : collector, config, port: Number(env.PORT ?? 8080), host: env.HOST ?? '127.0.0.1', log,
+  alerts: engine, routes: { ...invoices.routes, ...assistant.routes },
+});
 if (env.COLLECT !== '0') collector.run({ backfillDays: Number(env.BACKFILL_DAYS ?? 30) });

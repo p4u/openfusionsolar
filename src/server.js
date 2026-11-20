@@ -7,6 +7,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { dayMoney } from './tariff.js';
+import { billingSummary, compareInvoice } from './billing.js';
 import { buildEvents } from './events.js';
 import { dayBounds, localDay } from './collector.js';
 import * as aggregate from './aggregate.js';
@@ -29,7 +30,7 @@ export const PUBLIC_PATHS = new Set([
   '/icons/icon-180.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png',
 ]);
 const SECURITY_HEADERS = {
-  'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; manifest-src 'self'",
+  'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src 'self'",
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
   'referrer-policy': 'same-origin',
@@ -76,19 +77,19 @@ export function batteryInfo(store, cfg) {
   };
 }
 
-// Resolves null when the body exceeds MAX_BODY (the rest is left unread; the caller closes the connection).
-function readBody(req) {
+// Resolves null when the body exceeds maxBytes (the rest is left unread; a 413 response closes the connection).
+export function readBody(req, maxBytes = MAX_BODY) {
   return new Promise((resolve, reject) => {
-    if (Number(req.headers['content-length']) > MAX_BODY) return resolve(null);
+    if (Number(req.headers['content-length']) > maxBytes) return resolve(null);
     const chunks = [];
     let size = 0;
     req.on('data', (c) => {
       size += c.length;
-      if (size <= MAX_BODY) return chunks.push(c);
+      if (size <= maxBytes) return chunks.push(c);
       req.removeAllListeners('data').pause();
       resolve(null);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -103,9 +104,12 @@ function sameOrigin(origin, host) {
 
 const readCookie = (header) => /(?:^|;\s*)ofs_session=([^;]*)/.exec(header ?? '')?.[1];
 
-// config: { password (required), trustProxy, prices (see tariff.js) | null, battery: { capacityKwh, reservePct, minPct } }
+// config: { password (required), trustProxy, prices (see tariff.js) | null, battery: { capacityKwh, reservePct, minPct },
+//   ai: { enabled } }
+// routes: extra routes merged into the table below (a key already there throws).
 export function startServer({
   store, collector, config = {}, port = 8080, host = '127.0.0.1', log = console.log, alerts = null, failDelayMs = 300,
+  routes: extraRoutes = {},
 }) {
   if (!config.password) throw new Error('config.password is required');
   const startedAt = Date.now();
@@ -142,7 +146,11 @@ export function startServer({
   const RANGE_ERROR = [400, { error: 'from/to (unix ms, from < to, max 400 days) required' }];
   const needAlerts = (fn) => (ctx) => (alerts ? fn(ctx) : [503, { error: 'alerts are not running' }]);
 
-  // Handler: (ctx) => [status, body, headers?], may be async. ctx = { req, url, query, body }.
+  // Route value: a handler, or { handler, maxBytes } (JSON body with its own cap), or
+  // { handler, body: 'raw', types: [content-type prefixes], maxBytes } (body left unread in ctx.req, see readBody).
+  // Handler: (ctx) => [status, body, headers?], may be async. ctx = { req, url, query, body, signal }; signal aborts
+  // when the client goes away. body: JSON, a Buffer (sent as is; the handler sets content-type) or
+  // async (emit, signal) => {} (an NDJSON stream, emit(obj) writes one line). Route headers override the security ones.
   const routes = {
     'GET /api/status': () => [200, {
       station: store.getKv('station') ?? null,
@@ -157,6 +165,7 @@ export function startServer({
       activeAlarms: store.activeAlarms?.() ?? [],
       battery: batteryInfo(store, config.battery ?? {}),
       pricesConfigured: Boolean(config.prices),
+      ai: { enabled: Boolean(config.ai?.enabled) },
       plantName: config.plantName ?? null,
       alerts: alerts ? alerts.status() : { smtpConfigured: false, firing: [] },
       prices: config.prices
@@ -229,6 +238,15 @@ export function startServer({
       return r ? [200, store.alarms(...r)] : RANGE_ERROR;
     },
     // The real amount of each monthly bill, typed in by the user to compare with the estimate: { 'YYYY-MM': euros }.
+    'GET /api/billing': ({ query }) => {
+      const p = dayRange(query, 36600);
+      return p.error ?? [200, billingSummary(store, { from: p.from, to: p.to, prices: config.prices ?? null })];
+    },
+    'GET /api/billing/invoice': ({ query }) => {
+      const id = Number(query.get('id'));
+      const inv = Number.isInteger(id) ? store.invoice(id) : null;
+      return inv ? [200, compareInvoice(store, inv, { prices: config.prices ?? null })] : [404, { error: 'unknown invoice' }];
+    },
     'GET /api/bills': () => [200, store.getKv('realBills') ?? {}],
     'PUT /api/bills': ({ body }) => {
       const { month, amount } = body ?? {};
@@ -260,13 +278,36 @@ export function startServer({
     }),
     'POST /api/logout': ({ req }) => [204, null, { 'set-cookie': cookieHeader('', { maxAgeS: 0, secure: isHttps(req, trustProxy) }) }],
   };
+  for (const k of Object.keys(extraRoutes)) {
+    if (Object.hasOwn(routes, k)) throw new Error(`duplicate route ${k}`);
+    routes[k] = extraRoutes[k];
+  }
   const routePaths = new Set(Object.keys(routes).map((k) => k.slice(k.indexOf(' ') + 1)));
 
   const server = http.createServer(async (req, res) => {
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
+    // a 413 leaves the rest of the body unread, so the connection cannot be reused
     const json = (status, body, headers = {}) => {
-      res.writeHead(status, { ...(status !== 204 && { 'content-type': 'application/json' }), 'cache-control': 'no-store', ...headers });
+      res.writeHead(status, {
+        ...(status !== 204 && { 'content-type': 'application/json' }), ...(status === 413 && { connection: 'close' }),
+        'cache-control': 'no-store', ...headers,
+      });
       res.end(status === 204 ? undefined : JSON.stringify(body));
+    };
+    const stream = async (fn, headers) => {
+      res.writeHead(200, {
+        'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no', ...headers,
+      });
+      const emit = (obj) => {
+        if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(obj)}\n`);
+      };
+      try {
+        await fn(emit, ctx.signal);
+      } catch (err) {
+        log(`stream error: ${err.message}`);
+        emit({ type: 'error', code: 'internal' });
+      }
+      res.end();
     };
     // scripts and styles are never stored: after an update the browser must not run a stale module
     const sendFile = (abs, cacheControl = /^\/(js|css)\//.test(url?.pathname) ? 'no-store' : 'no-cache') => {
@@ -285,22 +326,31 @@ export function startServer({
     }
     const { pathname } = url;
     const route = `${req.method} ${pathname}`;
-    const ctx = { req, url, query: url.searchParams, body: undefined };
-    // CSRF: JSON content type (not sendable cross-site without a preflight) and an Origin matching the Host.
-    const bodyError = async () => {
-      if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) return [415, 'json content type required'];
+    const aborter = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) aborter.abort();
+    });
+    const ctx = { req, url, query: url.searchParams, body: undefined, signal: aborter.signal };
+    // CSRF: an Origin matching the Host, and a JSON content type (not sendable cross-site without a preflight) or, on raw
+    // routes, one of the route's types; both are checked before anything is read.
+    const bodyError = async ({ body, types = [], maxBytes = MAX_BODY } = {}) => {
+      const type = (req.headers['content-type'] ?? '').toLowerCase();
+      if (body === 'raw') {
+        if (!types.some((t) => type.startsWith(t))) return [415, 'content type not allowed'];
+      } else if (!type.startsWith('application/json')) return [415, 'json content type required'];
       const reqHost = (trustProxy && req.headers['x-forwarded-host']) || req.headers.host;
       if (!sameOrigin(req.headers.origin, reqHost)) return [403, 'origin not allowed'];
-      const raw = await readBody(req);
+      if (body === 'raw') return Number(req.headers['content-length']) > maxBytes ? [413, 'body too large'] : null;
+      const raw = await readBody(req, maxBytes);
       if (raw == null) return [413, 'body too large'];
       try {
-        ctx.body = raw === '' ? {} : JSON.parse(raw);
+        ctx.body = raw.length === 0 ? {} : JSON.parse(raw.toString('utf8'));
       } catch {
         return [400, 'invalid json'];
       }
       return null;
     };
-    const failBody = ([status, error]) => json(status, { error }, status === 413 ? { connection: 'close' } : {});
+    const failBody = ([status, error]) => json(status, { error });
 
     try {
       if (route === 'GET /healthz') {
@@ -345,13 +395,18 @@ export function startServer({
       }
       if (expiry - Date.now() < RENEW_MS) res.setHeader('set-cookie', newCookie());
 
+      const spec = typeof routes[route] === 'function' ? { handler: routes[route] } : routes[route];
       if (req.method === 'POST' || req.method === 'PUT') {
-        const err = await bodyError();
+        const err = await bodyError(spec);
         if (err) return failBody(err);
       }
-      const handler = routes[route];
-      if (handler) {
-        const [status, body, headers] = await handler(ctx);
+      if (spec) {
+        const [status, body, headers] = await spec.handler(ctx);
+        if (typeof body === 'function') return stream(body, headers);
+        if (Buffer.isBuffer(body)) {
+          res.writeHead(status, { 'cache-control': 'no-store', ...headers });
+          return res.end(body);
+        }
         return json(status, body, headers);
       }
       if (routePaths.has(pathname)) return json(405, { error: 'method not allowed' });

@@ -84,8 +84,11 @@ test('delivery words exist in both languages for every state and skip reason', (
 });
 
 test('glossary has the same entries in both languages', () => {
-  assert.equal(dict.en['settings.glossary'].length, 11);
-  assert.equal(dict.ca['settings.glossary'].length, 11);
+  assert.equal(dict.en['settings.glossary'].length, 14);
+  assert.equal(dict.ca['settings.glossary'].length, 14);
+  for (const k of ['periods', 'adjust', 'maxDemand', 'taxBase']) {
+    for (const lang of ['en', 'ca']) assert.ok(dict[lang]['settings.glossary'].includes(dict[lang][`settings.gloss.${k}`]), `${lang} ${k}`);
+  }
 });
 
 test('server validation messages are shown in the app language', async () => {
@@ -191,4 +194,14 @@ test('setField writes into a recipient object', () => {
   setField(cfg, 'recipients.0', 'z@b.cc');
   setField(cfg, 'recipients.0.lang', 'en');
   assert.deepEqual(cfg.recipients[0], { email: 'z@b.cc', lang: 'en', alerts: [] });
+});
+
+test('usage text formats dollars in both languages', async () => {
+  const { usageText, usd } = await import('../public/js/views/settings-model.js');
+  assert.equal(usageText({ spentUsd: 0.42, budgetUsd: 5 }, 'ca'), 'Cost de l\u2019IA aquest mes: 0,42\u00a0USD de 5\u00a0USD de l\u00edmit');
+  assert.equal(usageText({ spentUsd: 0.42, budgetUsd: 5 }, 'en'), 'AI cost this month: 0.42\u00a0USD of a 5\u00a0USD limit');
+  assert.equal(usageText({ spentUsd: 0, budgetUsd: 0.25 }, 'ca'), 'Cost de l\u2019IA aquest mes: 0,00\u00a0USD de 0,25\u00a0USD de l\u00edmit');
+  assert.equal(usageText({ spentUsd: 1234.5, budgetUsd: 2000 }, 'en'), 'AI cost this month: 1,234.50\u00a0USD of a 2,000\u00a0USD limit');
+  assert.equal(usd(0.0084, 'ca'), '<\u00a00,01\u00a0USD');
+  assert.equal(usd(0.0084, 'en'), '<\u00a00.01\u00a0USD');
 });
