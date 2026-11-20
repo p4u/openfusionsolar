@@ -121,6 +121,9 @@ create table if not exists ai_usage (
   model text not null, tokens_in integer, tokens_out integer, cost_usd real, ref text
 );
 create index if not exists ai_usage_ts on ai_usage(ts);
+-- Spanish market prices from REE (src/market.js): past complete days only.
+create table if not exists market_prices (ts integer not null, kind text not null, eur_kwh real not null,
+  primary key (ts, kind)) without rowid;  -- ts: the hour's start, epoch ms; kind: pvpc | spot
 `;
 
 const DAILY_COLS = ['pv_kwh', 'load_kwh', 'import_kwh', 'export_kwh', 'self_use_kwh', 'charge_kwh', 'discharge_kwh',
@@ -259,6 +262,9 @@ export class Store {
                              (select id from chat_conversations order by updated_at desc, id desc limit ?)`),
       addUsage: q('insert into ai_usage (ts, job, model, tokens_in, tokens_out, cost_usd, ref) values (?, ?, ?, ?, ?, ?, ?)'),
       usageCostSince: q('select coalesce(sum(cost_usd), 0) as v from ai_usage where ts >= ?'),
+      countUsage: q('select count(*) as n from ai_usage where job in (select value from json_each(?)) and ts >= ?'),
+      marketPrices: q('select ts, kind, eur_kwh from market_prices where ts >= ? and ts < ? order by ts, kind'),
+      saveMarketPrice: q('insert or replace into market_prices (ts, kind, eur_kwh) values (?, ?, ?)'),
     };
   }
 
@@ -633,5 +639,23 @@ export class Store {
 
   usageCostSince(ts) {
     return this.st.usageCostSince.get(ts).v;
+  }
+
+  // Rows of ai_usage with one of the given jobs, at or after `since`.
+  countUsage(jobs, since) {
+    return this.st.countUsage.get(JSON.stringify(jobs), since).n;
+  }
+
+  // --- market prices ---
+
+  // [{ ts, kind, eur_kwh }] with ts in [from, to)
+  marketPrices(from, to) {
+    return this.st.marketPrices.all(from, to);
+  }
+
+  saveMarketDay(rows) {
+    this.tx(() => {
+      for (const r of rows) this.st.saveMarketPrice.run(r.ts, r.kind, r.eur_kwh);
+    });
   }
 }
