@@ -18,7 +18,7 @@ const outcome = (list, id) => {
 };
 
 test('the schema is strict and the prompt is the spec text', () => {
-  assert.equal(SCHEMA_V, 1);
+  assert.equal(SCHEMA_V, 2);
   const walk = (s) => {
     if (s.type === 'object') {
       assert.equal(s.additionalProperties, false);
@@ -65,6 +65,35 @@ test('the golden sample normalises and passes every hard and soft check', () => 
   }
   assert.deepEqual(list.filter((c) => c.outcome !== 'pass').map((c) => `${c.id} ${c.outcome}`), []);
   assert.equal(retryText(list), '');
+});
+
+test('several VAT lines: summed base and VAT, the largest base gives the rate, H2 checks each line', () => {
+  const bill = normalise(fixture('sample-v1'));
+  bill.totals = { ...bill.totals, tax_base: 24.56, vat_pct: null, vat: 2.05,
+    vat_rates: [{ pct: 21, base: -1.94, amount: -0.41 }, { pct: 10, base: 24.56, amount: 2.46 }] };
+  const { row } = toRow(bill);
+  assert.deepEqual([row.tax_base_eur, row.vat_eur, row.vat_pct], [22.62, 2.05, 10]);
+  assert.equal(JSON.parse(row.vat_rates).length, 2);
+  assert.equal(outcome(checks(row, { today }), 'H2'), 'pass');
+  const bad = { ...row, vat_rates: JSON.stringify([{ pct: 21, base: -1.94, amount: -0.41 }, { pct: 10, base: 24.56, amount: 2.86 }]) };
+  assert.equal(outcome(checks(bad, { today }), 'H2'), 'fail');
+  // one VAT line fills what the model left empty; it is not kept
+  bill.totals = { tax_base: null, vat_pct: null, vat: null, total: 59.15, vat_rates: [{ pct: 21, base: 47.57, amount: 9.99 }] };
+  const single = toRow(bill).row;
+  assert.deepEqual([single.tax_base_eur, single.vat_eur, single.vat_pct, single.vat_rates], [47.57, 9.99, 21, null]);
+});
+
+test('a discount after VAT joins the exempt concepts; a surplus valuation given with a cap becomes the discount applied', () => {
+  const bill = normalise({ ...fixture('sample-v1'), charges: { ...fixture('sample-v1').charges, other_exempt: 0.35, discount_after_vat: 2.02 } });
+  assert.equal(toRow(bill).row.other_exempt_eur, -1.67);
+  // sample surplus: 24 kWh × 0.03 = 0.72 valued; 0.30 left uncompensated by the cap
+  const capped = normalise(fixture('sample-v1'));
+  capped.surplus = { ...capped.surplus, amount: 0.72, uncompensated_amount: 0.3 };
+  const { row } = toRow(capped);
+  assert.equal(row.surplus_eur, 0.42);
+  assert.equal(outcome(checks(row, { today }).filter((c) => c.op === '×' || c.id !== 'S2'), 'S2'), 'pass');
+  capped.surplus.amount = 0.42; // already the discount applied: left as printed
+  assert.equal(toRow(capped).row.surplus_eur, 0.42);
 });
 
 test('mutating one figure fails the right check and marks the field suspect', () => {

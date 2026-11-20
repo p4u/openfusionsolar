@@ -180,6 +180,13 @@ test('tools reject bad arguments with a reason and never write', () => {
   const bare = runTool('get_invoice', { id: store.insertInvoice({ ...sample().row, invoice_number: 'B2', status: 'draft' }) }, deps).result.breakdown;
   assert.deepEqual(bare.items.find((i) => i.key === 'other'), { key: 'other', amount: 1.59 });
   assert.equal(bare.itemsSum, 59.15);
+  // a discount after VAT (Flux Solar) is itemised beside the donation; together they are the exempt column
+  const s2 = sample();
+  const fluxId = store.insertInvoice({ ...s2.row, invoice_number: 'B3', status: 'draft', other_exempt_eur: -0.43, total_eur: 57.13 },
+    [...s2.lines, { pos: 99, section: 'discount', concept: 'Descompte per Flux Solar', amount_eur: -2.02, info: 0 }], []);
+  const flux = runTool('get_invoice', { id: fluxId }, deps).result.breakdown;
+  assert.deepEqual(flux.items.filter((i) => i.key === 'other').map((i) => [i.concept, i.amount]), [['Donatiu voluntari', 1.59], ['Descompte per Flux Solar', -2.02]]);
+  assert.equal(flux.itemsSum, 57.13);
   assert.equal(runTool('compare_invoice', { id }, deps).result.verdict, 'ok');
   assert.equal(runTool('list_invoices', {}, deps).result.invoices[0].total_eur, 59.15);
 

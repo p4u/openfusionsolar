@@ -91,6 +91,7 @@ create table if not exists invoices (
   surplus_eur real, surplus_lost_eur real,                               -- compensated; generated but not compensated
   social_bonus_eur real, meter_rent_eur real, elec_tax_pct real, elec_tax_eur real,
   other_taxed_eur real, other_exempt_eur real, tax_base_eur real, vat_pct real, vat_eur real, total_eur real,
+  vat_rates text,                                                        -- JSON [{pct, base, amount}] when several VAT lines
   edits text, notes text, created_at integer not null, updated_at integer not null
 );
 create index if not exists invoices_period on invoices(period_from, period_to);
@@ -138,7 +139,7 @@ export const INVOICE_COLS = Object.freeze(['group_id', 'status', 'auto_confirmed
   'surplus_p1_kwh', 'surplus_p2_kwh', 'surplus_p3_kwh', 'surplus_price',
   'surplus_eur', 'surplus_lost_eur',
   'social_bonus_eur', 'meter_rent_eur', 'elec_tax_pct', 'elec_tax_eur',
-  'other_taxed_eur', 'other_exempt_eur', 'tax_base_eur', 'vat_pct', 'vat_eur', 'total_eur',
+  'other_taxed_eur', 'other_exempt_eur', 'tax_base_eur', 'vat_pct', 'vat_eur', 'total_eur', 'vat_rates',
   'edits', 'notes']);
 export const LINE_COLS = Object.freeze(['pos', 'section', 'concept', 'period', 'quantity', 'unit', 'unit_price', 'amount_eur',
   'vat_pct', 'info']);
@@ -165,6 +166,8 @@ export class Store {
     // the rows (one per address) of one alert event
     const logCols = new Set(this.db.prepare('pragma table_info(alert_log)').all().map((c) => c.name));
     for (const c of ['recipients', 'lang', 'grp']) if (!logCols.has(c)) this.db.exec(`alter table alert_log add column ${c} text`);
+    const invCols = new Set(this.db.prepare('pragma table_info(invoices)').all().map((c) => c.name));
+    if (!invCols.has('vat_rates')) this.db.exec('alter table invoices add column vat_rates text');
     const q = (sql) => this.db.prepare(sql);
     this.st = {
       lastSha: q('select sha from raw where endpoint = ? and params = ? order by id desc limit 1'),
