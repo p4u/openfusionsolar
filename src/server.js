@@ -109,7 +109,7 @@ const readCookie = (header) => /(?:^|;\s*)ofs_session=([^;]*)/.exec(header ?? ''
 // routes: extra routes merged into the table below (a key already there throws).
 export function startServer({
   store, collector, config = {}, port = 8080, host = '127.0.0.1', log = console.log, alerts = null, failDelayMs = 300,
-  routes: extraRoutes = {},
+  routes: extraRoutes = {}, web = null,
 }) {
   if (!config.password) throw new Error('config.password is required');
   const startedAt = Date.now();
@@ -168,6 +168,8 @@ export function startServer({
       ai: { enabled: Boolean(config.ai?.enabled) },
       plantName: config.plantName ?? null,
       alerts: alerts ? alerts.status() : { smtpConfigured: false, firing: [] },
+      // availability and the last error code only: never the key (spec 3.3)
+      web: web ? (({ available, lastError }) => ({ available, lastError }))(web.status()) : { available: false, lastError: null },
       prices: config.prices
         ? (({ p1, p2, p3, export: exp, adjust, iee, vat, contractedP1, contractedP2 }) =>
           ({ p1, p2, p3, export: exp, adjust, iee, vat, contractedP1, contractedP2 }))(config.prices)
