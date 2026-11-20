@@ -134,6 +134,8 @@ export function createDemoDb(file, now = Date.now()) {
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   const store = new Store(abs);
   buildDemo(store, now);
+  // a current reading, so the "right now" panels show a working plant: solar = house + battery charging + export
+  store.saveRealtime({ ts: now, pv_kw: 3.2, load_kw: 1.1, grid_kw: -0.7, battery_kw: 1.4, soc: 72, inverter_kw: 3.2 });
   store.db.close();
   return abs;
 }

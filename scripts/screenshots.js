@@ -1,5 +1,6 @@
-// Writes the manifest screenshots from the invented demo data set (never real household data):
-//   node scripts/screenshots.js
+// Writes screenshots from the invented demo data set (never real household data):
+//   node scripts/screenshots.js            the manifest's two (public/icons/screenshot-*.png)
+//   node scripts/screenshots.js --readme   the README's (screenshots/*.png)
 // Builds a fresh demo DB under ~/.cache/openfusionsolar/shots/, runs the app there (that directory has no .env, so no
 // real key or account is read), drives a headless Chromium over the DevTools protocol and writes
 // public/icons/screenshot-narrow.png (/, 360x640 at 3x = 1080x1920) and screenshot-wide.png (the assistant with a
@@ -67,7 +68,7 @@ async function devtools(port) {
     await send('Page.navigate', { url });
     await loaded;
   };
-  return { send, evaluate, go, close: () => ws.close() };
+  return { send, evaluate, go, once, close: () => ws.close() };
 }
 
 fs.rmSync(DIR, { recursive: true, force: true });
@@ -99,17 +100,35 @@ try {
     await cdp.evaluate(`fetch('/api/assistant/conversations/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"id":${Number(c.id)}}' })`);
   }
 
-  const shot = async (url, { width, height, scale, mobile }, file) => {
+  const shot = async (url, { width, height, scale, mobile, dark = false }, file) => {
     await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile });
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: dark ? 'dark' : 'light' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
     await cdp.go('about:blank');
     await cdp.go(url);
+    await cdp.evaluate(`localStorage.setItem('theme', '${dark ? 'dark' : 'light'}')`);
+    const reloaded = cdp.once('Page.loadEventFired'); // the same url again would be a hash change, with no load event
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await reloaded;
     await sleep(3000); // data requests and chart drawing
     const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync(path.join(REPO, 'public/icons', file), Buffer.from(data, 'base64'));
-    console.log(`written public/icons/${file}`);
+    fs.mkdirSync(path.dirname(path.join(REPO, file)), { recursive: true });
+    fs.writeFileSync(path.join(REPO, file), Buffer.from(data, 'base64'));
+    console.log(`written ${file}`);
   };
-  await shot(`${BASE}/`, { width: 360, height: 640, scale: 3, mobile: true }, 'screenshot-narrow.png');
-  await shot(`${BASE}/#/assistant?c=${conv.id}`, { width: 1920, height: 1080, scale: 1, mobile: false }, 'screenshot-wide.png');
+  const desktop = { width: 1440, height: 900, scale: 1, mobile: false };
+  const phone = { width: 390, height: 844, scale: 2, mobile: true };
+  if (process.argv.includes('--readme')) {
+    await shot(`${BASE}/`, desktop, 'screenshots/now-desktop.png');
+    await shot(`${BASE}/#/energy`, desktop, 'screenshots/energy-desktop.png');
+    await shot(`${BASE}/#/money`, desktop, 'screenshots/billing-desktop.png');
+    await shot(`${BASE}/#/assistant?c=${conv.id}`, desktop, 'screenshots/assistant-desktop.png');
+    await shot(`${BASE}/`, phone, 'screenshots/now-phone.png');
+    await shot(`${BASE}/#/assistant?c=${conv.id}`, phone, 'screenshots/assistant-phone.png');
+    await shot(`${BASE}/#/battery`, { ...phone, dark: true }, 'screenshots/battery-phone-dark.png');
+  } else {
+    await shot(`${BASE}/`, { width: 360, height: 640, scale: 3, mobile: true }, 'public/icons/screenshot-narrow.png');
+    await shot(`${BASE}/#/assistant?c=${conv.id}`, { width: 1920, height: 1080, scale: 1, mobile: false }, 'public/icons/screenshot-wide.png');
+  }
 } finally {
   cdp?.close();
   chrome.kill();

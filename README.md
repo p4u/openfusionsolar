@@ -6,7 +6,30 @@ password-protected web app, in Catalan or English, light or dark. It can email y
 
 It is generic: plant name, capacity, battery size and limits come from FusionSolar or from `.env`, never from code.
 
-## What you get
+| | |
+|---|---|
+| ![Now: where the energy is going and the battery](screenshots/now-desktop.png) | ![Energy: power over a day](screenshots/energy-desktop.png) |
+| ![Billing: what you paid and whether each bill matches the measurements](screenshots/billing-desktop.png) | ![Assistant: a chart drawn from the app's data](screenshots/assistant-desktop.png) |
+
+<p>
+  <img src="screenshots/now-phone.png" alt="Now on a phone" width="240">
+  <img src="screenshots/assistant-phone.png" alt="The assistant on a phone, with a chart and suggested answers" width="240">
+  <img src="screenshots/battery-phone-dark.png" alt="Battery on a phone, dark theme" width="240">
+</p>
+
+The screenshots use an invented demo plant (`node scripts/demo-db.js`), not real household data. To regenerate them:
+`node scripts/screenshots.js --readme`.
+
+## Features
+
+- **Self-hosted and private**: one Docker container, one SQLite file, one password. Your readings and bills stay on
+  your server; only the optional assistant sends questions and bills to the AI provider you configure.
+- **Installable phone app**: a PWA with its own install button, bottom navigation, light and dark themes, and a chat
+  that resizes with the on-screen keyboard. Works in Catalan and English.
+- **Email alerts**: power cuts, stopped panels, battery and device alarms, to one or more recipients, each choosing
+  what they get, with quiet hours.
+
+What each view shows:
 
 - **Now**: one sentence that answers "do I need to do anything?", where the electricity is going right now, the
   battery, today's totals and chart, this month so far and the latest incidents.
