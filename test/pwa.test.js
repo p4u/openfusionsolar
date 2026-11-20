@@ -50,7 +50,7 @@ test('the precache before login holds only public paths', () => {
 });
 
 test('the cache name carries the version, so an update clears the old shell', () => {
-  assert.match(SW, /^const VERSION = \d+;$/m);
+  assert.match(SW, /^const VERSION = 5;$/m); // bumped once for assistant 2 and the mobile shell
   assert.match(SW, /const SHELL = `ofs-shell-v\$\{VERSION\}`;/);
   assert.match(SW, /name\.startsWith\('ofs-'\) && name !== SHELL && name !== DATA/);
 });
@@ -75,6 +75,10 @@ test('manifest, worker, offline page and icons have their types and headers', ()
       ['OpenFusionSolar', 'Solar', '/', '/', 'standalone'],
     );
     assert.equal(manifest.background_color, '#f5f5f5'); // tokens.css --canvas
+    assert.equal(manifest.description, 'Seguiment de la instal·lació solar, la bateria i les factures');
+    assert.deepEqual(manifest.categories, ['utilities', 'productivity']);
+    assert.deepEqual(manifest.shortcuts.map((s) => [s.name, s.url]), [['Assistent', '/#/assistant'], ['Factures', '/#/money'], ['Ara', '/']]);
+    for (const s of manifest.shortcuts) assert.deepEqual(s.icons.map((i) => i.src), ['/icons/icon-192.png'], s.name);
     for (const size of ['192x192', '512x512']) assert.ok(manifest.icons.some((i) => i.sizes === size && i.purpose === 'any'), size);
     assert.ok(manifest.icons.some((i) => i.purpose === 'maskable' && i.sizes === '512x512'));
     for (const icon of manifest.icons) {
@@ -102,6 +106,10 @@ test('manifest, worker, offline page and icons have their types and headers', ()
     assert.match(offline.headers.get('content-type'), /^text\/html/);
     assert.doesNotMatch(await offline.text(), /<script(?![^>]*src="\/js\/theme\.js")/, 'no inline script (CSP)');
   }));
+
+test('the app page lets the keyboard resize the layout (spec 4.1)', () => {
+  assert.match(fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8'), /name="viewport" content="[^"]*interactive-widget=resizes-content"/);
+});
 
 test('both pages link the manifest, the touch icon and a theme colour per scheme', () => {
   for (const page of ['index.html', 'login.html']) {
