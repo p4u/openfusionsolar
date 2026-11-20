@@ -77,6 +77,9 @@ test('several VAT lines: summed base and VAT, the largest base gives the rate, H
   assert.equal(outcome(checks(row, { today }), 'H2'), 'pass');
   const bad = { ...row, vat_rates: JSON.stringify([{ pct: 21, base: -1.94, amount: -0.41 }, { pct: 10, base: 24.56, amount: 2.86 }]) };
   assert.equal(outcome(checks(bad, { today }), 'H2'), 'fail');
+  // every VAT line's rate is one of the Spanish rates, not only the largest
+  const odd = { ...row, vat_rates: JSON.stringify([{ pct: 10, base: 100, amount: 10 }, { pct: 99, base: 10, amount: 9.9 }]), tax_base_eur: 110, vat_eur: 19.9 };
+  assert.equal(outcome(checks(odd, { today }), 'H6'), 'fail');
   // one VAT line fills what the model left empty; it is not kept
   bill.totals = { tax_base: null, vat_pct: null, vat: null, total: 59.15, vat_rates: [{ pct: 21, base: 47.57, amount: 9.99 }] };
   const single = toRow(bill).row;
@@ -94,6 +97,14 @@ test('a discount after VAT joins the exempt concepts; a surplus valuation given 
   assert.equal(outcome(checks(row, { today }).filter((c) => c.op === '×' || c.id !== 'S2'), 'S2'), 'pass');
   capped.surplus.amount = 0.42; // already the discount applied: left as printed
   assert.equal(toRow(capped).row.surplus_eur, 0.42);
+  // a small cap already split (0.70 + 0.02 = 0.72) is not subtracted again
+  capped.surplus = { ...capped.surplus, amount: 0.7, uncompensated_amount: 0.02 };
+  assert.equal(toRow(capped).row.surplus_eur, 0.7);
+  // editing only the uncompensated amount fails S2 and names that field
+  const { row: split } = toRow({ ...capped, surplus: { ...capped.surplus, amount: 0.42, uncompensated_amount: 0.3 } });
+  const s2 = checks({ ...split, surplus_lost_eur: 0.5 }, { today }).find((c) => c.id === 'S2' && c.op === '×');
+  assert.equal(s2.outcome, 'fail');
+  assert.ok(s2.fields.includes('surplus_lost_eur'));
 });
 
 test('mutating one figure fails the right check and marks the field suspect', () => {

@@ -167,7 +167,8 @@ export function toRow(bill) {
   // applied is the valuation minus what the cap left uncompensated
   const sKwh = P.map((p) => row[`surplus_${p}_kwh`]).filter(num);
   if (num(row.surplus_eur) && num(row.surplus_lost_eur) && row.surplus_lost_eur > 0 && sKwh.length && num(row.surplus_price)
-    && near(sKwh.reduce((a, b) => a + b, 0) * row.surplus_price, row.surplus_eur, TOL_LINE)) {
+    && near(sKwh.reduce((a, b) => a + b, 0) * row.surplus_price, row.surplus_eur, TOL_LINE)
+    && !near(sKwh.reduce((a, b) => a + b, 0) * row.surplus_price, row.surplus_eur + row.surplus_lost_eur, TOL_LINE)) { // not already split
     row.surplus_eur = round(row.surplus_eur - row.surplus_lost_eur, 2);
   }
   // several VAT lines: the base and VAT are their sums and vat_pct the rate of the largest base (the energy's), so
@@ -281,7 +282,10 @@ function h6(row) {
   range(['price_p1', 'price_p2', 'price_p3'], 0, 1, false, false, 'energy price out of 0 to 1 EUR/kWh');
   range(['contracted_p1_kw', 'contracted_p2_kw'], 0, 15, false, false, 'power out of 0 to 15 kW');
   range(['total_eur'], -500, 5000, false, false, 'total out of -500 to 5000');
-  if (num(row.vat_pct) && ![0, 5, 10, 21].includes(row.vat_pct)) bad.push({ cols: ['vat_pct'], reason: 'VAT rate not 0, 5, 10 or 21' });
+  let lines = [];
+  try { lines = row.vat_rates ? JSON.parse(row.vat_rates) : []; } catch { /* H2 reports it */ }
+  const rates = [row.vat_pct, ...(Array.isArray(lines) ? lines.map((r) => r?.pct) : [])].filter(num);
+  if (rates.some((v) => ![0, 5, 10, 21].includes(v))) bad.push({ cols: ['vat_pct'], reason: 'VAT rate not 0, 5, 10 or 21' });
   return ruleCheck('H6', true, row, bad);
 }
 
@@ -353,10 +357,11 @@ export function checks(row, { readings = [], today = localDay(Date.now()), previ
   const surplusKwh = P.map((p) => `surplus_${p}_kwh`).filter((c) => num(row[c]));
   if (surplusKwh.length || num(row.surplus_eur)) {
     const kwh = surplusKwh.reduce((s, c) => s + row[c], 0);
-    const base = { id: 'S2', hard: false, fields: [...surplusKwh, 'surplus_price', 'surplus_eur'], terms: [...surplusKwh, 'surplus_price'].map((c) => ({ col: c, value: row[c] ?? null })), op: '×', target: 'surplus_eur', actual: row.surplus_eur ?? null };
+    const lost = num(row.surplus_lost_eur) ? row.surplus_lost_eur : 0; // the valuation is the discount plus what the cap left out
+    const base = { id: 'S2', hard: false, fields: [...surplusKwh, 'surplus_price', 'surplus_eur', ...(lost ? ['surplus_lost_eur'] : [])], terms: [...surplusKwh, 'surplus_price'].map((c) => ({ col: c, value: row[c] ?? null })), op: '×', target: 'surplus_eur', actual: num(row.surplus_eur) ? round(row.surplus_eur + lost, 2) : null };
     if (!surplusKwh.length || !num(row.surplus_price) || !num(row.surplus_eur)) out.push({ ...base, outcome: 'missing', expected: null });
     // the valuation (kWh × price) is what was compensated plus what the cap left uncompensated
-    else out.push({ ...base, outcome: near(kwh * row.surplus_price, row.surplus_eur + (num(row.surplus_lost_eur) ? row.surplus_lost_eur : 0), TOL_LINE) ? 'pass' : 'fail', expected: round(kwh * row.surplus_price, 2) });
+    else out.push({ ...base, outcome: near(kwh * row.surplus_price, row.surplus_eur + lost, TOL_LINE) ? 'pass' : 'fail', expected: round(kwh * row.surplus_price, 2) });
     if (num(row.surplus_eur) && num(row.energy_eur) && row.surplus_eur > row.energy_eur + 1e-9) {
       out.push(ruleCheck('S2', false, row, [{ cols: ['surplus_eur', 'energy_eur'], reason: 'the surplus discount is larger than the energy term' }]));
     }
