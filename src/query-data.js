@@ -15,8 +15,10 @@ const ENERGY_BUCKETS = ['1d', '1mo', '1y'];
 const POWER_BUCKETS = [...SERIES_BUCKETS, '1d'];
 const X_TYPE = { '5m': 'time', '15m': 'time', '1h': 'time', '1d': 'day', '1mo': 'month', '1y': 'year' };
 const KEY_LEN = { '1d': 10, '1mo': 7, '1y': 4 };
-// Ruling R4: every range that reads market prices is at most 31 days (spec 3.3), checked before market.hourly.
+// Rulings R4, R5: the price series take at most 31 days (spec 3.3); import_cost_pvpc_eur up to a year, since
+// market.hourly fetches in 31-day chunks and caches past days. Checked before market.hourly.
 export const MARKET_DAYS = 31;
+export const COST_DAYS = 366;
 const COST_UNIT = '€ (energy term only, no taxes or fixed terms)';
 const KEYS = ['metrics', 'from', 'to', 'bucket', 'group_by', 'agg'];
 
@@ -75,7 +77,8 @@ function parse(args) {
     const legal = SERIES_BUCKETS.includes(bucket) ? legalSeriesBuckets(days) : legalEnergyBuckets(days);
     if (!legal.includes(bucket)) fail(`bucket ${bucket} gives too many rows over ${days} days${legal.length ? `: use ${legal.join(', ')} or a shorter range` : ''}`);
   }
-  if (metrics.some(readsMarket) && days > MARKET_DAYS) fail(`market prices take at most ${MARKET_DAYS} days`);
+  if (metrics.some((n) => METRICS[n].group === 'market') && days > MARKET_DAYS) fail(`market prices take at most ${MARKET_DAYS} days`);
+  if (metrics.includes('import_cost_pvpc_eur') && days > COST_DAYS) fail(`import_cost_pvpc_eur takes at most ${COST_DAYS} days`);
 
   if (by != null || agg != null) {
     if (by == null) fail('agg needs group_by');
