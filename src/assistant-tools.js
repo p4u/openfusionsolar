@@ -89,7 +89,7 @@ const BREAKDOWN_NOTE = 'Read the items out as they are, in this order: never mer
 function breakdown(inv, lines = []) {
   const otherCols = ['other_taxed_eur', 'other_exempt_eur'].filter((c) => inv[c] != null);
   const otherEur = otherCols.reduce((s, c) => s + inv[c], 0);
-  const otherLines = lines.filter((l) => l.section === 'other' && !l.info && l.amount_eur != null);
+  const otherLines = lines.filter((l) => (l.section === 'other' || l.section === 'discount') && !l.info && l.amount_eur != null); // a discount after VAT (Flux Solar) is one of them
   const byLine = otherLines.length && Math.abs(otherLines.reduce((s, l) => s + l.amount_eur, 0) - otherEur) <= 0.02;
   const items = [
     ['energy', inv.energy_eur], ['power', inv.power_eur], ['socialBonus', inv.social_bonus_eur], ['meterRent', inv.meter_rent_eur],

@@ -177,3 +177,18 @@ test('chat messages come oldest first, limited to the newest; deletes remove mes
   assert.equal(store.conversations().length, 0);
   assert.equal(store.chatMessages(other).length, 0);
 });
+
+test('a database from before vat_rates gains the column and keeps its bills', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ofs-vat-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dbPath = path.join(dir, 'old.db');
+  const old = new Store(dbPath);
+  const id = old.insertInvoice({ status: 'confirmed', total_eur: 10 });
+  old.db.exec('alter table invoices drop column vat_rates');
+  old.db.close();
+  const store = new Store(dbPath);
+  assert.ok(cols(store, 'invoices').includes('vat_rates'));
+  assert.equal(store.invoice(id).total_eur, 10);
+  const rates = JSON.stringify([{ pct: 21, base: -1, amount: -0.21 }, { pct: 10, base: 11, amount: 1.1 }]);
+  assert.equal(store.invoice(store.insertInvoice({ status: 'draft', vat_rates: rates })).vat_rates, rates);
+});
