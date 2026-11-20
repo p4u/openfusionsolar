@@ -436,7 +436,7 @@ Terms in Catalan, Spanish and English, defined plainly.
 | balanç net horari | balance neto horario | hourly netting | Export and import in the same hour cancel out [38] |
 | ajust límit de compensació | ajuste límite de compensación | compensation cap adjustment | Bill line removing surplus credit above the cap [40] |
 | Flux Solar | Flux Solar | Flux Solar | Som scheme turning capped-off surplus into Sols [40] |
-| Sols | Sols | Sols | Som credit; 1 Sol = 1 € off a later bill (as of 2026-11-20) [40] |
+| Sols | Sols | Sols | A supplier's solar credit; 1 Sol = 1 € off a later bill [40] |
 
 ### glossary/tariff
 
@@ -467,7 +467,7 @@ Terms in Catalan, Spanish and English, defined plainly.
 | mercat majorista / pool | mercado mayorista | wholesale market | Where electricity is traded day-ahead (OMIE) [36] |
 | OMIE | OMIE | Iberian market operator | Runs the day-ahead market [36] |
 | REE | REE | grid operator | Runs the grid; publishes prices [34] |
-| serveis d'ajust | servicios de ajuste | adjustment services | Cost of balancing the grid; Som bills it apart [26] |
+| serveis d'ajust | servicios de ajuste | adjustment services | Cost of balancing the grid; some suppliers bill it apart [26] |
 | bo social | bono social | social discount | PVPC discount for vulnerable homes [27] |
 | finançament del bo social | financiación del bono social | social bonus levy | Fixed daily charge every bill pays [26] |
 | impost elèctric | impuesto eléctrico (IEE) | electricity tax | 5.11% tax on the electricity bill [20] |

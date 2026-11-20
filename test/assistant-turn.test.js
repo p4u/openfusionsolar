@@ -403,3 +403,27 @@ test('a TypeError inside a tool still ends the turn with internal', async (t) =>
   assert.ok(logs.includes('assistant internal: boom'));
   assert.equal((await chat({ text: 'Hola' })).status, 200); // released
 });
+
+test('the system prompt\'s examples carry no digits; it says "tu", running totals and the power term (rulings R6a, R7)', () => {
+  for (const lang of ['ca', 'en']) {
+    const p = systemPrompt({ today: '2026-11-20', timeZone: 'Europe/Madrid', lang, plantName: 'Casa Prova', guide: loadGuide() });
+    const examples = [...p.matchAll(/\(for example[^)]*\)|\([^()]*€\)/g)].map((m) => m[0]);
+    assert.ok(examples.length >= 4, `${lang}: ${examples}`);
+    for (const e of examples) assert.doesNotMatch(e, /\d/, `${lang}: ${e}`);
+    assert.doesNotMatch(p, /59[.,]15|159 kWh/);
+    assert.equal(p.includes('Address the user as "tu"'), lang === 'ca', lang);
+    assert.ok(p.includes('cumulative, never chains of calculate'), lang);
+    assert.match(p, /under PVPC it is regulated \(tolls \+ charges \+ a fixed marketing margin\).*energy term alone.*partial/);
+  }
+});
+
+test('a plant name joins the refused strings only from 8 characters or with a digit (ruling R6d)', async (t) => {
+  for (const [plantName, refused] of [['Casa', false], ['Casa 12', true], ['Mas del Pi', true]]) {
+    const web = fakeWeb();
+    const query = `preu llum ${plantName.toLowerCase()}`;
+    const { chat, toolResults } = await setup(t, { web, config: { plantName }, steps: [tools(['web_search', { query }]), say('Fet.')] });
+    await chat({ text: 'Busca-ho' });
+    assert.equal(/plant name/.test(toolResults(1)[0].error ?? ''), refused, plantName);
+    assert.equal(web.calls.length, refused ? 0 : 1, plantName);
+  }
+});

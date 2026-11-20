@@ -78,3 +78,26 @@ test('guidePrompt is at most 2200 characters and holds 15 glossary terms', () =>
   for (const s of guide.sections) assert.ok(p.includes(`${s.id}: `), s.id);
   assert.match(p, /how-it-works, self-consumption-terms/);
 });
+
+test('read_guide ends with the cited sources as "[n] url" lines that read_web_page accepts (ruling R6c)', async () => {
+  const { urlRefusal } = await import('../src/web-rules.js');
+  const { text } = readGuide(guide, 'self-consumption-compensation');
+  const lines = text.slice(text.indexOf('\n\nSources:\n') + 11).split('\n');
+  assert.ok(lines.length > 3);
+  for (const l of lines) {
+    const [, n, url] = /^\[(\d+)\] (https:\S+)$/.exec(l);
+    assert.ok(text.includes(`[${n}]`), n);
+    assert.equal(urlRefusal(url, guide.sources), null, url);
+  }
+  assert.ok(lines.some((l) => l.startsWith('[40] https://')));
+  const g = parseGuide('## s\n\nSummary.\n\n### s/a\nA fact [2] and [1].\n\n### s/b\nno citation\n\n## Sources\n\n1. One. https://a.example/x\n2. Two. https://b.example/y (abstract: https://b.example/z)\n');
+  assert.equal(readGuide(g, 's/a').text, '### s/a\nA fact [2] and [1].\n\nSources:\n[1] https://a.example/x\n[2] https://b.example/y\n[2] https://b.example/z');
+  assert.equal(readGuide(g, 's/b').text, '### s/b\nno citation');
+});
+
+test('the prompt\'s glossary lines name no supplier (ruling R6b)', () => {
+  const p = guidePrompt(guide);
+  assert.doesNotMatch(p, /\bSom\b/);
+  assert.match(p, /\nSols = A supplier's solar credit; 1 Sol = 1 € off a later bill\n/);
+  assert.match(p, /\nserveis d'ajust = Cost of balancing the grid; some suppliers bill it apart\n/);
+});

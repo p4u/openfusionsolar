@@ -148,7 +148,7 @@ test('import_cost_pvpc_eur sums import × pvpc per day', async () => {
   const [from, to] = ['2026-07-25', '2026-07-31'];
   const ds = await buildDataset({ metrics: ['import_cost_pvpc_eur', 'pvpc_eur_kwh'], from, to, bucket: '1d' }, deps());
   assert.deepEqual(ds.source, ['measured', 'ree']);
-  assert.equal(ds.columns[0].unit, '€ (energy term only, no taxes or fixed terms)');
+  assert.equal(ds.columns[0].unit, '€'); // ruling R7c: the caveat moved to the query_data note
   assert.equal(ds.x.type, 'day');
   const s = aggregate.series(store, { from, to, bucket: '1h', now: NOW });
   ds.x.values.forEach((d, k) => {
@@ -273,4 +273,15 @@ test('the catalogue: units, buckets and sources as spec 3.4', () => {
   assert.deepEqual(METRICS.bill_surplus_price, { group: 'bills', unit: '€/kWh', buckets: [], source: ['bills'] });
   assert.deepEqual(METRICS.spot_eur_kwh, { group: 'market', unit: '€/kWh', buckets: ['1h', '1d'], source: ['ree'] });
   assert.deepEqual(METRICS.import_cost_pvpc_eur.source, ['measured', 'ree']);
+});
+
+test('query_data says import_cost_pvpc_eur is the energy term only; its unit is plain € (ruling R7c)', async () => {
+  const { runTool } = await import('../src/assistant-tools.js');
+  const { createDatasets } = await import('../src/datasets.js');
+  const args = { metrics: ['import_cost_pvpc_eur'], from: '2026-07-25', to: '2026-07-31', bucket: '1d' };
+  const out = await runTool('query_data', args, { ...deps(), datasets: createDatasets() });
+  assert.equal(out.result.units.import_cost_pvpc_eur, '€');
+  assert.match(out.result.note, /energy term only .*chart notes/);
+  const plain = await runTool('query_data', { ...args, metrics: ['import_kwh'] }, { ...deps(), datasets: createDatasets() });
+  assert.equal(plain.result.note, undefined);
 });

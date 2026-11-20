@@ -45,6 +45,14 @@ function toolStep(name, args) {
   return step;
 }
 
+// A final answer without figures, for tests about something else: the system prompt's examples no longer ground
+// the fixture's 59,15 € (ruling R6a), and these tests give the model no bill.
+function plainFinal() {
+  const step = structuredClone(fixture('chat-final-ca'));
+  step.response.choices[0].message.content = 'A l’octubre vas pagar la factura de l’1 al 31 d’octubre.';
+  return step;
+}
+
 const tableCounts = (store) => Object.fromEntries(store.db.prepare("select name from sqlite_master where type = 'table'").all()
   .map(({ name }) => [name, store.db.prepare(`select count(*) as n from "${name}"`).get().n]));
 
@@ -258,7 +266,7 @@ test('10 rounds at most, then a plain apology', async (t) => {
 });
 
 test('a closed connection aborts the upstream request', async (t) => {
-  const inner = fakeFetch(['timeout', fixture('chat-final-ca')]);
+  const inner = fakeFetch(['timeout', plainFinal()]);
   const signals = [];
   let called;
   const firstCall = new Promise((r) => { called = r; });
@@ -314,7 +322,7 @@ test('limits: 21st message in 5 minutes and a second turn in flight are 429; the
   const off = await setup(t, { apiKey: null });
   const o = await off.chat({ text: 'Hola' });
   assert.deepEqual([o.status, o.body], [409, { error: 'ai_disabled' }]);
-  assert.deepEqual(await off.get('/api/assistant/usage'), { enabled: false, month: '2026-11', spentUsd: 0, budgetUsd: 5 });
+  assert.deepEqual(await off.get('/api/assistant/usage'), { enabled: false, month: '2026-11', spentUsd: 0, budgetUsd: 5, webCalls: 0 });
 
   for (const body of [{ text: '' }, { text: 'x'.repeat(4001) }, { text: 'hola', lang: 'fr' }, { text: 'hola', conversationId: 99 },
     { text: 'hola', invoiceId: 7 }, { text: 'hola', attachments: ['../../etc/passwd'] }, { text: 'hola', attachments: Array(4).fill(randomUUID()) }]) {
@@ -405,7 +413,7 @@ test('an attached bill is waited for and shown as an invoice block', async (t) =
 });
 
 test('a non-bill attachment is reported', async (t) => {
-  const { chat, fake, srv, post } = await setup(t, { withInvoices: true, steps: [fixture('not-a-bill'), fixture('chat-final-ca')] });
+  const { chat, fake, srv, post } = await setup(t, { withInvoices: true, steps: [fixture('not-a-bill'), plainFinal()] });
   const group = randomUUID();
   await srv.request(`/api/invoices/upload?group=${group}&pos=0&source=chat`, { method: 'POST', headers: { 'content-type': 'application/pdf' }, body: pdf() });
   await post('/api/invoices/process', { group });
@@ -415,7 +423,7 @@ test('a non-bill attachment is reported', async (t) => {
 });
 
 test('conversations list, open, delete and delete-all', async (t) => {
-  const { chat, get, post, fake } = await setup(t, { steps: Array(3).fill(fixture('chat-final-ca')) });
+  const { chat, get, post, fake, store } = await setup(t, { steps: Array(3).fill(plainFinal()) });
   const a = (await chat({ text: 'Primera pregunta' })).events.at(-1).conversationId;
   const again = await chat({ text: 'I la segona?', conversationId: a });
   assert.equal(again.events.at(-1).conversationId, a);
@@ -438,8 +446,13 @@ test('conversations list, open, delete and delete-all', async (t) => {
   assert.deepEqual(await get('/api/assistant/conversations'), []);
 
   const usage = await get('/api/assistant/usage');
-  assert.deepEqual([usage.enabled, usage.month, usage.budgetUsd], [true, '2026-11', 5]);
+  assert.deepEqual([usage.enabled, usage.month, usage.budgetUsd, usage.webCalls], [true, '2026-11', 5, 0]);
   assert.ok(usage.spentUsd > 0);
+  // this month's web calls: searches and page reads since the 1st, not last month's nor the model calls
+  store.addUsage({ ts: NOW, job: 'web_search', model: 'jina', cost_usd: 0 });
+  store.addUsage({ ts: NOW, job: 'web_read', model: 'jina', cost_usd: 0 });
+  store.addUsage({ ts: Date.parse('2026-10-31T12:00:00Z'), job: 'web_search', model: 'jina', cost_usd: 0 });
+  assert.equal((await get('/api/assistant/usage')).webCalls, 2);
 });
 
 test('everything is 401 without a session', async (t) => {
@@ -455,7 +468,7 @@ test('everything is 401 without a session', async (t) => {
 });
 
 test('compare_invoice on a draft without a period answers nodata and the turn ends', async (t) => {
-  const { store, chat, fake } = await setup(t, { steps: [toolStep('compare_invoice', { id: 1 }), fixture('chat-final-ca')] });
+  const { store, chat, fake } = await setup(t, { steps: [toolStep('compare_invoice', { id: 1 }), plainFinal()] });
   assert.equal(store.insertInvoice({ status: 'draft' }), 1);
   const r = await chat({ text: 'Compara la factura' });
   assert.equal(r.events.at(-1).type, 'done');
@@ -468,7 +481,7 @@ const PRICES = { p1: 0.249, p2: 0.169, p3: 0.15, export: 0.03, adjust: 0.029, po
   socialDay: 0.024839, meterDay: 0.044839, iee: 0.0511269, vat: 0.21 };
 
 test('savings over a range come from estimate_bill with its note; a bill\'s savings say they cover its days only', async (t) => {
-  const steps = [toolStep('estimate_bill', { from: '2026-01-01', to: '2026-11-19' }), toolStep('compare_invoice', { id: 1 }), fixture('chat-final-ca')];
+  const steps = [toolStep('estimate_bill', { from: '2026-01-01', to: '2026-11-19' }), toolStep('compare_invoice', { id: 1 }), plainFinal()];
   const { store, chat, fake } = await setup(t, { steps, config: { prices: PRICES } });
   seed(store);
   for (let i = 1; i <= 31; i++) { // the house used more than it bought
@@ -493,7 +506,7 @@ test('savings over a range come from estimate_bill with its note; a bill\'s savi
 });
 
 test('a quiet chat stream gets ping lines, and none after the turn ends', async (t) => {
-  const fake = fakeFetch([fixture('chat-final-ca')]);
+  const fake = fakeFetch([plainFinal()]);
   const slow = async (...a) => { await new Promise((r) => setTimeout(r, 120)); return fake.fetch(...a); };
   const { chat } = await setup(t, { fetch: slow, pingMs: 30 });
   const r = await chat({ text: 'Hola' });

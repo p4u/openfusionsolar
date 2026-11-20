@@ -57,7 +57,7 @@ export const TOOLS = [
   fn('show_chart', 'Draws a chart in the chat from the app data. Types: energy_bars, import_by_period (bucket 1d/1mo/1y); power_lines, battery_soc (at most 7 days); bill_breakdown, bill_real_vs_estimate, bill_kwh_vs_measured, price_per_kwh, savings (bills in the range, or one bill with invoice_id).',
     { type: { type: 'string', enum: PRESET_TYPES }, ...RANGE, bucket: { type: 'string', enum: ['5m', '15m', '1h', '1d', '1mo', '1y'] }, invoice_id: ID },
     ['type', 'from', 'to']),
-  fn('query_data', `Builds a dataset from the measured data, the bills and official market prices (REE) for draw_chart, and returns its summary (id, columns, units, stats; every row when there are 60 or fewer). One call takes metrics of one group plus, optionally, market prices at the same bucket. Metrics: ${CATALOGUE}. Market prices take at most 31 days; import_cost_pvpc_eur (what the bought kWh would have cost at PVPC) at most 366. group_by hour_of_day (bucket 1h), weekday (1d) or month_of_year (1d, 1mo) with agg. At most 750 rows.`,
+  fn('query_data', `Builds a dataset from the measured data, the bills and official market prices (REE) for draw_chart, and returns its summary (id, columns, units, stats; every row when there are 60 or fewer). One call takes metrics of one group plus, optionally, market prices at the same bucket. Metrics: ${CATALOGUE}. Market prices take at most 31 days; import_cost_pvpc_eur (what the bought kWh would have cost at PVPC, energy term only) at most 366. group_by hour_of_day (bucket 1h), weekday (1d) or month_of_year (1d, 1mo) with agg. At most 750 rows.`,
     {
       metrics: { type: 'array', items: { type: 'string', enum: Object.keys(METRICS) }, minItems: 1, maxItems: 8 }, ...RANGE,
       bucket: { type: 'string', enum: ['5m', '15m', '1h', '1d', '1mo', '1y'] }, group_by: { type: 'string', enum: Object.keys(GROUPS) }, agg: { type: 'string', enum: AGGS },
@@ -170,9 +170,11 @@ const UNAVAILABLE = 'Web search is not available now for this reason: tell the u
 const live = (i) => !i.superseded_by;
 
 // What a web query must not carry (spec 3.3, preflight F5): the plant name, bill and contract identifiers, device names
-// and DNs, and bill note lines of 12 characters or more.
+// and DNs, and bill note lines of 12 characters or more. A plant name counts only from 8 characters or with a digit
+// (ruling R6d): a generic "Casa" would refuse ordinary queries.
+const distinctive = (name) => (typeof name === 'string' && (name.trim().length >= 8 || /\d/.test(name)) ? name : null);
 function personalStrings(store, config) {
-  const out = [config.plantName, store.getKv('station')?.name];
+  const out = [config.plantName, store.getKv('station')?.name].map(distinctive);
   for (const i of store.listInvoices()) {
     out.push(i.invoice_number, i.rectifies_number, i.contract_number, i.cups, i.supplier_tax_id);
     out.push(...String(i.notes ?? '').split('\n').filter((l) => l.trim().length >= 12));
@@ -180,6 +182,9 @@ function personalStrings(store, config) {
   for (const d of store.getKv('devices') ?? []) out.push(d?.name, d?.dn);
   return out.filter((v) => typeof v === 'string' && v.trim());
 }
+
+// Ruling R7c: the unit stays plain €; the model carries this caveat into the chart notes, in the user's language.
+const COST_NOTE = 'import_cost_pvpc_eur is the energy term only (no power term, taxes or fixed terms): say so in the chart notes, in the user\'s language.';
 
 function webCall({ turn, limits }) {
   if (turn.webCalls >= limits.maxWebPerTurn) fail(`at most ${limits.maxWebPerTurn} web calls per answer: answer with what you have`);
@@ -327,9 +332,11 @@ const TOOL_FNS = {
     const ds = await buildDataset(args, { store, config, now, market, signal });
     if (ds.unavailable) return { unavailable: ds.unavailable, note: 'Official market prices could not be read now: say so, and do not guess them.' };
     const summary = summarize(datasets.add(ds));
-    return ds.unavailableDays
-      ? { ...summary, unavailableDays: ds.unavailableDays, note: 'Market prices are not published for unavailableDays (their values are null): say so.' }
-      : summary;
+    const notes = [
+      ...(ds.unavailableDays ? ['Market prices are not published for unavailableDays (their values are null): say so.'] : []),
+      ...(args.metrics.includes('import_cost_pvpc_eur') ? [COST_NOTE] : []),
+    ];
+    return { ...summary, ...(ds.unavailableDays && { unavailableDays: ds.unavailableDays }), ...(notes.length && { note: notes.join(' ') }) };
   },
 
   draw_chart(args, { datasets, grounded, lang, turn, limits }) {

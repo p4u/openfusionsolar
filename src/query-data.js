@@ -19,7 +19,7 @@ const KEY_LEN = { '1d': 10, '1mo': 7, '1y': 4 };
 // market.hourly fetches in 31-day chunks and caches past days. Checked before market.hourly.
 export const MARKET_DAYS = 31;
 export const COST_DAYS = 366;
-const COST_UNIT = '€ (energy term only, no taxes or fixed terms)';
+const COST_UNIT = '€'; // energy term only: the caveat is the query_data note (ruling R7c)
 const KEYS = ['metrics', 'from', 'to', 'bucket', 'group_by', 'agg'];
 
 // metric → where its values come from

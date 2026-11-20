@@ -37,10 +37,11 @@ function lineUrls(line) {
 }
 
 // md → { index: Map<id, { title, text, words }>, sections: [{ id, summary, topics }], sources: Set<url>,
-// glossary: Map<term, definition> }. Sections are the `## ` headings before `## Sources`; topics their `### ` ids.
+// refs: Map<n, url[]> (the numbered source lines), glossary: Map<term, definition> }. Sections are the `## ` headings before `## Sources`; topics their `### ` ids.
 export function parseGuide(md) {
   const sections = [];
   const sources = new Set();
+  const refs = new Map();
   const glossary = new Map();
   const bodies = new Map(); // id → lines
   let section = null;
@@ -57,9 +58,12 @@ export function parseGuide(md) {
       continue;
     }
     if (inSources) {
+      const n = /^(\d+)\. /.exec(line)?.[1];
       for (const u of lineUrls(line)) {
         const c = canonicalHttps(u);
-        if (c) sources.add(c);
+        if (!c) continue;
+        sources.add(c);
+        if (n) refs.set(Number(n), [...(refs.get(Number(n)) ?? []), c]);
       }
       continue;
     }
@@ -99,7 +103,7 @@ export function parseGuide(md) {
     const text = [`## ${s.id}`, s.summary, ...parts].join('\n\n');
     index.set(s.id, { title: s.id, text, words: words(text) });
   }
-  return { index, sections, sources, glossary };
+  return { index, sections, sources, refs, glossary };
 }
 
 let loaded = null;
@@ -110,13 +114,16 @@ export function loadGuide() {
   return loaded;
 }
 
-// The read_guide tool: a subsection's text, a section's text when it fits, else the section's topic ids.
+// The read_guide tool: a subsection's text, a section's text when it fits, else the section's topic ids. The text ends
+// with its cited sources as "[n] url" lines, so read_web_page can open them (they are in guide.sources).
 export function readGuide(guide, id) {
   const entry = typeof id === 'string' ? guide.index.get(id) : undefined;
   if (!entry) throw new GuideError(`unknown guide id; ids: ${[...guide.index.keys()].join(', ')}`);
   const section = guide.sections.find((s) => s.id === id);
   if (section && entry.words > MAX_WORDS) return { id, topics: section.topics };
-  return { id, text: entry.text };
+  const cited = [...new Set([...entry.text.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])))].sort((a, b) => a - b);
+  const lines = cited.flatMap((n) => (guide.refs?.get(n) ?? []).map((u) => `[${n}] ${u}`));
+  return { id, text: lines.length ? `${entry.text}\n\nSources:\n${lines.join('\n')}` : entry.text };
 }
 
 // The system-prompt lines: one per section with its summary and topics, then the core glossary.
