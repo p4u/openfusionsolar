@@ -5,10 +5,15 @@ export const KB_MIN_PX = 120;
 
 // baseline: the largest visual viewport height seen in the current orientation (0 when unknown). innerHeight and
 // vvOffsetTop are accepted for the record but do not change the result: vvh is the visible height on every browser.
-export function keyboardState({ innerHeight, vvHeight, vvOffsetTop = 0, baseline = 0 }) {
+// focused: an editable element has focus. Without one there is no keyboard, so a shorter window (a desktop resize)
+// is never open and becomes the baseline.
+export function keyboardState({ innerHeight, vvHeight, vvOffsetTop = 0, baseline = 0, focused = false }) {
+  if (!focused) return { vvh: vvHeight, open: false, baseline: vvHeight };
   const base = Math.max(baseline || 0, vvHeight);
   return { vvh: vvHeight, open: base - vvHeight > KB_MIN_PX, baseline: base };
 }
+
+const editable = (el) => !!el?.matches?.('input, textarea, select, [contenteditable]');
 
 // Device orientation, not the viewport's: with the keyboard open a phone viewport can be wider than tall.
 const orientationOf = (win) => win.screen?.orientation?.type ?? ((win.screen?.width ?? 0) > (win.screen?.height ?? 0) ? 'landscape' : 'portrait');
@@ -20,22 +25,31 @@ export function watchViewport(win = globalThis) {
   const root = win.document.documentElement;
   let baseline = 0;
   let orientation = orientationOf(win);
-  const update = () => {
+  // el: the element that has (or, on focusout, receives) focus. keep: on focusout the keyboard is still up, so its
+  // height must not become the baseline (a quick refocus would then not count as open).
+  const update = (el = win.document.activeElement, keep = false) => {
     const now = orientationOf(win);
     if (now !== orientation) [orientation, baseline] = [now, 0];
     // a pinch zoom shrinks vv.height too: scaled back it is the full height, not a keyboard
-    const s = keyboardState({ innerHeight: win.innerHeight, vvHeight: vv.height * (vv.scale || 1), vvOffsetTop: vv.offsetTop, baseline });
-    baseline = s.baseline;
+    const s = keyboardState({ innerHeight: win.innerHeight, vvHeight: vv.height * (vv.scale || 1), vvOffsetTop: vv.offsetTop, baseline, focused: editable(el) });
+    if (!keep) baseline = s.baseline;
     root.style.setProperty('--vvh', `${Math.round(s.vvh)}px`);
     const was = root.classList.contains('kb-open');
     root.classList.toggle('kb-open', s.open);
     if (s.open && !was) win.document.dispatchEvent(new CustomEvent('keyboardopen'));
   };
-  vv.addEventListener('resize', update);
-  vv.addEventListener('scroll', update);
+  const onView = () => update();
+  const onFocusIn = (e) => update(e.target);
+  const onFocusOut = (e) => update(e.relatedTarget, true);
+  vv.addEventListener('resize', onView);
+  vv.addEventListener('scroll', onView);
+  win.document.addEventListener('focusin', onFocusIn);
+  win.document.addEventListener('focusout', onFocusOut);
   update();
   return () => {
-    vv.removeEventListener('resize', update);
-    vv.removeEventListener('scroll', update);
+    vv.removeEventListener('resize', onView);
+    vv.removeEventListener('scroll', onView);
+    win.document.removeEventListener('focusin', onFocusIn);
+    win.document.removeEventListener('focusout', onFocusOut);
   };
 }
