@@ -200,10 +200,12 @@ const slug = (s) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerC
 export function figureModel(fig) {
   const { kind, x, unit } = fig;
   const decimals = DECIMALS[unit] ?? 2;
+  // a label that already ends with its unit ("Estalvi diari (€)") would read "(€) (€)" in the table header
+  const bare = (l) => l.replace(/\s*[([]([^()[\]]*)[)\]]$/, (m, u) => (unit && u.trim() === unit ? '' : m)) || l;
   const ax = xAxis(x);
   const id = `figure-${slug(fig.title) || kind}`;
   // a heatmap is read by shade, so all its rows take one hue
-  const series = fig.series.map((s, i) => ({ key: `s${i}`, name: s.label, entity: ENTITIES[kind === 'heatmap' ? 0 : i], values: s.values }));
+  const series = fig.series.map((s, i) => ({ key: `s${i}`, name: bare(s.label), entity: ENTITIES[kind === 'heatmap' ? 0 : i], values: s.values }));
   const label = (i) => ax.labels[i];
   let spec;
   if (kind === 'donut') {
@@ -224,7 +226,7 @@ export function figureModel(fig) {
   return {
     id, title: fig.title,
     caption: [...fig.source.map((s) => t(`assistant.figure.source.${s}`)), fig.notes].filter(Boolean).join(' '),
-    columns: [t(`assistant.figure.x.${x.type}`), ...fig.series.map((s) => ({ label: s.label, unit, decimals }))],
+    columns: [t(`assistant.figure.x.${x.type}`), ...fig.series.map((s) => ({ label: bare(s.label), unit, decimals }))],
     rows: ax.labels.map((l, i) => [l, ...fig.series.map((s) => s.values[i])]),
     iso: ax.iso,
     spec: { id, unit, y: { decimals }, ...spec },

@@ -11,12 +11,15 @@
 .chart-host .apexcharts-text, .chart-host .apexcharts-legend-text { font-family: var(--font-sans); }
 .chart-extra { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-xs) var(--sp-base); margin-top: var(--sp-xs); }
 .chart-extra[hidden] { display: none; }
-.chart-table { flex: 1 1 100%; order: 2; }
+.chart-table { flex: 1 1 100%; order: 2; min-width: 0; max-width: 100%; } /* the table scrolls inside the card, never widens it */
 .chart-table > summary { display: inline-flex; min-height: 44px; }
 .chart-csv { margin-left: auto; }
 /* a long table scrolls inside its card, with the header kept in view */
 .chart-table .table-scroll { max-height: 360px; overflow: auto; }
 .chart-table thead th { position: sticky; top: 0; background: var(--surface-card); }
+/* a long label (a model-written series name) wraps; figures never break */
+.chart-table .table th, .chart-table .table td { white-space: normal; overflow-wrap: anywhere; }
+.chart-table .table .num { overflow-wrap: normal; white-space: nowrap; }
 /* ApexCharts' keyboard focus ring follows the design (2 px ink), not its default blue */
 .chart-host .apexcharts-canvas { --apexcharts-focus-color: var(--ink); }
 

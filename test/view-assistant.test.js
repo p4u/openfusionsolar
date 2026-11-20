@@ -189,6 +189,11 @@ test('figureModel for each kind', () => {
   assert.equal(time.spec.y.decimals, 2);
   setTimeZone(null);
   for (const kind of FIGURE_KINDS) assert.equal(model({ ...two, kind }).spec.series.length, 2, kind);
+
+  // a label that ends with its unit loses it, so the table header is not "Estalvi diari (€) (€)" (fix-2 D8)
+  const own = model({ unit: '€', series: [{ label: 'Estalvi diari (€)', values: [1, 2] }, { label: 'Cost [€]', values: [1, 2] }, { label: 'Casa (kWh)', values: [1, 2] }, { label: '(€)', values: [1, 2] }] });
+  assert.deepEqual(own.columns.slice(1).map((c) => c.label), ['Estalvi diari', 'Cost', 'Casa (kWh)', '(€)']);
+  assert.deepEqual(own.spec.series.map((s) => s.name), ['Estalvi diari', 'Cost', 'Casa (kWh)', '(€)']);
 });
 
 test('answered marks a choice followed by a user message', () => {
