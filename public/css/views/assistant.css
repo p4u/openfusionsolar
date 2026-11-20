@@ -13,7 +13,7 @@
 }
 .assistant { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--sp-lg); height: 100%; }
 .assistant-side { display: none; }
-.assistant-main { display: flex; flex-direction: column; gap: var(--sp-base); min-width: 0; min-height: 0; }
+.assistant-main { position: relative; display: flex; flex-direction: column; gap: var(--sp-base); min-width: 0; min-height: 0; }
 .assistant-head-actions { display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
 
 /* conversations (side column and sheet) */
@@ -28,7 +28,7 @@
 
 @media (min-width: 1024px) {
   .assistant { grid-template-columns: 280px minmax(0, 1fr); gap: var(--sp-xl); }
-  .assistant-side { display: flex; flex-direction: column; gap: var(--sp-sm); min-height: 0; overflow-y: auto; }
+  .assistant-side { position: relative; display: flex; flex-direction: column; gap: var(--sp-sm); min-height: 0; overflow-y: auto; }
   .assistant-list-btn { display: none; }
 }
 
@@ -51,8 +51,10 @@
 }
 .assistant-chip:hover { background: var(--surface-strong); }
 
-/* thread */
+/* thread. position: its .sr-only labels (absolute) stay inside its scroll box; static, they made the document taller
+   than the viewport and a scrollIntoView then moved the page (spec 4.1: no document scroll on this route). */
 .assistant-thread {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -117,6 +119,8 @@
 .assistant-status { display: flex; align-items: center; gap: var(--sp-xs); min-height: 1.5em; margin: 0; color: var(--muted-on-canvas); font-size: var(--fs-caption); }
 .assistant-dot { width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--ink); animation: assistant-pulse 1.2s var(--ease) infinite; }
 @keyframes assistant-pulse { 50% { opacity: 0.25; } }
+/* empty, it takes no room above the composer; absolute rather than display: none, so the live region keeps working */
+.assistant-status:empty { position: absolute; }
 
 /* composer: the column's last child */
 .assistant-composer {

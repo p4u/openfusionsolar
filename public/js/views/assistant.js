@@ -429,8 +429,9 @@ export async function render(root, ctx) {
   sheet.addEventListener('click', (e) => { if (e.target === sheet) sheet.close(); });
 
   // the keyboard shrinks the column (--vvh): keep the end of the last message in sight (viewport.js emits this)
-  const onKeyboard = () => { thread.scrollTop = thread.scrollHeight; };
-  document.addEventListener('keyboardopen', onKeyboard);
+  const toEnd = () => { thread.scrollTop = thread.scrollHeight; };
+  document.addEventListener('keyboardopen', toEnd);
+  let stick = null;
 
   // ---------- first paint ----------
   setBusy(null);
@@ -455,13 +456,21 @@ export async function render(root, ctx) {
         $('[data-intro]').insertAdjacentHTML('afterbegin', `<p class="hint">${esc(t('assistant.notFound'))}</p>`);
       }
     });
-    thread.lastElementChild?.scrollIntoView({ block: 'nearest' });
+    // the end of the conversation, so an unanswered choice is in view; charts draw after this and grow the thread,
+    // so the end stays in view until the user scrolls it
+    toEnd();
+    if (globalThis.ResizeObserver) {
+      stick = new ResizeObserver(toEnd);
+      for (const m of thread.children) stick.observe(m);
+      for (const type of ['pointerdown', 'wheel', 'keydown']) thread.addEventListener(type, () => stick.disconnect(), { once: true, passive: true });
+    }
   }
   if (pre.text) input.focus({ preventScroll: true });
 
   return () => {
     busy?.abort();
     charts.splice(0).forEach((c) => c.destroy());
-    document.removeEventListener('keyboardopen', onKeyboard);
+    document.removeEventListener('keyboardopen', toEnd);
+    stick?.disconnect();
   };
 }
