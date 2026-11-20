@@ -257,7 +257,7 @@ test('the preset list matches the browser\'s', () => {
 test('10 rounds at most, then a plain apology', async (t) => {
   const { chat, fake } = await setup(t, { steps: Array(11).fill(fixture('chat-get-invoice')) });
   const r = await chat({ text: 'Explica’m la factura' });
-  assert.equal(fake.calls.length, 10); // spec 3.1: 10 rounds (was 6)
+  assert.equal(fake.calls.length, 11); // spec 3.1: 10 rounds (was 6), plus the one no-tools call (fix-2)
   assert.deepEqual(r.events.map((e) => e.type), [...Array(20).fill('status'), 'text', 'done']);
   assert.deepEqual(r.events.slice(0, 2).map((e) => e.tool), ['thinking', 'get_invoice']);
   assert.match(r.events[20].text, /^Ho sento/);
@@ -269,6 +269,8 @@ test('10 rounds at most, then a plain apology', async (t) => {
   // round 10 is sent without tools and with the note; this model ignores it and calls a tool anyway
   assert.equal(fake.calls[9].tool_choice, 'none');
   assert.match(fake.calls[9].messages.at(-1).content, /^Answer now with what you have/);
+  // so one more call goes out with no tools at all; this model calls a tool even then: the apology (fix-2)
+  assert.ok(!('tools' in fake.calls[10]));
 });
 
 test('a closed connection aborts the upstream request', async (t) => {
