@@ -310,7 +310,8 @@ const TOOL_FNS = {
     };
   },
 
-  show_chart(args, { store }) {
+  show_chart(args, { store, turn, limits }) {
+    if (turn && turn.figures >= limits.maxFigures) fail(`at most ${limits.maxFigures} charts per answer`);
     allow(args, ['type', 'from', 'to', 'bucket', 'invoice_id']);
     const { type, bucket, invoice_id: invoiceId } = args;
     if (!PRESET_TYPES.includes(type)) fail(`type must be one of ${PRESET_TYPES.join(', ')}`);
@@ -325,6 +326,7 @@ const TOOL_FNS = {
       invoiceOf(store, invoiceId);
     }
     const chart = { type, from, to, ...(bucket != null && { bucket }), ...(invoiceId != null && { invoiceId }) };
+    if (turn) turn.figures++;
     return { result: { shown: chart, note: 'The chart is drawn in the chat from the app data. Describe it in one sentence; quote numbers only from tool results.' }, block: { type: 'chart', chart } };
   },
 

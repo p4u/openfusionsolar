@@ -161,6 +161,16 @@ test('a 4th figure is a tool error', async (t) => {
   assert.match(toolResults(2).at(-1).error, /at most 3 charts/);
 });
 
+test('a preset counts in the 3 charts per answer (gate F4)', async (t) => {
+  const PRESET = { type: 'energy_bars', ...OCT };
+  const { chat, store, toolResults } = await setup(t, { steps: [tools(['query_data', QUERY]),
+    tools(['show_chart', PRESET], ...Array(2).fill(['draw_chart', DRAW]), ['show_chart', PRESET]), say('Fet.')] });
+  seed(store);
+  const r = await chat({ text: 'Quatre gràfics' });
+  assert.equal(types(r).filter((x) => x === 'figure' || x === 'chart').length, 3);
+  assert.match(toolResults(2).at(-1).error, /at most 3 charts/);
+});
+
 // --- ask_user (spec 3.5, AC13) ---
 
 const ASK = { question: 'De quin període vols saber-ho?', options: ['Aquest mes', 'Aquest any'] };
